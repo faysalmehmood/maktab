@@ -57,13 +57,17 @@ export function DefaultersPage() {
   });
   const remind = useMutation({
     mutationFn: () =>
-      sendJson<{ queued: number; more: boolean }>('POST', '/api/fees/defaulters/remind', {
-        ...(filters.grp ? { grp_id: filters.grp } : {}),
-        ...(Number(filters.months) >= 1 ? { min_months: Number(filters.months) } : {}),
-        ...(rupeesToPaisa(filters.amount) ? { min_amount: rupeesToPaisa(filters.amount) } : {}),
-        ...(filters.excludeSponsored ? { exclude_sponsored: true } : {}),
-        template: 'fee_overdue',
-      }),
+      sendJson<{ queued: number; more: boolean; skipped?: number }>(
+        'POST',
+        '/api/fees/defaulters/remind',
+        {
+          ...(filters.grp ? { grp_id: filters.grp } : {}),
+          ...(Number(filters.months) >= 1 ? { min_months: Number(filters.months) } : {}),
+          ...(rupeesToPaisa(filters.amount) ? { min_amount: rupeesToPaisa(filters.amount) } : {}),
+          ...(filters.excludeSponsored ? { exclude_sponsored: true } : {}),
+          template: 'fee_overdue',
+        },
+      ),
   });
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -148,26 +152,32 @@ export function DefaultersPage() {
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap items-center gap-2 print:hidden">
-        <Button
-          id="remind-all"
-          onClick={() => remind.mutate()}
-          disabled={remind.isPending || !data?.defaulters.length}
-        >
-          <BellRing aria-hidden />
-          {t('fee.defaulters.remindAll')}
-        </Button>
-        {cooldown !== undefined && (
-          <span className="text-xs text-muted-foreground" id="remind-cooldown">
-            {t('fee.defaulters.cooldown', { n: cooldown })}
-          </span>
-        )}
-      </div>
+      {/* The office reminds; a teacher's view is a dues summary only (PLAN §14.5). */}
+      {canReadMoney(roles) && (
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <Button
+            id="remind-all"
+            onClick={() => remind.mutate()}
+            disabled={remind.isPending || !data?.defaulters.length}
+          >
+            <BellRing aria-hidden />
+            {t('fee.defaulters.remindAll')}
+          </Button>
+          {cooldown !== undefined && (
+            <span className="text-xs text-muted-foreground" id="remind-cooldown">
+              {t('fee.defaulters.cooldown', { n: cooldown })}
+              {(remind.data?.skipped ?? 0) > 0 && (
+                <> {t('fee.defaulters.skipped', { n: remind.data?.skipped ?? 0 })}</>
+              )}
+            </span>
+          )}
+        </div>
+      )}
       {remind.data && (
         <p role="status" id="remind-result" className="rounded-md bg-primary/10 p-3 text-sm">
           {t('fee.defaulters.queued', { n: remind.data.queued })}
           {remind.data.more && <> {t('fee.defaulters.more')}</>}{' '}
-          <Link className="underline" to="/messages">
+          <Link className="inline-flex min-h-11 items-center underline" to="/messages">
             {t('attendance.openQueue')}
           </Link>
         </p>
@@ -212,7 +222,10 @@ export function DefaultersPage() {
               : data.defaulters.map((d) => (
                   <TableRow key={d.student_id}>
                     <TableCell>
-                      <Link to={`/fees/family/${d.family_id}`} className="hover:underline">
+                      <Link
+                        to={`/fees/family/${d.family_id}`}
+                        className="inline-flex min-h-11 items-center hover:underline"
+                      >
                         <bdi>{d.student_name}</bdi>
                       </Link>{' '}
                       <Num>{d.admission_no}</Num>

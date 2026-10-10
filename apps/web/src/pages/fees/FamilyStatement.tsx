@@ -1,4 +1,4 @@
-import type { FeeLineDto, ReceiptDto } from '@maktab/shared';
+import type { FeeLineDto, FineDto, ReceiptDto } from '@maktab/shared';
 import { Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -7,9 +7,11 @@ import { FeeLinesTable, Figure, Money } from '@/components/fees/common';
 import {
   OpeningBalanceDialog,
   ReduceFeeDialog,
+  RefundDialog,
   SponsorshipDialog,
   VoidChargeDialog,
   voidUnit,
+  WaiveFineDialog,
 } from '@/components/fees/dialogs';
 import { ErrorNote, Num, PageTitle } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +21,8 @@ import {
   canCollect,
   canConcession,
   canManageFees,
+  canReverse,
+  fineOf,
   headLabel,
   useFamilyStatement,
 } from '@/lib/fees';
@@ -29,6 +33,8 @@ type Dialog =
   | { kind: 'sponsor'; studentId: string }
   | { kind: 'opening'; studentId: string }
   | { kind: 'void'; line: FeeLineDto }
+  | { kind: 'waive'; fine: FineDto; line: FeeLineDto }
+  | { kind: 'refund' }
   | null;
 
 type Event =
@@ -88,6 +94,17 @@ export function FamilyStatementPage() {
           </Figure>
           <Figure label={t('fee.counter.credit')}>
             <Money paisa={f.credit} />
+            {f.credit > 0 && canReverse(roles) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-1 self-start"
+                id="family-refund"
+                onClick={() => setDialog({ kind: 'refund' })}
+              >
+                {t('fee.family.refund')}
+              </Button>
+            )}
           </Figure>
           <Figure label={t('fee.counter.netDue')} tone="strong">
             <Money paisa={f.totals.due} />
@@ -164,18 +181,39 @@ export function FamilyStatementPage() {
             <FeeLinesTable
               lines={f.charges}
               action={
-                manage
-                  ? (l) =>
-                      l.net !== 0 && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          id={`void-${l.id}`}
-                          onClick={() => setDialog({ kind: 'void', line: l })}
-                        >
-                          {t('fee.family.void')}
-                        </Button>
-                      )
+                manage || admin
+                  ? (l) => {
+                      const fine = fineOf(f.fines ?? [], l.id);
+                      return (
+                        <span className="flex flex-wrap items-center gap-1">
+                          {admin && fine && fine.left > 0 && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              id={`waive-${fine.id}`}
+                              onClick={() => setDialog({ kind: 'waive', fine, line: l })}
+                            >
+                              {t('fee.counter.waiveFine')}
+                            </Button>
+                          )}
+                          {fine && fine.left <= 0 && (
+                            <Badge variant="outline" data-waived={fine.id}>
+                              {t('fee.counter.fineWaived')}
+                            </Badge>
+                          )}
+                          {manage && l.net !== 0 && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              id={`void-${l.id}`}
+                              onClick={() => setDialog({ kind: 'void', line: l })}
+                            >
+                              {t('fee.family.void')}
+                            </Button>
+                          )}
+                        </span>
+                      );
+                    }
                   : undefined
               }
             />
@@ -260,6 +298,12 @@ export function FamilyStatementPage() {
       )}
       {dialog?.kind === 'opening' && (
         <OpeningBalanceDialog open studentId={dialog.studentId} onOpenChange={close} />
+      )}
+      {dialog?.kind === 'waive' && (
+        <WaiveFineDialog open fine={dialog.fine} line={dialog.line} onOpenChange={close} />
+      )}
+      {dialog?.kind === 'refund' && (
+        <RefundDialog open payerId={f.family.id} credit={f.credit} onOpenChange={close} />
       )}
       {dialog?.kind === 'void' && (
         <VoidChargeDialog

@@ -1,4 +1,4 @@
-import { hasGrant, MATRIX, type StaffRole } from '@maktab/shared';
+import { type Action, hasGrant, MATRIX, type Resource, type StaffRole } from '@maktab/shared';
 import { useMe } from './api';
 
 /**
@@ -14,3 +14,10 @@ export const canReadStudents = (r: readonly StaffRole[]) => hasGrant(r, 'student
 /** Row-scoped readers (teachers without an office role) see "My groups" instead of every group. */
 export const isTeacherOnly = (r: readonly StaffRole[]) =>
   r.includes('teacher') && !r.some((role) => MATRIX.student.read[role] === 'all');
+
+/** One (resource, action) of the shared MATRIX, as a tuple the nav and route guards can list. */
+export type GrantRef = { [R in Resource]: readonly [R, Action<R>] }[Resource];
+
+/** Does any role hold this grant (any scope)? */
+export const holds = (roles: readonly StaffRole[], [resource, action]: GrantRef): boolean =>
+  hasGrant(roles, resource, action as Action<typeof resource>);

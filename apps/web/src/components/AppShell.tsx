@@ -1,4 +1,4 @@
-import { type I18nKey, STAFF_ROLES, type StaffRole } from '@maktab/shared';
+import type { I18nKey, StaffRole } from '@maktab/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Banknote,
@@ -26,63 +26,72 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { logout } from '@/lib/api';
-import { isTeacherOnly, useRoles } from '@/lib/roles';
+import { type GrantRef, holds, isTeacherOnly, useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 import { API_CACHE } from '@/offline/api-cache';
 import { resumeAfterSignIn, startAutoSync, useOutboxStatus } from '@/offline/sync';
 import { SyncBanner } from './attendance/common';
 import { LanguageToggle } from './LanguageToggle';
 
-type NavItem = { to: string; label: I18nKey; icon: LucideIcon; roles: readonly StaffRole[] };
+type NavItem = {
+  to: string;
+  label: I18nKey;
+  icon: LucideIcon;
+  /** Shown when the roles hold any of these MATRIX grants (the API's own rule for the page). */
+  grants: readonly GrantRef[];
+};
 
-const OFFICE = ['owner', 'admin'] as const;
-
-/** PLAN §3: owner/admin see everything; a teacher sees their groups; an accountant students. */
+/** PLAN §3, derived from the shared MATRIX: each entry shows for the roles its page serves. */
 export const NAV: NavItem[] = [
-  { to: '/', label: 'nav.dashboard', icon: LayoutDashboard, roles: STAFF_ROLES },
-  {
-    to: '/students',
-    label: 'nav.students',
-    icon: Users,
-    roles: ['owner', 'admin', 'accountant', 'teacher'],
-  },
-  { to: '/groups', label: 'nav.groups', icon: Layers, roles: [...OFFICE, 'teacher'] },
+  { to: '/', label: 'nav.dashboard', icon: LayoutDashboard, grants: [['self', 'read']] },
+  { to: '/students', label: 'nav.students', icon: Users, grants: [['student', 'read']] },
+  // Groups and registers: whoever reads attendance (office, and teachers for their own groups).
+  { to: '/groups', label: 'nav.groups', icon: Layers, grants: [['attendance', 'read']] },
   {
     to: '/attendance',
     label: 'nav.attendance',
     icon: CalendarCheck,
-    roles: [...OFFICE, 'teacher'],
+    grants: [['attendance', 'read']],
   },
-  { to: '/fees', label: 'nav.fees', icon: Wallet, roles: [...OFFICE, 'accountant'] },
-  { to: '/cash', label: 'fee.nav.cash', icon: Banknote, roles: [...OFFICE, 'accountant'] },
+  { to: '/fees', label: 'nav.fees', icon: Wallet, grants: [['receipt', 'read']] },
+  { to: '/cash', label: 'fee.nav.cash', icon: Banknote, grants: [['cash_session', 'read']] },
   {
     to: '/messages',
     label: 'nav.sendQueue',
     icon: MessageSquareText,
-    roles: ['owner', 'admin', 'accountant', 'teacher'],
+    grants: [['message', 'read']],
   },
-  { to: '/settings', label: 'nav.settings', icon: Settings, roles: [...OFFICE, 'accountant'] },
+  // Full settings for settings.manage; the office's "settings-lite" (account + school profile)
+  // for whoever writes students.
+  {
+    to: '/settings',
+    label: 'nav.settings',
+    icon: Settings,
+    grants: [
+      ['settings', 'manage'],
+      ['student', 'write'],
+    ],
+  },
 ];
 
 /** The menu for a set of roles; teachers (only) see "My groups" instead of "Groups". */
 export function navFor(roles: readonly StaffRole[]): NavItem[] {
-  const items = NAV.filter((item) => item.roles.some((r) => roles.includes(r))).map((item) =>
+  const items = NAV.filter((item) => item.grants.some((g) => holds(roles, g))).map((item) =>
     item.to === '/groups' && isTeacherOnly(roles)
       ? { ...item, label: 'nav.myGroups' as const }
       : item,
   );
-  // A teacher (fee.read own_groups) sees their groups' dues summary, not the fee office.
-  if (isTeacherOnly(roles) && !items.some((i) => i.to === '/fees'))
-    items.splice(
-      items.findIndex((i) => i.to === '/messages'),
-      0,
-      {
-        to: '/fees/defaulters',
-        label: 'fee.nav.dues',
-        icon: Wallet,
-        roles: ['teacher'],
-      },
-    );
+  // Fee readers without money access (teachers: fee.read own_groups) get their groups' dues
+  // summary instead of the fee office.
+  if (holds(roles, ['fee', 'read']) && !holds(roles, ['receipt', 'read'])) {
+    const at = items.findIndex((i) => i.to === '/messages');
+    items.splice(at < 0 ? items.length : at, 0, {
+      to: '/fees/defaulters',
+      label: 'fee.nav.dues',
+      icon: Wallet,
+      grants: [['fee', 'read']],
+    });
+  }
   return items;
 }
 

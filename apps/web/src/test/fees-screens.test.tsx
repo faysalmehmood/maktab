@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BillingAlertBanner, FeeTiles } from '@/components/fees/DashboardTiles';
 import { FeeSetup, rateHistory, validateFineRule } from '@/components/fees/setup';
 import { initI18n, setLanguage } from '@/i18n';
-import { BillingPage, runGenerate } from '@/pages/fees/Billing';
+import { BillingPage, karachiTime, runGenerate } from '@/pages/fees/Billing';
 import { DefaultersPage } from '@/pages/fees/Defaulters';
 import { group, mockApi, renderAt } from './api-mock';
 import { fam, feeSettings } from './fee-fixtures';
@@ -86,10 +86,11 @@ describe('billing', () => {
     expect(s.failed).toEqual([{ grp_id: G2, code: 'db_error', message: 'boom' }]);
   });
 
-  it('the Generate button loops, shows the failed group, and the runs show attention', async () => {
+  it('Generate needs the preview first, confirms its totals, then loops and shows the failed group', async () => {
     let i = 0;
-    mockApi({
+    const api = mockApi({
       'GET /api/groups': { items: [{ ...group, id: G2, name: 'B' }] },
+      'GET /api/fees/unbilled': { period: '2026-10', items: [], more: false },
       'GET /api/fees/runs': {
         period: '2026-10',
         complete: false,
@@ -98,28 +99,155 @@ describe('billing', () => {
           {
             grp_id: G2,
             fail_streak: 3,
-            error_code: 'db_error',
-            retry_after: null,
+            error_code: 'constraint',
+            retry_after: '2026-10-10T19:30:00.000Z',
             attention_required: true,
           },
         ],
         attention_required: 1,
         chunks: [],
       },
-      'POST /api/fees/generate': () => script[i++],
+      'POST /api/fees/generate': (_u: URL, init: RequestInit) => {
+        const b = JSON.parse(String(init.body)) as { dry_run: boolean };
+        return { ...(script[i++ % 4] as GenerateResultDto), dry_run: b.dry_run };
+      },
     });
     renderAt('/fees/billing', '/fees/billing', <BillingPage />);
     expect(await screen.findByText(/1 groups have failed three times/)).toBeTruthy();
-    fireEvent.click(document.getElementById('billing-generate') as HTMLElement);
-    const failed = await waitFor(() => {
-      const el = document.getElementById('billing-failed');
+    // Codes and times are translated / shown in Asia/Karachi.
+    const failing = await waitFor(() => {
+      const el = document.getElementById('billing-failing');
       if (!el) throw new Error('not yet');
       return el;
     });
+    expect(failing.textContent).toContain('Refused by a ledger rule');
+    expect(failing.textContent).toContain('2026-10-11 00:30');
+    const generate = document.getElementById('billing-generate') as HTMLButtonElement;
+    expect(generate.disabled).toBe(true);
+    expect(document.getElementById('billing-preview-first')).toBeTruthy();
+    fireEvent.click(document.getElementById('billing-preview') as HTMLElement);
+    await waitFor(() => expect(generate.disabled).toBe(false));
+    fireEvent.click(generate);
+    const body = await waitFor(() => {
+      const el = document.getElementById('billing-confirm-body');
+      if (!el) throw new Error('no confirm');
+      return el;
+    });
+    expect(body.textContent).toContain('250 fees');
+    const posts = () => api.calls.filter((c) => c.method === 'POST').length;
+    expect(posts()).toBe(4);
+    fireEvent.click(document.getElementById('billing-generate-confirm') as HTMLElement);
+    const failed = await waitFor(() => {
+      const el = document.getElementById('billing-failed');
+      if (!el || posts() < 8) throw new Error('not yet');
+      return el;
+    });
     expect(failed.textContent).toContain('Class 5 B');
-    expect(failed.textContent).toContain('db_error');
-    expect(i).toBe(4);
-    expect(document.getElementById('billing-result')?.textContent).toContain('250 fees');
+    expect(failed.textContent).toContain('Error');
+    await waitFor(() =>
+      expect(document.getElementById('billing-result')?.textContent).toContain('Done: 250 fees'),
+    );
+    // A new preview is needed before the next Generate.
+    expect(generate.disabled).toBe(true);
+  });
+
+  it('a commit that adds nothing says "already billed", not "Done: 0 fees"', async () => {
+    mockApi({
+      'GET /api/groups': { items: [] },
+      'GET /api/fees/unbilled': { period: '2026-10', items: [], more: false },
+      'GET /api/fees/runs': {
+        period: '2026-10',
+        complete: true,
+        cursor: null,
+        failing: [],
+        attention_required: 0,
+        chunks: [],
+      },
+      'POST /api/fees/generate': chunk({ counts: counts(0) }),
+    });
+    renderAt('/fees/billing', '/fees/billing', <BillingPage />);
+    fireEvent.click(await screen.findByText('Preview'));
+    const generate = document.getElementById('billing-generate') as HTMLButtonElement;
+    await waitFor(() => expect(generate.disabled).toBe(false));
+    fireEvent.click(generate);
+    fireEvent.click(
+      await waitFor(() => {
+        const el = document.getElementById('billing-generate-confirm');
+        if (!el) throw new Error('no confirm');
+        return el;
+      }),
+    );
+    await waitFor(() =>
+      expect(document.getElementById('billing-result')?.textContent).toBe(
+        'Already billed: no new fees were added.',
+      ),
+    );
+  });
+
+  it('fines preview lists who would be fined; unbilled enrolments get "Bill now"', async () => {
+    const api = mockApi({
+      'GET /api/groups': { items: [] },
+      'GET /api/fees/runs': {
+        period: '2026-10',
+        complete: true,
+        cursor: null,
+        failing: [],
+        attention_required: 0,
+        chunks: [],
+      },
+      'GET /api/fees/unbilled': {
+        period: '2026-10',
+        items: [
+          {
+            student_id: 'ST1',
+            student_name: 'Hina',
+            admission_no: 'A-9',
+            enrolment_id: 'E1',
+            grp_id: G1,
+            group_name: 'Class 5 A',
+            start_date: '2026-10-05',
+          },
+        ],
+        more: false,
+      },
+      'POST /api/fees/regenerate': chunk({ counts: counts(1) }),
+      'POST /api/fees/fines/apply': {
+        enabled: true,
+        dry_run: true,
+        applied: 0,
+        planned: [
+          {
+            id: 'F1',
+            student_id: 'ST2',
+            student_name: 'Ali',
+            admission_no: 'A-1',
+            period_key: '2026-09',
+            amount: RS(200),
+          },
+        ],
+      },
+    });
+    renderAt('/fees/billing', '/fees/billing', <BillingPage />);
+    fireEvent.click(await screen.findByText('Preview fines'));
+    const list = await waitFor(() => {
+      const el = document.getElementById('fines-planned');
+      if (!el) throw new Error('no list');
+      return el;
+    });
+    expect(list.textContent).toContain('Ali');
+    expect(list.textContent).toContain('2026-09');
+    expect(list.textContent).toContain('PKR 200');
+    fireEvent.click(await screen.findByText('Bill now'));
+    await waitFor(() =>
+      expect(
+        api.calls.find((c) => c.method === 'POST' && c.path === '/api/fees/regenerate')?.body,
+      ).toEqual({ student_id: 'ST1', period: expect.stringMatching(/^\d{4}-\d{2}$/) }),
+    );
+  });
+
+  it('karachiTime shows a UTC instant on the school clock', () => {
+    expect(karachiTime('2026-10-10T19:30:00.000Z')).toBe('2026-10-11 00:30');
+    expect(karachiTime('2026-10-10 04:00:00')).toBe('2026-10-10 09:00');
   });
 
   it('dashboard: the billing banner appears only with alerts and links to billing', async () => {
@@ -180,7 +308,7 @@ describe('defaulters', () => {
       'GET /api/groups': { items: [] },
       'GET /api/school/fees': feeSettings,
       'GET /api/fees/defaulters': fullRows,
-      'POST /api/fees/defaulters/remind': { queued: 1, more: false },
+      'POST /api/fees/defaulters/remind': { queued: 1, more: false, skipped: 2 },
     });
     renderAt('/fees/defaulters', '/fees/defaulters', <DefaultersPage />);
     expect(await screen.findByText('0300 1234567')).toBeTruthy();
@@ -188,6 +316,9 @@ describe('defaulters', () => {
     expect(document.getElementById('remind-cooldown')?.textContent).toContain('7 days');
     fireEvent.click(document.getElementById('remind-all') as HTMLElement);
     expect(await screen.findByText('1 families queued in the send queue')).toBeTruthy();
+    expect(document.getElementById('remind-cooldown')?.textContent).toContain(
+      '2 families were reminded recently and skipped this time.',
+    );
     const remind = api.calls.find((c) => c.path === '/api/fees/defaulters/remind');
     expect(remind?.body).toMatchObject({ template: 'fee_overdue' });
   });
@@ -220,6 +351,11 @@ describe('defaulters', () => {
     expect(table.textContent).not.toMatch(/\bDue\b/);
     expect(table.querySelector('a[href^="tel:"]')).toBeNull();
     expect(document.getElementById('def-amount')).toBeNull();
+    // A teacher's view is a summary: reminding is for the office.
+    expect(document.getElementById('remind-all')).toBeNull();
+    expect(document.getElementById('def-exclude')?.closest('label')?.className).toContain(
+      'min-h-11',
+    );
   });
 });
 
@@ -291,6 +427,9 @@ describe('fee setup', () => {
     expect(table.querySelectorAll('tbody tr')).toHaveLength(3);
     expect(table.querySelectorAll('input, button, select, textarea')).toHaveLength(0);
     expect(table.textContent).toContain('Current');
+    // R3 starts in 2027: upcoming, not history.
+    expect(table.querySelector('[data-upcoming="R3"]')?.textContent).toBe('Upcoming');
+    expect(table.querySelector('[data-rate="R1"]')?.textContent).toContain('History');
     expect(screen.getByText(/A rate is never edited/)).toBeTruthy();
     fireEvent.change(document.getElementById('rate-head') as HTMLElement, {
       target: { value: 'H1' },

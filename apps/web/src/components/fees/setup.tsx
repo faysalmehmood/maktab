@@ -335,6 +335,10 @@ function RatesEditor() {
                   <TableCell>
                     {r === g.current ? (
                       <Badge>{t('fee.setup.current')}</Badge>
+                    ) : r.effective_from > today ? (
+                      <Badge variant="secondary" data-upcoming={r.id}>
+                        {t('fee.setup.upcoming')}
+                      </Badge>
                     ) : (
                       <Badge variant="outline">{t('fee.setup.history')}</Badge>
                     )}

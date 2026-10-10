@@ -1,13 +1,24 @@
-import type { GenerateResultDto } from '@maktab/shared';
+import type { GenerateResultDto, UnbilledDto } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Play, ScanSearch } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Money } from '@/components/fees/common';
+import { useFeeInvalidate } from '@/components/fees/dialogs';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/sonner';
 import {
   Table,
   TableBody,
@@ -88,11 +99,35 @@ type Runs = {
     concessions: number;
     sponsored: number;
     fines: number;
+    error_code?: string | null;
     created_at: string;
   }[];
 };
 
-type Fines = { enabled: boolean; planned: unknown[]; applied: number; dry_run: boolean };
+type PlannedFine = {
+  id: string;
+  student_id: string;
+  student_name: string | null;
+  admission_no: string | null;
+  period_key: string;
+  amount: number;
+};
+type Fines = { enabled: boolean; planned: PlannedFine[]; applied: number; dry_run: boolean };
+
+/** An ISO instant (UTC) as the school's wall clock, Asia/Karachi (UTC+5, no DST): "YYYY-MM-DD HH:mm". */
+export function karachiTime(iso: string): string {
+  const ms = Date.parse(iso.endsWith('Z') || /[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`);
+  if (Number.isNaN(ms)) return iso;
+  return new Date(ms + 5 * 3600_000).toISOString().slice(0, 16).replace('T', ' ');
+}
+
+const CODES = ['duplicate_charge', 'conflict', 'foreign_key', 'constraint', 'internal'] as const;
+type BillingCode = (typeof CODES)[number] | 'unknown';
+/** A billing error code as a sentence (en/ur); unknown codes get a generic word. */
+export const billingCodeKey = (
+  code: string | null | undefined,
+): `fee.billing.codes.${BillingCode}` =>
+  `fee.billing.codes.${(CODES as readonly string[]).includes(code ?? '') ? (code as BillingCode) : 'unknown'}`;
 
 /** PLAN §14.5: period → preview (dry run) → generate (loop) → fines → runs. */
 export function BillingPage() {
@@ -107,6 +142,11 @@ export function BillingPage() {
   const [proRata, setProRata] = useState(false);
   const [progress, setProgress] = useState<GenerateSummary | null>(null);
   const [mode, setMode] = useState<'preview' | 'generate'>('preview');
+  // "Generate" needs a finished preview of the same month and options; its totals are confirmed.
+  const [previewed, setPreviewed] = useState<{ key: string; totals: Counts } | null>(null);
+  const [confirmGen, setConfirmGen] = useState(false);
+  const previewKey = `${period}|${proRata}`;
+  const previewReady = previewed?.key === previewKey;
   const runs = useQuery({
     queryKey: ['fee-runs', period],
     queryFn: () => getJson<Runs>(`/api/fees/runs?period=${period}`),
@@ -120,9 +160,35 @@ export function BillingPage() {
       setProgress(null);
       return runGenerate(post, { period, dryRun, proRata, onProgress: setProgress });
     },
-    onSuccess: async () => {
+    onSuccess: async (sum, dryRun) => {
+      if (dryRun) setPreviewed({ key: previewKey, totals: sum.totals });
+      else setPreviewed(null);
       await qc.invalidateQueries({ queryKey: ['fee-runs'] });
       await qc.invalidateQueries({ queryKey: ['fee-dashboard'] });
+      await qc.invalidateQueries({ queryKey: ['fee-unbilled'] });
+    },
+  });
+  const unbilled = useQuery({
+    queryKey: ['fee-unbilled', period],
+    queryFn: () => getJson<UnbilledDto>(`/api/fees/unbilled?period=${period}`),
+    enabled: /^\d{4}-\d{2}$/.test(period),
+  });
+  const invalidate = useFeeInvalidate();
+  const billNow = useMutation({
+    mutationFn: (studentId: string) =>
+      sendJson<GenerateResultDto>('POST', '/api/fees/regenerate', {
+        student_id: studentId,
+        period,
+      }),
+    onSuccess: async (r) => {
+      toast.success(
+        r.counts.fees > 0
+          ? t('fee.billing.billed', { n: r.counts.fees })
+          : t('fee.billing.billedNothing'),
+      );
+      await invalidate();
+      await qc.invalidateQueries({ queryKey: ['fee-unbilled'] });
+      await qc.invalidateQueries({ queryKey: ['fee-runs'] });
     },
   });
   const fines = useMutation({
@@ -172,13 +238,18 @@ export function BillingPage() {
             </Button>
             <Button
               id="billing-generate"
-              disabled={gen.isPending}
-              onClick={() => gen.mutate(false)}
+              disabled={gen.isPending || !previewReady}
+              onClick={() => setConfirmGen(true)}
             >
               <Play aria-hidden />
               {t('fee.billing.generate')}
             </Button>
           </div>
+          {!previewReady && !gen.isPending && (
+            <p className="text-xs text-muted-foreground" id="billing-preview-first">
+              {t('fee.billing.previewFirst')}
+            </p>
+          )}
           {gen.isPending && (
             <p role="status" className="text-sm">
               {mode === 'preview'
@@ -189,7 +260,11 @@ export function BillingPage() {
           <ErrorNote error={gen.error} />
           {s && !gen.isPending && (
             <p role="status" id="billing-result" className="text-sm font-medium">
-              {t(mode === 'preview' ? 'fee.billing.previewDone' : 'fee.billing.done', s.totals)}
+              {mode === 'preview'
+                ? t('fee.billing.previewDone', s.totals)
+                : s.totals.fees + s.totals.concessions + s.totals.sponsored === 0
+                  ? t('fee.billing.nothingNew')
+                  : t('fee.billing.done', s.totals)}
             </p>
           )}
           {s && s.byGroup.size > 0 && (
@@ -231,7 +306,8 @@ export function BillingPage() {
               <ul>
                 {s.failed.map((f) => (
                   <li key={f.grp_id}>
-                    {t('fee.billing.failed')}: <bdi>{name(f.grp_id)}</bdi> · <Num>{f.code}</Num>
+                    {t('fee.billing.failed')}: <bdi>{name(f.grp_id)}</bdi> ·{' '}
+                    {t(billingCodeKey(f.code))}
                   </li>
                 ))}
               </ul>
@@ -271,9 +347,63 @@ export function BillingPage() {
               {!fines.data.enabled
                 ? t('fee.billing.finesOff')
                 : fines.data.dry_run
-                  ? t('fee.billing.finesPlanned', { n: fines.data.planned.length })
+                  ? fines.data.planned.length === 0
+                    ? t('fee.billing.finesNone')
+                    : t('fee.billing.finesPlanned', { n: fines.data.planned.length })
                   : t('fee.billing.finesApplied', { n: fines.data.applied })}
             </p>
+          )}
+          {fines.data?.dry_run && fines.data.planned.length > 0 && (
+            <ul className="flex flex-col divide-y text-sm" id="fines-planned">
+              {fines.data.planned.map((f) => (
+                <li key={f.id} className="flex flex-wrap gap-x-2 py-1" data-fine={f.student_id}>
+                  <bdi>{f.student_name ?? ''}</bdi>
+                  {f.admission_no && <Num>{f.admission_no}</Num>}
+                  <Num>{f.period_key}</Num>
+                  <span className="ms-auto">
+                    <Money paisa={f.amount} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="gap-3 py-4" id="billing-unbilled">
+        <CardHeader className="px-4">
+          <CardTitle>{t('fee.billing.unbilled')}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 px-4">
+          <ErrorNote error={unbilled.error ?? billNow.error} />
+          {unbilled.data && unbilled.data.items.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t('fee.billing.unbilledNone')}</p>
+          )}
+          <ul className="flex flex-col divide-y">
+            {unbilled.data?.items.map((u) => (
+              <li
+                key={u.enrolment_id}
+                className="flex flex-wrap items-center gap-x-2 py-1 text-sm"
+                data-unbilled={u.student_id}
+              >
+                <bdi className="font-medium">{u.student_name}</bdi>
+                <Num>{u.admission_no}</Num>
+                <bdi className="text-muted-foreground">{u.group_name}</bdi>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ms-auto"
+                  id={`bill-now-${u.student_id}`}
+                  disabled={billNow.isPending}
+                  onClick={() => billNow.mutate(u.student_id)}
+                >
+                  {t('fee.billing.billNow')}
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {unbilled.data?.more && (
+            <p className="text-xs text-muted-foreground">{t('fee.billing.unbilledMore')}</p>
           )}
         </CardContent>
       </Card>
@@ -293,14 +423,13 @@ export function BillingPage() {
               {failing.map((f) => (
                 <li key={f.grp_id} className="flex flex-wrap gap-2">
                   <bdi>{name(f.grp_id)}</bdi>
-                  <Num>{f.error_code ?? ''}</Num>
+                  <span>{t(billingCodeKey(f.error_code))}</span>
                   <span>
                     {t('fee.billing.streak')} <Num>{f.fail_streak}</Num>
                   </span>
                   {f.retry_after && (
                     <span>
-                      {t('fee.billing.retryAfter')}{' '}
-                      <Num>{f.retry_after.slice(0, 16).replace('T', ' ')}</Num>
+                      {t('fee.billing.retryAfter')} <Num>{karachiTime(f.retry_after)}</Num>
                     </span>
                   )}
                   {f.attention_required && <AlertTriangle className="size-4" aria-hidden />}
@@ -326,13 +455,22 @@ export function BillingPage() {
                 {runs.data.chunks.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell>
-                      <Num>{c.created_at.slice(0, 16).replace('T', ' ')}</Num>
+                      <Num>{karachiTime(c.created_at)}</Num>
                     </TableCell>
                     <TableCell>
                       <bdi>{c.grp_id ? name(c.grp_id) : '—'}</bdi>
                     </TableCell>
-                    <TableCell>
-                      <Num>{c.status}</Num>
+                    <TableCell className="whitespace-normal break-words">
+                      <span title={c.error_code ?? undefined}>
+                        {c.status === 'ok' || c.status === 'failed'
+                          ? t(`fee.billing.statuses.${c.status}`)
+                          : c.status}
+                      </span>
+                      {c.status === 'failed' && (
+                        <span className="block text-xs text-muted-foreground">
+                          {t(billingCodeKey(c.error_code))}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-end">
                       <Num>{c.fees}</Num>
@@ -347,6 +485,35 @@ export function BillingPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={confirmGen} onOpenChange={setConfirmGen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('fee.billing.confirmTitle')}</DialogTitle>
+            <DialogDescription id="billing-confirm-body">
+              {previewed &&
+                t('fee.billing.confirmBody', {
+                  period: `\u2068${period}\u2069`,
+                  ...previewed.totals,
+                })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmGen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              id="billing-generate-confirm"
+              onClick={() => {
+                setConfirmGen(false);
+                gen.mutate(false);
+              }}
+            >
+              {t('fee.billing.generate')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

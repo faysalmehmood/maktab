@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Route, Routes } from 'react-router';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
+import { RequireGrant } from '@/components/RequireGrant';
 import { SetupGate } from '@/components/SetupGate';
+import type { GrantRef } from '@/lib/roles';
 import { Dashboard } from '@/pages/Dashboard';
 import { Login } from '@/pages/Login';
 import { Placeholder } from '@/pages/Placeholder';
@@ -63,19 +65,22 @@ const ConcessionRegisterPage = lazyFees(
 const SponsorsPage = lazyFees(() => import('@/pages/fees/Sponsors'), 'SponsorsPage');
 const SponsorDetail = lazyFees(() => import('@/pages/fees/Sponsors'), 'SponsorDetail');
 
-/** Fee routes (M3b): path → page, each lazily loaded behind the shared Suspense. */
-const FEE_ROUTES: [string, ComponentType][] = [
-  ['fees', FeesHome],
-  ['fees/counter', CounterPage],
-  ['fees/family/:id', FamilyStatementPage],
-  ['fees/defaulters', DefaultersPage],
-  ['fees/billing', BillingPage],
-  ['fees/register', FeeRegisterPage],
-  ['fees/concessions', ConcessionRegisterPage],
-  ['fees/sponsors', SponsorsPage],
-  ['fees/sponsors/:id', SponsorDetail],
-  ['receipts/:id', ReceiptPage],
-  ['cash', CashPage],
+/**
+ * Fee routes (M3b): path → page → the MATRIX grant its main API call needs. Each is lazily loaded
+ * behind the shared Suspense and guarded: without the grant the URL redirects home with a toast.
+ */
+export const FEE_ROUTES: [string, ComponentType, GrantRef][] = [
+  ['fees', FeesHome, ['receipt', 'read']],
+  ['fees/counter', CounterPage, ['receipt', 'create']],
+  ['fees/family/:id', FamilyStatementPage, ['receipt', 'read']],
+  ['fees/defaulters', DefaultersPage, ['fee', 'read']],
+  ['fees/billing', BillingPage, ['fee', 'generate']],
+  ['fees/register', FeeRegisterPage, ['receipt', 'read']],
+  ['fees/concessions', ConcessionRegisterPage, ['receipt', 'read']],
+  ['fees/sponsors', SponsorsPage, ['receipt', 'read']],
+  ['fees/sponsors/:id', SponsorDetail, ['receipt', 'read']],
+  ['receipts/:id', ReceiptPage, ['receipt', 'read']],
+  ['cash', CashPage, ['cash_session', 'read']],
 ];
 
 function Loading({ children }: { children: ReactNode }) {
@@ -199,14 +204,16 @@ export function App() {
             </Loading>
           }
         />
-        {FEE_ROUTES.map(([path, Page]) => (
+        {FEE_ROUTES.map(([path, Page, grant]) => (
           <Route
             key={path}
             path={path}
             element={
-              <Loading>
-                <Page />
-              </Loading>
+              <RequireGrant grant={grant}>
+                <Loading>
+                  <Page />
+                </Loading>
+              </RequireGrant>
             }
           />
         ))}

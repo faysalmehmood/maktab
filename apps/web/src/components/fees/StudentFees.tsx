@@ -1,5 +1,5 @@
-import type { StudentFeesDto } from '@maktab/shared';
-import { useQuery } from '@tanstack/react-query';
+import type { GenerateResultDto, StudentFeesDto } from '@maktab/shared';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -10,6 +10,7 @@ import {
   OpeningBalanceDialog,
   ReduceFeeDialog,
   SponsorshipDialog,
+  useFeeInvalidate,
   VoidChargeDialog,
   voidUnit,
 } from '@/components/fees/dialogs';
@@ -17,8 +18,16 @@ import { ErrorNote, Num } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { getJson } from '@/lib/api';
-import { canCollect, canConcession, canManageFees, karachiToday, money } from '@/lib/fees';
+import { toast } from '@/components/ui/sonner';
+import { getJson, sendJson } from '@/lib/api';
+import {
+  canCollect,
+  canConcession,
+  canGenerate,
+  canManageFees,
+  karachiToday,
+  money,
+} from '@/lib/fees';
 import { useRoles } from '@/lib/roles';
 
 type Open =
@@ -46,6 +55,24 @@ export function StudentFeesCard({
     queryFn: () => getJson<StudentFeesDto>(`/api/fees/student/${studentId}`),
   });
   const close = (o: boolean) => !o && setOpen(null);
+  const invalidate = useFeeInvalidate();
+  // Per-student billing for this month (a joiner the monthly run missed, or after a change):
+  // POST /api/fees/regenerate is idempotent, so pressing it twice adds nothing.
+  const bill = useMutation({
+    mutationFn: () =>
+      sendJson<GenerateResultDto>('POST', '/api/fees/regenerate', {
+        student_id: studentId,
+        period: karachiToday().slice(0, 7),
+      }),
+    onSuccess: async (r) => {
+      toast.success(
+        r.counts.fees > 0
+          ? t('fee.billing.billed', { n: r.counts.fees })
+          : t('fee.billing.billedNothing'),
+      );
+      await invalidate();
+    },
+  });
   const d = q.data;
   const today = karachiToday();
   const all = d ? [...d.lines, ...d.sponsored] : [];
@@ -74,7 +101,19 @@ export function StudentFeesCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 px-4">
-        <ErrorNote error={q.error} />
+        <ErrorNote error={q.error ?? bill.error} />
+        {d && canGenerate(roles) && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="self-start"
+            id="student-bill-month"
+            disabled={bill.isPending}
+            onClick={() => bill.mutate()}
+          >
+            {t('fee.student.billMonth')}
+          </Button>
+        )}
         {d && (
           <>
             <div className="grid grid-cols-3 gap-2">
