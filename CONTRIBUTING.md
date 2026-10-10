@@ -13,6 +13,28 @@ Thanks for helping. Maktab is small on purpose; please keep it that way.
 - Every user-facing string needs both `en` and `ur` (`packages/shared/src/i18n.ts`; the type
   checker enforces matching keys). Numbers stay in Latin digits.
 - Comments explain why, not what. No `any`.
+- Multi-row writes are one `atomic()` batch (`apps/api/src/lib/tx.ts`), with ids minted before the
+  call and an `audit` row in the same batch. Request bodies are validated with the shared Zod
+  schemas in `packages/shared/src/academic.ts`.
+
+## Driving the API locally without Google
+
+There is no dev-login route in the Worker, by design. Instead, mint a session cookie straight into
+the local D1 (dev only; it refuses when `NODE_ENV=production`, and unless `SESSION_SECRET` in
+`apps/api/.dev.vars` is the example value or `ALLOW_DEV_SESSION=1`):
+
+```sh
+npm run db:migrate:local
+npm run dev -w @maktab/api                                    # wrangler dev --local on :8787
+npm run -s dev:session -w @maktab/api -- owner@example.com    # prints maktab_sid=…
+curl -H "Cookie: $(npm run -s dev:session -w @maktab/api -- owner@example.com)" localhost:8787/api/me
+npm run smoke:m1 -w @maktab/api                               # milestone 1 end-to-end, PASS/FAIL per step
+```
+
+On an empty database the email is bootstrapped as the owner (what `OWNER_EMAIL` + a first Google
+sign-in would do); otherwise it must be an existing active user. The cookie is named `maktab_sid`
+on `http://localhost` (`__Host-maktab_sid` needs an https origin). If wrangler runs with
+`--persist-to <dir>`, pass the same dir as `D1_PERSIST_TO=<dir>` to both scripts.
 
 By contributing you agree your work is licensed under AGPL-3.0. This project follows the
 [Code of Conduct](CODE_OF_CONDUCT.md).

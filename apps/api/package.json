@@ -9,7 +9,9 @@
     "build": "wrangler deploy --dry-run --outdir dist --env=\"\"",
     "migrate:local": "wrangler d1 migrations apply DB --local",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:session": "tsx scripts/dev-session.ts",
+    "smoke:m1": "tsx scripts/smoke-m1.ts"
   },
   "dependencies": {
     "@maktab/db": "0.0.0",
@@ -20,6 +22,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261010.1",
     "@types/node": "22.20.5",
+    "tsx": "4.23.15",
     "wrangler": "4.149.0"
   }
 }
