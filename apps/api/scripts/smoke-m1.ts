@@ -8,9 +8,7 @@
  *   npm run db:migrate:local && npm run dev -w @maktab/api      # terminal 1
  *   npm run smoke:m1 -w @maktab/api                              # terminal 2
  *
- * SMOKE_BASE (default http://localhost:$API_PORT, 8787), SMOKE_ORIGIN (default
- * http://localhost:$PORT, 5173) and SMOKE_EMAIL (default owner@example.com) override.
- * Re-runnable: names, emails and phones get a random suffix per run.
+ * Environment overrides: see smoke-lib.ts. Re-runnable: names, emails and phones get a random suffix per run.
  */
 import type {
   AdmissionResult,
@@ -27,54 +25,12 @@ import type {
   StudentListItem,
 } from '@maktab/shared';
 import { mintDevSession } from './dev-session';
+import { BASE, EMAIL, expectOk, finish, makeApi, ORIGIN, runId as run, step } from './smoke-lib';
 
-const BASE = process.env.SMOKE_BASE ?? `http://localhost:${process.env.API_PORT ?? '8787'}`;
-const EMAIL = process.env.SMOKE_EMAIL ?? 'owner@example.com';
-// The Worker's CSRF guard compares Origin with APP_ORIGIN for form posts; browsers always send it.
-const ORIGIN = process.env.SMOKE_ORIGIN ?? `http://localhost:${process.env.PORT ?? '5173'}`;
-const run = Math.random().toString(36).slice(2, 7);
 const phoneDigits = String(Math.floor(1_000_000 + Math.random() * 8_999_999));
 
 let cookie = '';
-let failed = 0;
-let skipping = false;
-
-type Res<T> = { status: number; body: T };
-async function api<T>(method: string, path: string, body?: unknown): Promise<Res<T>> {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: { cookie, origin: ORIGIN, 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await res.text();
-  let parsed: unknown = text;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    // non-JSON (CSV, image): keep the text
-  }
-  return { status: res.status, body: parsed as T };
-}
-
-function expectOk(cond: unknown, detail: unknown): void {
-  if (!cond)
-    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 400));
-}
-
-async function step(name: string, fn: () => Promise<unknown>): Promise<void> {
-  if (skipping) {
-    console.log(`SKIP  ${name}`);
-    return;
-  }
-  try {
-    const note = await fn();
-    console.log(`PASS  ${name}${typeof note === 'string' ? `  (${note})` : ''}`);
-  } catch (err) {
-    failed++;
-    skipping = true;
-    console.log(`FAIL  ${name}: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
+const api = makeApi(() => cookie);
 
 async function main() {
   let sessionId = '';
@@ -345,8 +301,7 @@ async function main() {
     expectOk(r.status === 409 && r.body.error.code === 'cannot_remove_self_owner', r);
   });
 
-  console.log(failed ? `\nFAIL (${failed} step failed)` : '\nPASS (all steps)');
-  process.exit(failed ? 1 : 0);
+  finish();
 }
 
 main().catch((err: unknown) => {

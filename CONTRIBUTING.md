@@ -50,6 +50,7 @@ npm run dev -w @maktab/api                                    # wrangler dev --l
 npm run -s dev:session -w @maktab/api -- owner@example.com    # prints maktab_sid=…
 curl -H "Cookie: $(npm run -s dev:session -w @maktab/api -- owner@example.com)" localhost:8787/api/me
 npm run smoke:m1 -w @maktab/api                               # milestone 1 end-to-end, PASS/FAIL per step
+npm run smoke:m2 -w @maktab/api                               # milestone 2 (attendance sync, correction, queue)
 ```
 
 wrangler reads `.dev.vars` only at start: restart `npm run dev` after editing it.
