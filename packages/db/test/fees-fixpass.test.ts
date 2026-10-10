@@ -129,10 +129,19 @@ const credit = async (payer: string) =>
     0) as number;
 
 describe('H1 overlapping sponsorships never stick generation', () => {
-  it("reviewer's December repro: two rows of one sponsor merge into one root; every group bills", async () => {
+  it("reviewer's December repro: an overlapping row of one sponsor never sums; every group bills", async () => {
     await genAll('2026-10');
-    // A second, overlapping row for the same sponsor (the route now refuses this; the DB allows it).
+    // A second, overlapping row for the same sponsor: refused by the DB since the M3a closing pass…
+    await expectFail(
+      () =>
+        run(
+          `INSERT INTO sponsorship (id, sponsor_id, student_id, share_pct, valid_from) VALUES ('SH3','SP','S4',60,'2026-12-01')`,
+        ),
+      /sponsorship overlaps another/,
+    );
+    // …but rows written before the trigger existed can still overlap.
     await run(
+      'DROP TRIGGER sponsorship_no_overlap',
       `INSERT INTO sponsorship (id, sponsor_id, student_id, share_pct, valid_from) VALUES ('SH3','SP','S4',60,'2026-12-01')`,
     );
     await genAll('2026-12');
@@ -141,9 +150,10 @@ describe('H1 overlapping sponsorships never stick generation', () => {
       JOIN enrolment e ON e.id = c.enrolment_id WHERE c.period_key = '2026-12' AND c.parent_charge_id IS NULL
       GROUP BY 1 ORDER BY 1`);
     expect(perGroup.map((r) => r.grp_id)).toEqual(['G5A', 'G5B', 'G6']);
-    // 50% + 60% caps at 100% and is ONE sponsor root; the family owes nothing for December tuition.
+    // ONE sponsor root from the latest-starting row (60%), never 50% + 60%.
     expect(await roots('S4', '2026-12')).toEqual([
-      expect.objectContaining({ pt: 'sponsor', pi: 'SP', a: RS(3200), r: 'sponsorship:SH,SH3' }),
+      expect.objectContaining({ pt: 'family', a: RS(1280) }),
+      expect.objectContaining({ pt: 'sponsor', pi: 'SP', a: RS(1920), r: 'sponsorship:SH3' }),
     ]);
     expect(await consistency()).toEqual([]);
   });
@@ -196,32 +206,39 @@ describe('H2 business date', () => {
     expect(await all(sql`SELECT * FROM receipt_series`)).toEqual([]);
   });
 
-  it('yesterday: owner/admin only, with a reason, audited, into TODAY’s drawer and series year', async () => {
+  it('yesterday: owner/admin only, non-cash only, with a reason, audited, in today’s series year', async () => {
     await genAll('2026-12');
+    const bank = { method: 'bank', accountId: 'BANK', today: '2027-01-01' };
+    await expectFail(() => pay('F1', RS(50), '2026-12-31', bank), /Only an owner or admin/);
     await expectFail(
-      () => pay('F1', RS(50), '2026-12-31', { today: '2027-01-01' }),
-      /Only an owner or admin/,
-    );
-    await expectFail(
-      () => pay('F1', RS(50), '2026-12-31', { today: '2027-01-01', allowYesterday: true }),
+      () => pay('F1', RS(50), '2026-12-31', { ...bank, allowYesterday: true }),
       /needs a reason/,
     );
+    // Cash is never backdated (it goes into today's drawer), whoever asks and whatever the reason.
+    await expectFail(
+      () =>
+        pay('F1', RS(50), '2026-12-31', {
+          today: '2027-01-01',
+          allowYesterday: true,
+          backdateReason: 'forgot',
+        }),
+      /Cash cannot be backdated/,
+    );
     const r = await pay('F1', RS(50), '2026-12-31', {
-      today: '2027-01-01',
+      ...bank,
       allowYesterday: true,
       backdateReason: 'forgot to enter',
     });
-    const [rc] = await all(sql`SELECT r.receipt_no, r.business_date, s.business_date AS session_day
-      FROM receipt r JOIN cash_session s ON s.id = r.cash_session_id WHERE r.id = ${r.receipt_id}`);
-    // Never a session for a past date; never a number from an earlier year's series.
+    const [rc] = await all(sql`SELECT receipt_no, business_date, cash_session_id, account_id
+      FROM receipt WHERE id = ${r.receipt_id}`);
+    // Never a number from an earlier year's series; no drawer at all.
     expect(rc).toEqual({
       receipt_no: 'R-2027-00001',
       business_date: '2026-12-31',
-      session_day: '2027-01-01',
+      cash_session_id: null,
+      account_id: 'BANK',
     });
-    expect(await all(sql`SELECT business_date FROM cash_session`)).toEqual([
-      { business_date: '2027-01-01' },
-    ]);
+    expect(await all(sql`SELECT business_date FROM cash_session`)).toEqual([]);
     const audit = await all(
       sql`SELECT action, json_extract(diff, '$.reason') AS reason, json_extract(diff, '$.receipt_no') AS no
           FROM audit WHERE entity_id = ${r.receipt_id} ORDER BY action`,
@@ -321,9 +338,10 @@ describe('M5 pro-rata across an enrolment chain', () => {
   it("reviewer's S6: transferred 10-15 → 10-16 bills 15 days at 5-A and 16 at 5-B, once", async () => {
     await genAll('2026-10', true);
     const s6 = (await roots('S6', '2026-10')).filter((r) => r.h === 'TUI');
-    // (3000 × 15 + 3500 × 16) / 31 = Rs 3,258.06 → Rs 3,258; on the current enrolment; transfer grace.
+    // (3000 × 15 + 3500 × 16) / 31 = Rs 3,258.06 → Rs 3,258; on the current enrolment. A transfer
+    // continues the chain, so the normal due date stands (M3a closing pass: no joiner's grace).
     expect(s6).toEqual([
-      expect.objectContaining({ a: RS(3258), e: 'E6b', d: '2026-10-25', pt: 'family' }),
+      expect.objectContaining({ a: RS(3258), e: 'E6b', d: '2026-10-10', pt: 'family' }),
     ]);
     // Without pro-rata the month is billed whole, once, at the current group's rate.
     db = createTestDb();
@@ -439,7 +457,7 @@ describe('L7 ledger triggers (reviewer ALLOWED attacks)', () => {
         run(
           `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, collector_id, business_date, idempotency_key) VALUES ('rz','R-2026-99999','payment','family','F3',100,'cash','U2','2026-10-06','kx4')`,
         ),
-      /a cash payment needs a cash session/,
+      /a cash receipt needs a cash session/,
     );
     await run(
       `INSERT INTO cash_session (id, collector_id, business_date) VALUES ('CS','U2','2026-10-06')`,
@@ -455,16 +473,16 @@ describe('L7 ledger triggers (reviewer ALLOWED attacks)', () => {
     await expectFail(
       () =>
         run(
-          `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, collector_id, business_date, idempotency_key) VALUES ('rb','B-1','payment','family','F3',100,'bank','U2','2026-10-06','kx5')`,
+          `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, collector_id, business_date, idempotency_key) VALUES ('rb','R-2026-00002','payment','family','F3',100,'bank','U2','2026-10-06','kx5')`,
         ),
-      /non-cash payment names its account/,
+      /non-cash receipt names its account/,
     );
     await expectFail(
       () =>
         run(
-          `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, account_id, collector_id, cash_session_id, business_date, idempotency_key) VALUES ('rb','B-1','payment','family','F3',100,'bank','BANK','U2','CS','2026-10-06','kx5')`,
+          `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, account_id, collector_id, cash_session_id, business_date, idempotency_key) VALUES ('rb','R-2026-00002','payment','family','F3',100,'bank','BANK','U2','CS','2026-10-06','kx5')`,
         ),
-      /non-cash payment names its account/,
+      /non-cash receipt names its account/,
     );
     // The helper's shape passes: R-2026-00003 is the number the bump just took.
     await run(
@@ -597,7 +615,7 @@ describe('L12 void a charge', () => {
     ).toEqual([{ kind: 'reversal', amount: -RS(3000), reason: 'void: never attended' }]);
     await expectFail(
       () => voidCharge(db, { chargeId: s1, reason: 'again', by: 'U1' }),
-      /Nothing is left/,
+      /already void/,
     );
     // A fine is voided for what is left of it.
     await applyLateFines(db, { period: '2026-11', asOf: '2026-11-11', by: null });

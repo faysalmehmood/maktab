@@ -47,10 +47,13 @@ const charge = (
           '2026-01-10', ${kind}, ${parent}, ${o.reason === undefined ? 'test' : o.reason})`;
 
 /**
- * Raw receipt rows. Since the M3 fix pass a payment's shape is checked (sql/50_fees.sql): a cash
- * payment needs a session and its series number, a non-cash one an account. So these rows default to
- * method 'bank' into account ACC; with `session` they are cash, numbered from series N (base()).
+ * Raw receipt rows. Since the M3 fix pass a receipt's shape is checked (sql/50_fees.sql; refunds and
+ * reversals too since the M3a closing pass): every payment/refund/reversal carries the number its
+ * series was bumped to, cash needs a session, non-cash an account. So these rows default to method
+ * 'bank' into account ACC, numbered `<id>-2026-00001` from a one-receipt series per id that base()
+ * creates already bumped; with `session` they are cash, numbered from series N.
  */
+const RECEIPT_IDS = ['r1', 'r2', 'r9', 'rf', 'rf2', 'rF2', 'rR', 'rv', 'rvv'];
 const receipt = (
   id: string,
   kind: 'payment' | 'reversal' | 'refund',
@@ -60,7 +63,7 @@ const receipt = (
   const method = o.method ?? (o.session ? 'cash' : 'bank');
   const no = o.session
     ? sql`(SELECT series || '-' || year || '-' || printf('%05d', next_no - 1) FROM receipt_series WHERE series = 'N')`
-    : sql`${`N-${id}`}`;
+    : sql`${`${id}-2026-00001`}`;
   return sql`INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method,
           account_id, collector_id, cash_session_id, business_date, idempotency_key)
         VALUES (${id}, ${no}, ${kind}, ${o.reverses ?? null}, 'family', ${o.payer ?? 'F1'},
@@ -79,6 +82,8 @@ async function base(db: AppDb) {
   await run(db, sql`INSERT INTO user (id, email) VALUES ('U1', 'a@x.pk'), ('U2', 'b@x.pk')`);
   await run(db, sql`INSERT INTO account (id, name, kind) VALUES ('ACC', 'Bank', 'bank')`);
   await run(db, sql`INSERT INTO receipt_series (series, year, next_no) VALUES ('N', 2026, 1)`);
+  for (const id of RECEIPT_IDS)
+    await run(db, sql`INSERT INTO receipt_series (series, year, next_no) VALUES (${id}, 2026, 2)`);
   await run(db, sql`INSERT INTO family (id, name) VALUES ('F1', 'Khan'), ('F2', 'Ahmed')`);
   await run(
     db,
@@ -223,7 +228,11 @@ describe('reversals', () => {
       receipt('rv', 'reversal', -100000, { reverses: 'r1', method: 'cash' }),
       receipt('rv', 'reversal', -100000, { reverses: 'r1', payer: 'F2' }),
     ]) {
-      await expectAbort(() => batch(db, bad), /reversal must mirror a payment exactly/);
+      // (A cash reversal of a bank payment is also refused for having no drawer session.)
+      await expectAbort(
+        () => batch(db, bad),
+        /reversal must mirror a payment exactly|cash receipt needs a cash session/,
+      );
     }
   });
 });

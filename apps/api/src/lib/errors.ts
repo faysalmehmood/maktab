@@ -49,6 +49,11 @@ const DB_CONFLICTS: [RegExp, string, string][] = [
   ],
   [/line exceeds remaining net/, 'exceeds_net', 'More than what is left on this fee'],
   [/already ended/, 'already_ended', 'Already ended'],
+  [
+    /sponsorship overlaps another/,
+    'sponsorship_overlap',
+    'This sponsor already covers this student for these dates; end that sponsorship first',
+  ],
   [/cash_session is closed; only a reopen/, 'session_closed', 'The cash session is closed'],
   [/reopen reason must differ/, 'reason_repeated', 'Give a new reason for this reopen'],
   [

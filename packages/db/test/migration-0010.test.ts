@@ -85,8 +85,10 @@ describe('migration 0010 (final enums) on populated data', () => {
     expect(compareObjects(actual, expectedObjects())).toEqual({ missing: [], extra: [] });
 
     // The new enum values are accepted, the rules hold on the rebuilt tables.
+    // (Numbered from its series: receipt_payment_shape covers every method since 0013.)
+    db.exec(`INSERT INTO receipt_series (series, year, next_no) VALUES ('Q', 2026, 2)`);
     db.exec(`INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, account_id, collector_id, business_date, idempotency_key)
-      VALUES ('R3', 'Q-1', 'payment', 'family', 'F', 5000, 'cheque', 'BANK', 'U', '2026-04-07', 'k3')`);
+      VALUES ('R3', 'Q-2026-00001', 'payment', 'family', 'F', 5000, 'cheque', 'BANK', 'U', '2026-04-07', 'k3')`);
     expect(() => db.exec(`UPDATE receipt SET amount = 1 WHERE id = 'R1'`)).toThrow(/append-only/);
     db.exec(`UPDATE payslip SET status = 'void' WHERE id = 'P2'`);
     expect(() => db.exec(`UPDATE payslip SET status = 'void' WHERE id = 'P1'`)).toThrow(

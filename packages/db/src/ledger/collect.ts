@@ -29,10 +29,11 @@ import {
  *   roots, or exactly the `directed` rows); the remainder is credit → audit row (receipt_no read back).
  * Non-cash money (bank, wallets, cheque) names its account and never touches a drawer.
  *
- * Business date (M3 fix pass): today, or — owner/admin only, with a reason that is audited —
- * yesterday. Anything else is 400 `bad_business_date`. A session is never opened for a past date: a
- * late-entered cash receipt lands in today's drawer (that is where the money is), and its series year
- * is never earlier than today's, so numbering never goes back into a closed year.
+ * Business date (M3a closing pass): today. Owner/admin may enter a NON-CASH receipt (bank, wallet,
+ * cheque, other) for yesterday, with a reason that is audited — the money landed in an account
+ * yesterday. Cash is never backdated: it is counted into today's drawer, so its date is today.
+ * Anything else is 400 `bad_business_date`. The series year is never earlier than today's, so
+ * numbering never goes back into a closed year.
  *
  * Retries are safe: the idempotency key is unique, and a replay by the same user returns the receipt
  * it created (another user's replay is 409 `idempotency_conflict`). A plan made stale by a concurrent
@@ -73,19 +74,26 @@ export const seriesFor = (prefix: string, businessDate: string, today?: string):
 };
 
 /**
- * Today, or (owner/admin, with a reason) yesterday; never earlier, never later. Returns whether the
- * date is backdated.
+ * Today, or (owner/admin, non-cash, with a reason) yesterday; never earlier, never later. Returns
+ * whether the date is backdated. Without `allowYesterday` it is today only (refunds).
  */
 export function checkBusinessDate(o: {
   businessDate: string;
   today: string;
   allowYesterday?: boolean;
   reason?: string | null;
+  method?: PaymentMethod;
 }): boolean {
   if (!DATE_RE.test(o.businessDate))
     throw new FeeError('bad_business_date', 'business_date: YYYY-MM-DD', 400);
   if (o.businessDate === o.today) return false;
   if (o.businessDate === addDays(o.today, -1)) {
+    if (o.method === 'cash')
+      throw new FeeError(
+        'bad_business_date',
+        'Cash cannot be backdated: it goes into today’s drawer',
+        400,
+      );
     if (!o.allowYesterday)
       throw new FeeError(
         'bad_business_date',
@@ -169,6 +177,7 @@ export async function collect(db: AppDb, input: CollectInput): Promise<CollectRe
     today,
     allowYesterday: input.allowYesterday,
     reason: input.backdateReason,
+    method: input.method,
   });
   const cash = input.method === 'cash';
   if (!cash && !input.accountId)
@@ -304,8 +313,9 @@ export async function applyCreditFor(
 
 /**
  * Money paid back out of a payer's credit (PLAN §5.2 "refund from credit only"): a negative
- * receipt with no allocations, numbered like any receipt, in the refunder's drawer session (today's)
- * when paid in cash. The credit trigger refuses more than the credit.
+ * receipt with no allocations, numbered like any receipt, dated today only, in the refunder's drawer
+ * session when paid in cash, naming its account otherwise. The credit trigger refuses more than the
+ * credit; receipt_money_shape (sql/50_fees.sql) refuses a cash refund without a session.
  */
 export async function refund(
   db: AppDb,
@@ -321,6 +331,8 @@ export async function refund(
     idempotencyKey: string;
     reference?: string | null;
     accountId?: string | null;
+    /** The school day (Asia/Karachi); injectable for tests. A refund is dated today only. */
+    today?: string;
   },
 ): Promise<CollectResult> {
   const reason = input.reason.trim();
@@ -329,6 +341,17 @@ export async function refund(
     throw new FeeError('invalid', 'amount: paisa > 0', 400);
   const prior = await replay(db, { ...input, userId: input.by }, 'refund');
   if (prior) return { receipt_id: prior, replayed: true };
+  // Money out is entered the day it goes out: never a past drawer, never a past date.
+  const today = input.today ?? karachiToday();
+  checkBusinessDate({ businessDate: input.businessDate, today, allowYesterday: true, reason: '-' });
+  if (input.businessDate !== today)
+    throw new FeeError('bad_business_date', 'business_date must be today for a refund', 400);
+  if (input.method !== 'cash' && !input.accountId)
+    throw new FeeError(
+      'account_required',
+      'A non-cash refund needs the account it was paid from',
+      400,
+    );
   const [c] = await db.all<{ credit: number }>(
     sql`SELECT credit FROM payer_credit WHERE payer_type = ${input.payerType} AND payer_id = ${input.payerId}`,
   );

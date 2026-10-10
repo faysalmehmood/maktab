@@ -35,9 +35,9 @@ import {
  *   K  = live concessions in creation order: pct of G (rounded half-up to the rupee) or fixed,
  *        each capped so ΣK ≤ G.
  *   N  = G − K, what is actually owed.
- *   S  = live sponsorships in creation order: share% of N (rounded), capped so ΣS ≤ N, merged per
- *        sponsor (two overlapping rows of one sponsor are one root, never two); each sponsor is its
- *        own root `fee` with payer_type 'sponsor'.
+ *   S  = per sponsor, its latest-starting live sponsorship: share% of N (rounded), capped so ΣS ≤ N
+ *        (a sponsor's rows never add up; the DB refuses overlapping rows); each sponsor is its own
+ *        root `fee` with payer_type 'sponsor'.
  *   Family root = G − ΣS, with the concession lines −K under it, so the family's net is N − ΣS.
  *   (Every party's share is of the post-concession amount; the family line shows the discount.)
  *
@@ -46,8 +46,9 @@ import {
  * change mid-month (end + new row) therefore affects the next period only; regenerateForStudent uses
  * the same rule.
  *
- * Due date: the school's due day; for a mid-period joiner or transfer, no earlier than its start plus
- * the same grace the month gives everyone (due day − 1 days). Late fines skip the first period of a
+ * Due date: the school's due day; for a mid-period joiner (the enrolment chain starts in the period),
+ * no earlier than its start plus the same grace the month gives everyone (due day − 1 days). A
+ * mid-month transfer continues its chain and keeps the normal due date. Late fines skip the first period of a
  * new enrolment (fines.ts).
  *
  * Idempotency: a unit is inserted only if no root for (student, head, period) exists other than the
@@ -196,31 +197,32 @@ export function referenceDay(ctx: GenContext, e: { id: string; start_date: strin
 }
 
 /**
- * Sponsor shares of `owed`: rows in creation order, capped at 100% in total, merged per sponsor (one
- * root per sponsor, whatever overlapping rows say), each rounded half-up to the rupee, ΣS ≤ owed.
+ * Sponsor shares of `owed` (M3a closing pass): ONE row per sponsor — the live row that started
+ * latest (ties: the later-created) — never a sum of a sponsor's rows. The database refuses
+ * overlapping rows for one sponsor (sponsorship_no_overlap); this keeps rows written before that
+ * trigger, or straight into the DB, from silently adding up. Sponsors in creation order of their
+ * first row, capped at 100% in total, each rounded half-up to the rupee, ΣS ≤ owed.
  */
 export function sponsorShares(
   sponsorships: readonly LiveSponsorship[],
   owed: number,
 ): { sponsor_id: string; ids: string[]; pct: number; amount: number }[] {
-  const by = new Map<string, { sponsor_id: string; ids: string[]; pct: number; amount: number }>();
-  let pctLeft = 100;
+  const pick = new Map<string, LiveSponsorship>();
   for (const s of sponsorships) {
+    const cur = pick.get(s.sponsor_id);
+    if (!cur || s.valid_from >= cur.valid_from) pick.set(s.sponsor_id, s);
+  }
+  let pctLeft = 100;
+  let total = 0;
+  const out: { sponsor_id: string; ids: string[]; pct: number; amount: number }[] = [];
+  for (const s of pick.values()) {
     const pct = Math.min(s.share_pct, pctLeft);
     if (pct <= 0) continue;
     pctLeft -= pct;
-    const cur = by.get(s.sponsor_id) ?? { sponsor_id: s.sponsor_id, ids: [], pct: 0, amount: 0 };
-    cur.ids.push(s.id);
-    cur.pct += pct;
-    by.set(s.sponsor_id, cur);
-  }
-  let total = 0;
-  const out: { sponsor_id: string; ids: string[]; pct: number; amount: number }[] = [];
-  for (const sh of by.values()) {
-    const amount = Math.min(roundRupee(owed * sh.pct, 100), owed - total);
+    const amount = Math.min(roundRupee(owed * pct, 100), owed - total);
     if (amount <= 0) continue;
     total += amount;
-    out.push({ ...sh, amount });
+    out.push({ sponsor_id: s.sponsor_id, ids: [s.id], pct, amount });
   }
   return out;
 }
@@ -311,8 +313,10 @@ export function planCharges(
       const sTotal = shares.reduce((a, sh) => a + sh.amount, 0);
 
       let due = dayOf(p, ctx.settings.dueDay);
-      // A mid-period joiner or transfer gets the same grace as everyone: start + (due day − 1) days.
-      if (e.start_date > pStart) due = maxDate(due, addDays(e.start_date, ctx.settings.dueDay - 1));
+      // A mid-period joiner gets the same grace as everyone: start + (due day − 1) days. Only when
+      // the enrolment CHAIN starts in the period: a mid-month transfer keeps the normal due date.
+      const chainStart = ctx.chains.get(e.id)?.[0]?.start_date ?? e.start_date;
+      if (chainStart > pStart) due = maxDate(due, addDays(chainStart, ctx.settings.dueDay - 1));
       if (opts.dueNotBefore && opts.dueNotBefore > due) due = opts.dueNotBefore;
       const base = {
         student_id: e.student_id,

@@ -506,6 +506,7 @@ describe('collection', () => {
       reason: 'overpaid',
       by: 'U2',
       businessDate: '2026-10-05',
+      today: '2026-10-05',
       idempotencyKey: newId(),
     });
     const [s] = await all(
@@ -573,6 +574,7 @@ describe('collection', () => {
           reason: 'x',
           by: 'U1',
           businessDate: '2026-10-06',
+          today: '2026-10-06',
           idempotencyKey: newId(),
         }),
       /exceeds_credit/,
@@ -588,6 +590,7 @@ describe('collection', () => {
       reason: 'leaving',
       by: 'U1',
       businessDate: '2026-10-06',
+      today: '2026-10-06',
       idempotencyKey: newId(),
     });
     expect(await all(db, sql`SELECT credit FROM payer_credit WHERE payer_id = 'F1'`)).toEqual([

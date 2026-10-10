@@ -92,6 +92,13 @@
       "when": 1791644661444,
       "tag": "0012_m3_cron_backoff",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1791645062408,
+      "tag": "0013_m3_closing_rules",
+      "breakpoints": true
     }
   ]
 }

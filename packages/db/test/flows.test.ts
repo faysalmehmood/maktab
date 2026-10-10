@@ -47,9 +47,10 @@ const C = (
         VALUES (${id}, ${student}, 'H1', ${period}, 'family', ${payer}, ${amount}, '2026-03-10',
           ${kind}, ${parent}, 'r')`;
 /**
- * Raw receipt rows. Since the M3 fix pass (sql/50_fees.sql receipt_payment_shape) a payment without a
- * session is a bank payment into A2; with a session it is cash, numbered from series R — bump it first
- * (`bumpR`).
+ * Raw receipt rows: the series bump and the receipt, as two statements (spread them into a batch).
+ * Since the M3a closing pass (sql/50_fees.sql receipt_payment_shape) every payment, refund and
+ * reversal is numbered from its series; without a session it is a bank receipt into A2, with one it
+ * is cash.
  */
 const R = (
   id: string,
@@ -58,16 +59,17 @@ const R = (
   reverses: string | null = null,
   session: string | null = null,
   payer = 'F1',
-) => {
+): SQL[] => {
   n++;
   const method = session ? 'cash' : 'bank';
-  const no = session
-    ? sql`(SELECT series || '-' || year || '-' || printf('%05d', next_no - 1) FROM receipt_series WHERE series = 'R' AND year = 2026)`
-    : sql`${`N${n}`}`;
-  return sql`INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method,
+  const no = sql`(SELECT series || '-' || year || '-' || printf('%05d', next_no - 1) FROM receipt_series WHERE series = 'R' AND year = 2026)`;
+  return [
+    sql`UPDATE receipt_series SET next_no = next_no + 1 WHERE series = 'R' AND year = 2026`,
+    sql`INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method,
           account_id, collector_id, cash_session_id, business_date, idempotency_key)
         VALUES (${id}, ${no}, ${kind}, ${reverses}, 'family', ${payer}, ${amount}, ${method},
-          ${session ? null : 'A2'}, 'U1', ${session}, '2026-03-05', ${`k${n}`})`;
+          ${session ? null : 'A2'}, 'U1', ${session}, '2026-03-05', ${`k${n}`})`,
+  ];
 };
 const bumpR = sql`UPDATE receipt_series SET next_no = next_no + 1 WHERE series = 'R' AND year = 2026`;
 const A = (r: string, c: string, amount: number, id = newId()) =>
@@ -127,7 +129,7 @@ const legit: [string, SQL[], ((db: AppDb) => Promise<void>)?][] = [
     [
       C('a', 'fee', 5000),
       C('b', 'fee', 4000, null, 'S2'),
-      R('p', 'payment', 9000),
+      ...R('p', 'payment', 9000),
       A('p', 'a', 5000),
       A('p', 'b', 4000),
     ],
@@ -135,13 +137,13 @@ const legit: [string, SQL[], ((db: AppDb) => Promise<void>)?][] = [
   ],
   [
     'partial payment',
-    [C('a', 'fee', 5000), R('p', 'payment', 2000), A('p', 'a', 2000)],
+    [C('a', 'fee', 5000), ...R('p', 'payment', 2000), A('p', 'a', 2000)],
     async (db) => expect((await status(db))[0]).toMatchObject({ paid: 2000, due: 3000 }),
   ],
   [
     'advance credit auto-applied later',
     [
-      R('p', 'payment', 10000),
+      ...R('p', 'payment', 10000),
       C('a', 'fee', 5000),
       A('p', 'a', 5000),
       C('b', 'fee', 5000, null, 'S1', 'F1', '2026-04'),
@@ -153,7 +155,7 @@ const legit: [string, SQL[], ((db: AppDb) => Promise<void>)?][] = [
     'release + concession in one batch (paid fee)',
     [
       C('a', 'fee', 5000),
-      R('p', 'payment', 5000),
+      ...R('p', 'payment', 5000),
       A('p', 'a', 5000),
       A('p', 'a', -1000),
       C('k', 'concession', -1000, 'a'),
@@ -164,18 +166,23 @@ const legit: [string, SQL[], ((db: AppDb) => Promise<void>)?][] = [
     'reversal with re-entry',
     [
       C('a', 'fee', 5000),
-      R('p', 'payment', 5000),
+      ...R('p', 'payment', 5000),
       A('p', 'a', 5000),
-      R('rv', 'reversal', -5000, 'p'),
+      ...R('rv', 'reversal', -5000, 'p'),
       A('rv', 'a', -5000),
-      R('p2', 'payment', 5000),
+      ...R('p2', 'payment', 5000),
       A('p2', 'a', 5000),
     ],
     async (db) => expect(await credit(db)).toBe(0),
   ],
   [
     'refund from credit',
-    [C('a', 'fee', 5000), R('p', 'payment', 8000), A('p', 'a', 5000), R('rf', 'refund', -3000)],
+    [
+      C('a', 'fee', 5000),
+      ...R('p', 'payment', 8000),
+      A('p', 'a', 5000),
+      ...R('rf', 'refund', -3000),
+    ],
     async (db) => expect(await credit(db)).toBe(0),
   ],
   [
@@ -183,7 +190,7 @@ const legit: [string, SQL[], ((db: AppDb) => Promise<void>)?][] = [
     [
       C('a', 'fee', 5000),
       C('f', 'fine', 500, 'a'),
-      R('p', 'payment', 5500),
+      ...R('p', 'payment', 5500),
       A('p', 'a', 5500),
       A('p', 'a', -500),
       C('w', 'fine_waiver', -500, 'f'),
@@ -192,7 +199,11 @@ const legit: [string, SQL[], ((db: AppDb) => Promise<void>)?][] = [
   ],
   [
     'mid-month backfill (late fee row after payment credit)',
-    [R('p', 'payment', 3000), C('a', 'fee', 3000, null, 'S1', 'F1', '2026-02'), A('p', 'a', 3000)],
+    [
+      ...R('p', 'payment', 3000),
+      C('a', 'fee', 3000, null, 'S1', 'F1', '2026-02'),
+      A('p', 'a', 3000),
+    ],
   ],
   [
     'cash handover then close, reopen with reason, receipt',
@@ -201,14 +212,14 @@ const legit: [string, SQL[], ((db: AppDb) => Promise<void>)?][] = [
         `INSERT INTO cash_session (id, collector_id, business_date, opening) VALUES ('cs', 'U1', '2026-03-05', 0)`,
       ),
       bumpR,
-      R('p', 'payment', 5000, null, 'cs'),
+      ...R('p', 'payment', 5000, null, 'cs'),
       raw(
         `INSERT INTO transfer (id, from_account, to_account, cash_session_id, amount, date) VALUES ('t', 'A1', 'A2', 'cs', 5000, '2026-03-05')`,
       ),
       raw(closeCs),
       raw(reopenCs('late receipt')),
       bumpR,
-      R('p2', 'payment', 100, null, 'cs'),
+      ...R('p2', 'payment', 100, null, 'cs'),
     ],
   ],
   [
@@ -237,18 +248,18 @@ describe('reviewer flows: legitimate', () => {
 const adversarial: [string, SQL[], RegExp][] = [
   [
     'release larger than allocated',
-    [C('a', 'fee', 5000), R('p', 'payment', 5000), A('p', 'a', 3000), A('p', 'a', -4000)],
+    [C('a', 'fee', 5000), ...R('p', 'payment', 5000), A('p', 'a', 3000), A('p', 'a', -4000)],
     /release exceeds/,
   ],
   [
     'reversal then refund exceeding credit',
     [
       C('a', 'fee', 5000),
-      R('p', 'payment', 5000),
+      ...R('p', 'payment', 5000),
       A('p', 'a', 5000),
-      R('rv', 'reversal', -5000, 'p'),
+      ...R('rv', 'reversal', -5000, 'p'),
       A('rv', 'a', -5000),
-      R('rf', 'refund', -1000),
+      ...R('rf', 'refund', -1000),
     ],
     /refund exceeds unallocated credit/,
   ],
@@ -256,7 +267,7 @@ const adversarial: [string, SQL[], RegExp][] = [
     'concession with no release when fully paid',
     [
       C('a', 'fee', 5000),
-      R('p', 'payment', 5000),
+      ...R('p', 'payment', 5000),
       A('p', 'a', 5000),
       C('k', 'concession', -1000, 'a'),
     ],
@@ -294,7 +305,7 @@ const adversarial: [string, SQL[], RegExp][] = [
     [
       C('a', 'fee', 5000),
       C('b', 'fee', 5000, null, 'S2'),
-      R('p', 'payment', 1000),
+      ...R('p', 'payment', 1000),
       A('p', 'a', 2000),
       A('p', 'b', -1000),
     ],
@@ -302,12 +313,17 @@ const adversarial: [string, SQL[], RegExp][] = [
   ],
   [
     'PROBE refund then allocate the refunded credit',
-    [C('a', 'fee', 5000), R('p', 'payment', 5000), R('rf', 'refund', -5000), A('p', 'a', 5000)],
+    [
+      C('a', 'fee', 5000),
+      ...R('p', 'payment', 5000),
+      ...R('rf', 'refund', -5000),
+      A('p', 'a', 5000),
+    ],
     /allocation exceeds payer credit/,
   ],
   [
     'PROBE refund then reverse the same payment',
-    [R('p', 'payment', 5000), R('rf', 'refund', -5000), R('rv', 'reversal', -5000, 'p')],
+    [...R('p', 'payment', 5000), ...R('rf', 'refund', -5000), ...R('rv', 'reversal', -5000, 'p')],
     /reversal would leave negative payer credit/,
   ],
   [
@@ -373,10 +389,10 @@ const adversarial: [string, SQL[], RegExp][] = [
   ],
   [
     'PROBE allocate across payers',
-    [C('a', 'fee', 5000, null, 'S9', 'F2'), R('p', 'payment', 5000), A('p', 'a', 5000)],
+    [C('a', 'fee', 5000, null, 'S9', 'F2'), ...R('p', 'payment', 5000), A('p', 'a', 5000)],
     /payer must match/,
   ],
-  ['PROBE REAL money', [R('p', 'payment', 12.5)], /receipt_amount_int/],
+  ['PROBE REAL money', [...R('p', 'payment', 12.5)], /receipt_amount_int/],
   ['PROBE dup fee row', [C('a', 'fee', 5000), C('a2', 'fee', 5000)], /UNIQUE constraint failed/],
   [
     'PROBE att_mark delete',
@@ -419,9 +435,9 @@ describe('reviewer flows: adversarial', () => {
     await batch(
       db,
       C('a', 'fee', 5000),
-      R('p', 'payment', 5000),
+      ...R('p', 'payment', 5000),
       A('p', 'a', 5000),
-      R('rv', 'reversal', -5000, 'p'),
+      ...R('rv', 'reversal', -5000, 'p'),
     );
     expect(
       (await consistency(db)).map((r) => [
@@ -445,21 +461,21 @@ describe('payer credit never goes below zero', () => {
   });
 
   it('refund then allocate is blocked; allocating what is left is fine', async () => {
-    await batch(db, R('p', 'payment', 5000), R('rf', 'refund', -2000));
+    await batch(db, ...R('p', 'payment', 5000), ...R('rf', 'refund', -2000));
     await expectAbort(() => batch(db, A('p', 'a', 3001)), /allocation exceeds payer credit/);
     await batch(db, A('p', 'a', 3000));
     expect(await credit(db)).toBe(0);
   });
 
   it('refund then reverse is blocked; reversing with the allocation still held is fine', async () => {
-    await batch(db, R('p', 'payment', 5000), A('p', 'a', 3000), R('rf', 'refund', -2000));
+    await batch(db, ...R('p', 'payment', 5000), A('p', 'a', 3000), ...R('rf', 'refund', -2000));
     await expectAbort(
-      () => batch(db, R('rv', 'reversal', -5000, 'p')),
+      () => batch(db, ...R('rv', 'reversal', -5000, 'p')),
       /reversal would leave negative payer credit/,
     );
     // A second payment is allocated in full; reversing it puts its allocation back as due.
-    await batch(db, R('q', 'payment', 3000), A('q', 'b', 3000));
-    await batch(db, R('rv', 'reversal', -3000, 'q'), A('rv', 'b', -3000));
+    await batch(db, ...R('q', 'payment', 3000), A('q', 'b', 3000));
+    await batch(db, ...R('rv', 'reversal', -3000, 'q'), A('rv', 'b', -3000));
     expect(await credit(db)).toBe(0);
     expect(await consistency(db)).toEqual([]);
   });
@@ -548,6 +564,8 @@ describe('ledger helpers', () => {
       byUserId: 'U2',
       reason: 'wrong amount keyed',
       series: base.series,
+      // A cash reversal goes through a drawer (receipt_payment_shape).
+      cashSessionId: 'cs0',
       reenter: {
         amount: 8000,
         method: 'bank',

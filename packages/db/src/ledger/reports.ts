@@ -406,7 +406,12 @@ export type CollectionRow = {
   net: number;
 };
 
-/** Money in by collector and method over business dates (opening credit is not money; excluded). */
+/**
+ * Money in by collector and method over a date range (opening credit is not money; excluded). The
+ * date a receipt counts on (M3a closing pass): cash by its DRAWER SESSION's date — the day the money
+ * was counted, so this report always agrees with the cash close — and non-cash by its
+ * `business_date` (the day it reached the account; owner/admin may enter that as yesterday).
+ */
 export async function collectionByCollector(
   db: AppDb,
   o: { from: string; to: string },
@@ -418,7 +423,10 @@ export async function collectionByCollector(
       coalesce(sum(CASE WHEN r.kind = 'refund' THEN r.amount END), 0) AS refunded,
       sum(r.amount) AS net
     FROM receipt r LEFT JOIN "user" u ON u.id = r.collector_id
-    WHERE r.kind IN ('payment', 'reversal', 'refund') AND r.business_date BETWEEN ${o.from} AND ${o.to}
+    LEFT JOIN cash_session s ON s.id = r.cash_session_id
+    WHERE r.kind IN ('payment', 'reversal', 'refund')
+      AND CASE WHEN r.method = 'cash' AND s.id IS NOT NULL THEN s.business_date ELSE r.business_date END
+          BETWEEN ${o.from} AND ${o.to}
     GROUP BY r.collector_id, r.method ORDER BY u.name, r.collector_id, r.method`);
 }
 

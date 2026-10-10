@@ -206,7 +206,10 @@ export const reverseInputSchema = z.object({
     })
     .optional(),
 });
-/** POST /api/charges/:id/void: a fee root or a fine, zeroed by a reversal line (PLAN §14.5). */
+/**
+ * POST /api/charges/:id/void: a fee root voids its whole unit (student, head, period: family and
+ * sponsor roots together), or a fine alone; each zeroed by a reversal line (PLAN §14.5).
+ */
 export const voidChargeSchema = z.object({ reason: reqText(200) });
 
 export const refundInputSchema = z.object({

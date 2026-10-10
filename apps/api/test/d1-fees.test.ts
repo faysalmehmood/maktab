@@ -303,4 +303,42 @@ describe('fees on D1', () => {
     ).toEqual({ n: 1 });
     expect(await consistency()).toEqual([]);
   });
+
+  it('two parallel overlapping sponsorship POSTs on D1: exactly one 201, the other 409 sponsorship_overlap', async () => {
+    const t = testApp({ db });
+    const owner = await signedInAs(db, ['owner']);
+    const sp = newId();
+    const st = newId();
+    await proxy.env.DB.batch(
+      [
+        `INSERT INTO sponsor (id, name) VALUES ('${sp}', 'Zakat')`,
+        `INSERT INTO student (id, family_id, admission_no, name, admission_date) VALUES ('${st}', 'F8', 'A-race', 'Race', '2026-01-01')`,
+      ].map((q) => proxy.env.DB.prepare(q)),
+    );
+    const post = async () => {
+      const res = await t.request('/api/fees/sponsorships', {
+        method: 'POST',
+        headers: { cookie: owner.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sponsor_id: sp,
+          student_id: st,
+          share_pct: 40,
+          valid_from: '2026-11-01',
+        }),
+      });
+      return { status: res.status, body: (await res.json()) as { error?: { code: string } } };
+    };
+    const rs = await Promise.all([post(), post()]);
+    expect(rs.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(rs.find((r) => r.status === 409)?.body.error?.code).toBe('sponsorship_overlap');
+    expect(await one(sql`SELECT count(*) AS n FROM sponsorship WHERE student_id = ${st}`)).toEqual({
+      n: 1,
+    });
+    // The trigger itself, straight into D1: an overlapping row is refused.
+    await expect(
+      proxy.env.DB.prepare(
+        `INSERT INTO sponsorship (id, sponsor_id, student_id, share_pct, valid_from) VALUES ('SHx', '${sp}', '${st}', 10, '2027-01-01')`,
+      ).run(),
+    ).rejects.toThrow(/sponsorship overlaps another/);
+  });
 });

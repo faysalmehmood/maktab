@@ -42,6 +42,13 @@
         "40_foundation.sql": "198c14eba2ccd636a49aacfe6d8bdb59f3de3a73a8bf79cd36e9fd678b99e061",
         "50_fees.sql": "2a0288f5345055b0d5ae506fcf58ed3d33c2354277e0bd31e3cf99dd77a89831"
       }
+    },
+    {
+      "migration": "0013_m3_closing_rules",
+      "sha256": "7bad47b989e8f154d8138e4fd56dda48ef09eb9bd637c79bbe70bc1c2619e14d",
+      "files": {
+        "50_fees.sql": "608c5ed8ce0c2560df52dcec5fb54e623a5806c1b376aecee73e48ff04808839"
+      }
     }
   ]
 }

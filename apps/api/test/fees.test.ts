@@ -587,19 +587,22 @@ describe('M3a fix pass over HTTP', () => {
     ).toBe(201);
   });
 
-  it('business_date: today by default; yesterday for owner/admin with a reason (audited); else 400', async () => {
+  it('business_date: today by default; yesterday only for owner/admin, non-cash, with a reason (audited); else 400', async () => {
     const s = await family();
+    await s.db.run(sql`INSERT INTO account (id, name, kind) VALUES ('BANK', 'Meezan', 'bank')`);
     const acct = client(s.request, (await signedInAs(s.db, ['accountant'])).cookie);
     const pay = (api: ReturnType<typeof client>, extra: Record<string, unknown>) =>
       api<{ error?: { code: string }; receipt?: { id: string; receipt_no: string } }>(
         'POST',
         '/api/receipts',
-        { idempotency_key: newId(), payer_id: s.fam, amount: RS(10), method: 'cash', ...extra },
+        { idempotency_key: newId(), payer_id: s.fam, amount: RS(10), method: 'bank', ...extra },
       );
     for (const [api, extra] of [
       [acct, { business_date: yesterday, backdate_reason: 'late' }],
       [s.api, { business_date: yesterday }],
       [s.api, { business_date: '2025-12-31', backdate_reason: 'reviewer repro' }],
+      // Cash is never backdated, not even by the owner with a reason.
+      [s.api, { business_date: yesterday, backdate_reason: 'late', method: 'cash' }],
     ] as const) {
       const r = await pay(api, extra);
       expect([r.status, r.body.error?.code]).toEqual([400, 'bad_business_date']);
@@ -607,9 +610,10 @@ describe('M3a fix pass over HTTP', () => {
     expect(await s.db.all(sql`SELECT * FROM cash_session`)).toEqual([]);
     const ok = await pay(s.api, { business_date: yesterday, backdate_reason: 'forgot' });
     expect(ok.status).toBe(201);
-    const [row] = await s.db.all<{ bd: string; sd: string }>(sql`SELECT r.business_date AS bd,
-      s.business_date AS sd FROM receipt r JOIN cash_session s ON s.id = r.cash_session_id`);
-    expect(row).toEqual({ bd: yesterday, sd: today });
+    const [row] = await s.db.all<{ bd: string; s: string | null; a: string }>(sql`SELECT
+      r.business_date AS bd, r.cash_session_id AS s, r.account_id AS a FROM receipt r
+      WHERE r.id = ${ok.body.receipt?.id as string}`);
+    expect(row).toEqual({ bd: yesterday, s: null, a: 'BANK' });
     expect(ok.body.receipt?.receipt_no.slice(3, 7)).toBe(today.slice(0, 4));
     expect(
       await s.db.all(sql`SELECT json_extract(diff, '$.reason') AS reason FROM audit

@@ -104,8 +104,8 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
   /**
    * The fee counter (PLAN §14.4): one receipt per visit, oldest dues first across the family (or
    * `directed`), remainder as credit; the collector's cash session (today's) opens on the first cash
-   * receipt. business_date: today, or yesterday for an owner/admin with `backdate_reason` (audited);
-   * else 400 bad_business_date. `expected_due_hash` (the family view's dues_hash) turns a changed
+   * receipt. business_date: today; yesterday only for an owner/admin, only for a NON-cash receipt
+   * (cash goes into today's drawer), with `backdate_reason` (audited); else 400 bad_business_date. `expected_due_hash` (the family view's dues_hash) turns a changed
    * family into 409 stale_dues. Retry-safe: the same user's idempotency_key returns the same receipt
    * (`replayed: true`); another user's is 409 idempotency_conflict.
    */
@@ -320,6 +320,10 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     },
   );
 
+  /**
+   * Collection by collector and method for [from, to]: cash counts on its drawer session's date (so
+   * it matches the cash close), non-cash on its business_date.
+   */
   defineRoute(
     app,
     table,
