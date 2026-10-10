@@ -1,8 +1,12 @@
 -- M3 fees. Rebuilds `receipt` to finalise its kind enum with 'opening' (PLAN §15: enums on money
--- tables are final before the pilot; no receipt rows exist anywhere yet, so the copy is empty).
--- SQLite's ALTER TABLE RENAME re-checks every view and trigger that names the table, so the ledger
--- views and the triggers on other tables that read `receipt` are dropped first; the next (custom)
--- migration re-creates sql/20_append_only.sql, sql/30_ledger.sql and sql/50_fees.sql in full.
+-- tables are final before the pilot). Rows are kept; no deployment has receipts yet.
+-- The ledger views and the triggers on other tables that read `receipt` are dropped first (they
+-- would point at a missing table mid-way); the next (custom) migration re-creates
+-- sql/20_append_only.sql, sql/30_ledger.sql and sql/50_fees.sql in full.
+-- D1 runs migrations with foreign keys ON (PRAGMA foreign_keys=OFF is a no-op there), so dropping a
+-- `receipt` that allocations reference would fail; the check is deferred to COMMIT, by which time
+-- the copied-back rows satisfy it again (packages/db/test/migration-0008.test.ts).
+PRAGMA defer_foreign_keys = ON;--> statement-breakpoint
 DROP VIEW IF EXISTS ledger_consistency;--> statement-breakpoint
 DROP VIEW IF EXISTS payer_credit;--> statement-breakpoint
 DROP VIEW IF EXISTS charge_status;--> statement-breakpoint
@@ -35,8 +39,12 @@ CREATE TABLE `billing_chunk` (
 );
 --> statement-breakpoint
 CREATE INDEX `billing_chunk_run` ON `billing_chunk` (`run_id`,`kind`,`grp_id`);--> statement-breakpoint
-PRAGMA foreign_keys=OFF;--> statement-breakpoint
-CREATE TABLE `__new_receipt` (
+-- Copy aside, drop, re-create under the final name, copy back. Not drizzle-kit's
+-- create-new/rename: re-inserting the parent rows is what clears the deferred foreign-key
+-- violations the DROP recorded for receipt_allocation and reverses_id; a rename does not.
+CREATE TABLE `__old_receipt` AS SELECT * FROM `receipt`;--> statement-breakpoint
+DROP TABLE `receipt`;--> statement-breakpoint
+CREATE TABLE `receipt` (
 	`id` text PRIMARY KEY NOT NULL,
 	`receipt_no` text NOT NULL,
 	`kind` text NOT NULL,
@@ -65,10 +73,8 @@ CREATE TABLE `__new_receipt` (
 	CONSTRAINT "receipt_amount_int" CHECK(typeof("amount") = 'integer')
 );
 --> statement-breakpoint
-INSERT INTO `__new_receipt`("id", "receipt_no", "kind", "reverses_id", "payer_type", "payer_id", "amount", "method", "account_id", "collector_id", "cash_session_id", "business_date", "idempotency_key", "reference", "note", "created_at", "created_by") SELECT "id", "receipt_no", "kind", "reverses_id", "payer_type", "payer_id", "amount", "method", "account_id", "collector_id", "cash_session_id", "business_date", "idempotency_key", "reference", "note", "created_at", "created_by" FROM `receipt`;--> statement-breakpoint
-DROP TABLE `receipt`;--> statement-breakpoint
-ALTER TABLE `__new_receipt` RENAME TO `receipt`;--> statement-breakpoint
-PRAGMA foreign_keys=ON;--> statement-breakpoint
+INSERT INTO `receipt`("id", "receipt_no", "kind", "reverses_id", "payer_type", "payer_id", "amount", "method", "account_id", "collector_id", "cash_session_id", "business_date", "idempotency_key", "reference", "note", "created_at", "created_by") SELECT "id", "receipt_no", "kind", "reverses_id", "payer_type", "payer_id", "amount", "method", "account_id", "collector_id", "cash_session_id", "business_date", "idempotency_key", "reference", "note", "created_at", "created_by" FROM `__old_receipt`;--> statement-breakpoint
+DROP TABLE `__old_receipt`;--> statement-breakpoint
 CREATE UNIQUE INDEX `receipt_receipt_no_unique` ON `receipt` (`receipt_no`);--> statement-breakpoint
 CREATE UNIQUE INDEX `receipt_reverses_id_unique` ON `receipt` (`reverses_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `receipt_idempotency_key_unique` ON `receipt` (`idempotency_key`);--> statement-breakpoint
