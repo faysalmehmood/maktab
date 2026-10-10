@@ -8,6 +8,13 @@
         "20_append_only.sql": "cc0da79505666b0c01046360a402704571681fbce9d83005f5fa1f08bbcff365",
         "30_ledger.sql": "aac406bd2dcb9eb42bc37b80b17f33a300284ba5ea01a5bfdc27aa5ec4f6e474"
       }
+    },
+    {
+      "migration": "0003_m1_rules",
+      "sha256": "cd62c193079cad97e65293eb5ee5f470329e8200998a7998436f464f4e5bf830",
+      "files": {
+        "40_foundation.sql": "0d2ff4b166dde42cadaca03f90063baf40ac256f8030da08811265928b35da37"
+      }
     }
   ]
 }

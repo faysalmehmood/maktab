@@ -28,6 +28,12 @@ export const school = sqliteTable(
     defaultLang: text('default_lang', { enum: ['en', 'ur'] })
       .notNull()
       .default('ur'),
+    /** R2 key of the uploaded logo (FILES bucket); null = none. */
+    logoKey: text('logo_key'),
+    /** Receipt number prefix; stored by the wizard now, used by receipts in milestone 3. */
+    receiptPrefix: text('receipt_prefix'),
+    /** Set by the wizard's last step; until then the owner is sent to the wizard (PLAN §14.1). */
+    setupCompletedAt: text('setup_completed_at'),
     ...stamps(),
   },
   () => [check('school_mode', oneOf('mode', SCHOOL_MODES))],
@@ -437,4 +443,52 @@ export const audit = sqliteTable(
     diff: text('diff', { mode: 'json' }),
   },
   (t) => [index('audit_entity').on(t.entity, t.entityId)],
+);
+
+/**
+ * Admission numbers `YYYY-NNNN`, one series per session start year (PLAN §14.2). Numbered inside the
+ * admission batch (UPSERT then INSERT…SELECT), so two concurrent admissions cannot share a number.
+ */
+export const admissionSeries = sqliteTable('admission_series', {
+  series: text('series').primaryKey(),
+  /** The last number issued in this series. */
+  lastNo: integer('last_no').notNull(),
+});
+
+export const IMPORT_RUN_STATUSES = ['running', 'committed', 'failed'] as const;
+
+/** One committed CSV upload (dry runs write nothing). */
+export const importRun = sqliteTable(
+  'import_run',
+  {
+    id: id(),
+    kind: text('kind').notNull(),
+    fileName: text('file_name'),
+    status: text('status', { enum: IMPORT_RUN_STATUSES }).notNull().default('running'),
+    total: integer('total').notNull(),
+    created: integer('created').notNull().default(0),
+    skipped: integer('skipped').notNull().default(0),
+    report: text('report', { mode: 'json' }),
+    ...stamps(),
+  },
+  () => [check('import_run_status', oneOf('status', IMPORT_RUN_STATUSES))],
+);
+
+/**
+ * One imported CSV row. `row_hash` (sha-256 of the normalised row) is unique across all runs, so
+ * re-uploading a file — or retrying a chunk after a dropped connection — creates nothing twice.
+ */
+export const importRow = sqliteTable(
+  'import_row',
+  {
+    id: id(),
+    runId: text('run_id')
+      .notNull()
+      .references(() => importRun.id),
+    rowNo: integer('row_no').notNull(),
+    rowHash: text('row_hash').notNull().unique(),
+    studentId: text('student_id').references(() => student.id),
+    ...stamps(),
+  },
+  (t) => [index('import_row_run').on(t.runId)],
 );
