@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 512">
+  <title>Maktab · مکتب</title>
+  <rect width="512" height="512" rx="112" fill="#0f766e"/>
+  <path fill="#ffffff" d="M256 64a36 36 0 0 1 36 36v36h68a32 32 0 0 1 32 32v248a32 32 0 0 1-32 32H152a32 32 0 0 1-32-32V168a32 32 0 0 1 32-32h68v-36a36 36 0 0 1 36-36z"/>
+  <g fill="none" stroke="#0f766e" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="304" cy="262" r="48"/>
+    <path d="M256 262v54a56 56 0 0 1-56 56h-26"/>
+  </g>
+  <!-- Wordmark "Maktab": monoline geometric letters drawn as strokes (no font needed). -->
+  <g transform="translate(616 26)" fill="none" stroke="#0f766e" stroke-width="38" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0 340V120L75 250L150 120V340"/>
+    <circle cx="294" cy="270" r="70"/>
+    <path d="M364 200V340"/>
+    <path d="M438 120V340M510 200L438 272M474 236L515 340"/>
+    <path d="M600 140V340M566 205H636"/>
+    <circle cx="770" cy="270" r="70"/>
+    <path d="M840 200V340"/>
+    <path d="M914 120V340"/>
+    <circle cx="984" cy="270" r="70"/>
+  </g>
+  <!-- Urdu name: live text; needs Noto Nastaliq Urdu (use the PNG where fonts are not guaranteed). -->
+  <text x="1748" y="366" font-family="'Noto Nastaliq Urdu', 'Noto Naskh Arabic', serif" font-size="112" fill="#0f766e">مکتب</text>
+</svg>

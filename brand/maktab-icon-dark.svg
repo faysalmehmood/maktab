@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Maktab</title>
+  <!-- For dark backgrounds: the lighter dark-mode teal tile; the meem stays brand teal for contrast on white. -->
+  <rect width="512" height="512" rx="112" fill="#14b8a6"/>
+  <path fill="#ffffff" d="M256 64a36 36 0 0 1 36 36v36h68a32 32 0 0 1 32 32v248a32 32 0 0 1-32 32H152a32 32 0 0 1-32-32V168a32 32 0 0 1 32-32h68v-36a36 36 0 0 1 36-36z"/>
+  <g fill="none" stroke="#0f766e" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="304" cy="262" r="48"/>
+    <path d="M256 262v54a56 56 0 0 1-56 56h-26"/>
+  </g>
+</svg>

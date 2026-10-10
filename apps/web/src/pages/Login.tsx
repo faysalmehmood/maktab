@@ -39,6 +39,8 @@ export function Login() {
       </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
+          {/* Decorative: the title next to it already names the app. */}
+          <img src="/icons/favicon.svg" alt="" width={56} height={56} className="mb-2 size-14" />
           <CardTitle className="text-2xl">{t('app.name')}</CardTitle>
           <CardDescription>{t('app.tagline')}</CardDescription>
         </CardHeader>
