@@ -48,7 +48,7 @@ enabled = true
 crons = ["*/30 * * * *"]
 
 # ---------------------------------------------------------------------------------------------
-# Production (pilot): school.conceptlix.com. Bindings and vars are NOT inherited from the top
+# Production (pilot): maktab.conceptlix.com. Bindings and vars are NOT inherited from the top
 # level, so each is repeated here. Before the first `npx wrangler deploy --env production`:
 #   1. npx wrangler d1 create maktab            -> paste database_id below
 #   2. npx wrangler r2 bucket create maktab-files
@@ -56,27 +56,30 @@ crons = ["*/30 * * * *"]
 #      npx wrangler secret put GOOGLE_CLIENT_ID --env production
 #      npx wrangler secret put GOOGLE_CLIENT_SECRET --env production
 #   4. Google Cloud console: authorised redirect URI
-#      https://school.conceptlix.com/api/auth/google/callback ; publish the consent screen.
+#      https://maktab.conceptlix.com/api/auth/google/callback ; publish the consent screen.
 #   5. npx wrangler d1 migrations apply DB --remote --env production
 # ---------------------------------------------------------------------------------------------
 [env.production]
 name = "maktab"
-routes = [{ pattern = "school.conceptlix.com", custom_domain = true }]
+routes = [{ pattern = "maktab.conceptlix.com", custom_domain = true }]
 
 [env.production.triggers]
 crons = ["*/30 * * * *"]
 
 [env.production.vars]
-APP_ORIGIN = "https://school.conceptlix.com"
+APP_ORIGIN = "https://maktab.conceptlix.com"
 # Set before the first sign-in; after the owner exists it no longer matters.
-OWNER_EMAIL = ""
+OWNER_EMAIL = "faysalfuturistic@gmail.com"
 
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "maktab"
-database_id = "REPLACE_WITH_REAL_D1_ID"
+database_id = "440d652e-46bc-4389-88cc-b9a9fccffc44"
 migrations_dir = "../../packages/db/migrations"
 
-[[env.production.r2_buckets]]
-binding = "FILES"
-bucket_name = "maktab-files"
+# R2 is not enabled on the account yet (API error 10042). Once enabled:
+#   npx wrangler r2 bucket create maktab-files   then uncomment and redeploy. Until then photo
+#   upload answers 501.
+# [[env.production.r2_buckets]]
+# binding = "FILES"
+# bucket_name = "maktab-files"

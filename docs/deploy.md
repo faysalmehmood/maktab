@@ -59,3 +59,15 @@ cd apps/api && npx wrangler deploy --env production
   (`failing` must be empty; a failing group is retried by the cron every 30 minutes and shows its
   error code here).
 - `SELECT * FROM ledger_consistency` is empty.
+
+## First deploy notes (2026-10-10, see docs/deploy-log.md)
+
+- Production host is `maktab.conceptlix.com`. wrangler created the DNS record and certificate itself
+  (custom domain), as the zone is on the same Cloudflare account; the local resolver may lag a few
+  minutes (`curl --resolve` or `dig @1.1.1.1` works sooner).
+- R2 must be enabled in the dashboard (card on file) before `wrangler r2 bucket create`; until then
+  the production `FILES` binding stays commented out in `apps/api/wrangler.toml` and photo upload
+  answers 501. `db:verify` prints a harmless "add r2_buckets to env.production" warning meanwhile.
+- `GET /api/auth/google/start` returns 500 `misconfigured` until GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
+  are set; that is expected.
+- `wrangler tail` needs several seconds to attach; wait ~15 s before generating traffic.
