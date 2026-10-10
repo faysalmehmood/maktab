@@ -1,3 +1,5 @@
+import { feeEn, feeErrorsEn, feeErrorsUr, feeUr } from './i18n-fees';
+
 export const LANGUAGES = ['en', 'ur'] as const;
 export type Language = (typeof LANGUAGES)[number];
 
@@ -60,7 +62,9 @@ export const en = {
     change: 'Change',
     step: 'Step {{n}} of {{total}}',
   },
+  fee: feeEn,
   errors: {
+    ...feeErrorsEn,
     holiday: 'This date is a school holiday',
     weekly_off: 'The school is closed on this weekday',
     future_date: 'You cannot take attendance for a future date',
@@ -482,6 +486,7 @@ export const en = {
       staff: 'Staff',
       customFields: 'Fields',
       attendance: 'Attendance',
+      fees: 'Fees',
     },
   },
 } as const;
@@ -545,7 +550,9 @@ export const ur: Messages = {
     change: 'تبدیل کریں',
     step: 'مرحلہ {{n}} از {{total}}',
   },
+  fee: feeUr,
   errors: {
+    ...feeErrorsUr,
     holiday: 'یہ تاریخ اسکول کی چھٹی ہے',
     weekly_off: 'اس دن اسکول بند ہوتا ہے',
     future_date: 'آنے والی تاریخ کی حاضری نہیں لی جا سکتی',
@@ -969,6 +976,7 @@ export const ur: Messages = {
       staff: 'عملہ',
       customFields: 'خانے',
       attendance: 'حاضری',
+      fees: 'فیس',
     },
   },
 };

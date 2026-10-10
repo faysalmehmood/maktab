@@ -673,3 +673,36 @@ export type FeeDashboardDto = {
   /** fee_due / fee_overdue / payment_received rows waiting in the send queue. */
   queued_fee_messages: number;
 };
+
+/** GET /api/fees/sponsors/:id/statement */
+export type SponsorStatementDto = {
+  sponsor: { id: string; name: string; phone: string | null };
+  sponsorships: {
+    id: string;
+    student_id: string;
+    student_name: string;
+    fee_head_id: string | null;
+    share_pct: number;
+    valid_from: string;
+    valid_to: string | null;
+  }[];
+  charges: FeeLineDto[];
+  receipts: ReceiptDto[];
+  credit: number;
+  dues_hash: string;
+  totals: { net: number; paid: number; due: number };
+};
+export type SponsorListItemDto = {
+  id: string;
+  name: string;
+  phone: string | null;
+  active_students: number;
+  due: number;
+};
+export type FamilyHitDto = {
+  family_id: string;
+  family_name: string;
+  students: { id: string; name: string; admission_no: string; group: string | null }[];
+  due: number;
+  credit: number;
+};
