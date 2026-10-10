@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
 import { sendJson, uploadFile } from '@/lib/api';
+import { useFeeSettings } from '@/lib/fees';
 import { type FieldErrors, issuesToErrors } from '@/lib/form';
 import { cn } from '@/lib/utils';
 
@@ -68,6 +69,8 @@ export function SchoolForm({
   const [draft, setDraft] = useState<SchoolInput>(() => schoolToInput(school));
   const [errors, setErrors] = useState<FieldErrors>({});
   const save = useSaveSchool();
+  // Printed receipt numbers carry the prefix: locked once a receipt exists (API: prefix_locked).
+  const prefixLocked = !!useFeeSettings().data?.fees.receipts_issued;
   const set = <K extends keyof SchoolInput>(k: K, v: SchoolInput[K]) =>
     setDraft((d) => ({ ...d, [k]: v }));
 
@@ -147,13 +150,13 @@ export function SchoolForm({
               id="school-prefix"
               label="school.receiptPrefix"
               error={errors.receipt_prefix}
-              hint={t('school.receiptPrefixHelp')}
+              hint={prefixLocked ? t('fee.setup.prefixLocked') : t('school.receiptPrefixHelp')}
             >
               <Input
                 id="school-prefix"
                 dir="ltr"
                 value={draft.receipt_prefix ?? ''}
-                readOnly={readOnly}
+                readOnly={readOnly || prefixLocked}
                 onChange={(e) => set('receipt_prefix', e.target.value.toUpperCase())}
               />
             </Field>

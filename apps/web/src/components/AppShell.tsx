@@ -1,6 +1,7 @@
 import { type I18nKey, STAFF_ROLES, type StaffRole } from '@maktab/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  Banknote,
   CalendarCheck,
   CloudOff,
   Layers,
@@ -52,7 +53,8 @@ export const NAV: NavItem[] = [
     icon: CalendarCheck,
     roles: [...OFFICE, 'teacher'],
   },
-  { to: '/fees', label: 'nav.fees', icon: Wallet, roles: OFFICE },
+  { to: '/fees', label: 'nav.fees', icon: Wallet, roles: [...OFFICE, 'accountant'] },
+  { to: '/cash', label: 'fee.nav.cash', icon: Banknote, roles: [...OFFICE, 'accountant'] },
   {
     to: '/messages',
     label: 'nav.sendQueue',
@@ -64,9 +66,24 @@ export const NAV: NavItem[] = [
 
 /** The menu for a set of roles; teachers (only) see "My groups" instead of "Groups". */
 export function navFor(roles: readonly StaffRole[]): NavItem[] {
-  return NAV.filter((item) => item.roles.some((r) => roles.includes(r))).map((item) =>
-    item.to === '/groups' && isTeacherOnly(roles) ? { ...item, label: 'nav.myGroups' } : item,
+  const items = NAV.filter((item) => item.roles.some((r) => roles.includes(r))).map((item) =>
+    item.to === '/groups' && isTeacherOnly(roles)
+      ? { ...item, label: 'nav.myGroups' as const }
+      : item,
   );
+  // A teacher (fee.read own_groups) sees their groups' dues summary, not the fee office.
+  if (isTeacherOnly(roles) && !items.some((i) => i.to === '/fees'))
+    items.splice(
+      items.findIndex((i) => i.to === '/messages'),
+      0,
+      {
+        to: '/fees/defaulters',
+        label: 'fee.nav.dues',
+        icon: Wallet,
+        roles: ['teacher'],
+      },
+    );
+  return items;
 }
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {

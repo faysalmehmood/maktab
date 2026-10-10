@@ -15,6 +15,7 @@ import { Pencil, Plus, UserRound } from 'lucide-react';
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
+import { StudentFeesCard } from '@/components/fees/StudentFees';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
 import { StudentAttendanceCard } from '@/components/students/attendance';
 import {
@@ -42,6 +43,7 @@ import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson, uploadFile } from '@/lib/api';
 import { canReadAttendance } from '@/lib/attendance';
+import { canReadMoney } from '@/lib/fees';
 import { type FieldErrors, issuesToErrors, todayIso } from '@/lib/form';
 import { useCurrentSession, useCustomFields, useGroups } from '@/lib/queries';
 import { canWriteStudents, useRoles } from '@/lib/roles';
@@ -646,6 +648,7 @@ export function StudentDetail() {
       </Card>
 
       {canReadAttendance(roles) && <StudentAttendanceCard studentId={s.id} />}
+      {canReadMoney(roles) && <StudentFeesCard studentId={s.id} studentName={s.name} />}
 
       {statusOpen && <StatusDialog student={s} onClose={() => setStatusOpen(false)} />}
       {enrolmentAction && (

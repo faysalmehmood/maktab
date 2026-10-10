@@ -1,4 +1,4 @@
-import { lazy, type ReactNode, Suspense } from 'react';
+import { type ComponentType, lazy, type ReactNode, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Route, Routes } from 'react-router';
 import { AppShell } from '@/components/AppShell';
@@ -42,6 +42,41 @@ const MessagesPage = lazy(() =>
 );
 const GroupsPage = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupsPage })));
 const GroupDetail = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupDetail })));
+
+const lazyFees = <K extends string>(load: () => Promise<Record<K, () => ReactNode>>, name: K) =>
+  lazy(() => load().then((m) => ({ default: m[name] })));
+const FeesHome = lazyFees(() => import('@/pages/fees/FeesHome'), 'FeesHome');
+const CounterPage = lazyFees(() => import('@/pages/fees/Counter'), 'CounterPage');
+const ReceiptPage = lazyFees(() => import('@/pages/fees/Receipt'), 'ReceiptPage');
+const FamilyStatementPage = lazyFees(
+  () => import('@/pages/fees/FamilyStatement'),
+  'FamilyStatementPage',
+);
+const DefaultersPage = lazyFees(() => import('@/pages/fees/Defaulters'), 'DefaultersPage');
+const BillingPage = lazyFees(() => import('@/pages/fees/Billing'), 'BillingPage');
+const CashPage = lazyFees(() => import('@/pages/fees/Cash'), 'CashPage');
+const FeeRegisterPage = lazyFees(() => import('@/pages/fees/Reports'), 'FeeRegisterPage');
+const ConcessionRegisterPage = lazyFees(
+  () => import('@/pages/fees/Reports'),
+  'ConcessionRegisterPage',
+);
+const SponsorsPage = lazyFees(() => import('@/pages/fees/Sponsors'), 'SponsorsPage');
+const SponsorDetail = lazyFees(() => import('@/pages/fees/Sponsors'), 'SponsorDetail');
+
+/** Fee routes (M3b): path → page, each lazily loaded behind the shared Suspense. */
+const FEE_ROUTES: [string, ComponentType][] = [
+  ['fees', FeesHome],
+  ['fees/counter', CounterPage],
+  ['fees/family/:id', FamilyStatementPage],
+  ['fees/defaulters', DefaultersPage],
+  ['fees/billing', BillingPage],
+  ['fees/register', FeeRegisterPage],
+  ['fees/concessions', ConcessionRegisterPage],
+  ['fees/sponsors', SponsorsPage],
+  ['fees/sponsors/:id', SponsorDetail],
+  ['receipts/:id', ReceiptPage],
+  ['cash', CashPage],
+];
 
 function Loading({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -164,7 +199,17 @@ export function App() {
             </Loading>
           }
         />
-        <Route path="fees" element={<Placeholder title="nav.fees" />} />
+        {FEE_ROUTES.map(([path, Page]) => (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <Loading>
+                <Page />
+              </Loading>
+            }
+          />
+        ))}
         <Route
           path="settings"
           element={

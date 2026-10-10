@@ -64,13 +64,28 @@ describe('app shell', () => {
       '/groups',
       '/attendance',
       '/fees',
+      '/cash',
       '/messages',
       '/settings',
     ]);
     expect(paths(['admin'])).toEqual(paths(['owner']));
-    expect(paths(['teacher'])).toEqual(['/', '/students', '/groups', '/attendance', '/messages']);
+    expect(paths(['teacher'])).toEqual([
+      '/',
+      '/students',
+      '/groups',
+      '/attendance',
+      '/fees/defaulters',
+      '/messages',
+    ]);
     expect(navFor(['teacher']).find((n) => n.to === '/groups')?.label).toBe('nav.myGroups');
-    expect(paths(['accountant'])).toEqual(['/', '/students', '/messages', '/settings']);
+    expect(paths(['accountant'])).toEqual([
+      '/',
+      '/students',
+      '/fees',
+      '/cash',
+      '/messages',
+      '/settings',
+    ]);
     expect(paths([])).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ import { MessageSquareText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { DayOffNote, TodayList } from '@/components/attendance/common';
+import { FeeTiles } from '@/components/fees/DashboardTiles';
 import { Num } from '@/components/form';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +16,7 @@ import {
   useDashboardToday,
   useToday,
 } from '@/lib/attendance';
+import { canReadMoney } from '@/lib/fees';
 import { useSchool } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
 
@@ -158,8 +160,11 @@ export function Dashboard() {
         ) : (
           <p className="text-muted-foreground">{t('dashboard.setupNotFinished')}</p>
         ))}
+      {canReadMoney(roles) && <FeeTiles />}
       {attendance && (canCorrect(roles) ? <OfficeToday /> : <TeacherToday />)}
-      {!attendance && <p className="text-muted-foreground">{t('common.comingSoon')}</p>}
+      {!attendance && !canReadMoney(roles) && (
+        <p className="text-muted-foreground">{t('common.comingSoon')}</p>
+      )}
     </section>
   );
 }

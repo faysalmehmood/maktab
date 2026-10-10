@@ -3,6 +3,7 @@ import { Wand2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { FeeSetup } from '@/components/fees/setup';
 import { AttendanceSettingsForm, HolidaysEditor } from '@/components/setup/attendance';
 import { CustomFieldsEditor } from '@/components/setup/customFields';
 import { GroupsEditor } from '@/components/setup/groups';
@@ -27,6 +28,7 @@ const SECTIONS = [
   'staff',
   'customFields',
   'attendance',
+  'fees',
 ] as const;
 type Section = (typeof SECTIONS)[number];
 
@@ -165,6 +167,11 @@ export function SettingsPage() {
         <Section title={t('settings.sections.attendance')}>
           <AttendanceSettingsForm school={school.data.school} />
           <HolidaysEditor />
+        </Section>
+      )}
+      {shown === 'fees' && (
+        <Section title={t('fee.setup.title')}>
+          <FeeSetup />
         </Section>
       )}
       {shown === 'customFields' && (
