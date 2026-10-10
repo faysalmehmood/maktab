@@ -7,6 +7,7 @@ import type { AppEnv, Bindings } from './env';
 import { notFound, onError } from './lib/errors';
 import { denyUndeclared, RouteTable } from './perm/routes';
 import { admissionRoutes } from './routes/admissions';
+import { attendanceRoutes } from './routes/attendance';
 import { authRoutes } from './routes/auth';
 import { catalogRoutes } from './routes/catalog';
 import { coreRoutes } from './routes/core';
@@ -50,6 +51,7 @@ export function createApp(deps: AppDeps) {
   peopleRoutes(app, routes);
   admissionRoutes(app, routes);
   importRoutes(app, routes);
+  attendanceRoutes(app, routes);
 
   return { app, routes };
 }

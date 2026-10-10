@@ -36,6 +36,7 @@ payslip.pay              all          all          all               -          
 exam.marks_entry         all          all          -                 own_subjects  -
 exam.read                all          all          -                 own_groups    own_children
 send_queue.use           all          all          all               own_groups    -
+message.read             all          all          all               own_groups    -
 settings.manage          all          all          -                 -             -
 role.manage              all          -            -                 -             -
 backup.manage            all          -            -                 -             -
@@ -80,6 +81,8 @@ describe('permission matrix', () => {
  * Every registered route × every role, over HTTP. Allowed = anything but 401/403.
  * Columns: anonymous owner admin accountant teacher parent; A = allow, D = deny.
  * Teachers reach student.read routes but only see their own groups (scope tests below / m1 tests).
+ * Parents hold attendance.read (own_children) in the matrix but no session yet; the parent column
+ * is checked at the decision level.
  */
 const ROUTE_TABLE = `
 GET    /api/health                               A A A A A A
@@ -145,6 +148,18 @@ POST   /api/enrolments/:id/end                   D A A A D D
 POST   /api/enrolments/:id/transfer              D A A A D D
 GET    /api/imports/students/template.csv        D A A A D D
 POST   /api/imports/students                     D A A A D D
+POST   /api/attendance/sync                      D A A D A D
+POST   /api/attendance/correct                   D A A D D D
+GET    /api/attendance/today                     D A A D A A
+GET    /api/attendance/register                  D A A D A A
+GET    /api/attendance/student/:id               D A A D A A
+GET    /api/attendance/report                    D A A D A A
+GET    /api/dashboard/today                      D A A D A A
+GET    /api/messages                             D A A A A D
+GET    /api/holidays                             D A A A A D
+POST   /api/holidays                             D A A D D D
+DELETE /api/holidays/:date                       D A A D D D
+PUT    /api/school/attendance                    D A A D D D
 `;
 
 type Who = PrincipalRole | 'anonymous';

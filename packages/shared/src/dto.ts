@@ -1,4 +1,5 @@
 import type { SchoolMode } from './academic';
+import type { AttendanceMode } from './attendance';
 import type { StaffRole, UserStatus } from './roles';
 
 /**
@@ -19,6 +20,9 @@ export type SchoolDto = {
   receipt_prefix: string | null;
   has_logo: boolean;
   setup_completed_at: string | null;
+  attendance_mode: AttendanceMode;
+  /** Weekdays with no school, 0 = Sunday … 6 = Saturday. */
+  weekly_off: number[];
 };
 /** `school` is null until the setup wizard's first step saves it. */
 export type SchoolResponse = { school: SchoolDto | null };

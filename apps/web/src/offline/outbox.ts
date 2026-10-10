@@ -1,6 +1,6 @@
 /**
  * Offline outbox for attendance registers, ported from experiment 6 (PLAN §12; 10/10 scenarios and a
- * chaos run passed). Not wired to a screen in milestone 0.
+ * chaos run passed). Wired to the register screen in milestone 2.
  *
  * Protocol: entries keyed by the register's ULID `client_id` (re-enqueue is a no-op); per
  * (group, date, subject) ordering so a newer register never overtakes an older one that is backing
@@ -16,7 +16,11 @@
  *   any other 4xx             the request itself is bad: entries move to `failed`
  * Triggers are the caller's job (online, visibilitychange, a timer); Background Sync is not relied on.
  */
-import type { AttendanceSubmission, AttendanceSyncResult } from '@maktab/shared';
+import {
+  type AttendanceSubmission,
+  type AttendanceSyncResult,
+  MAX_SUBMISSIONS_PER_SYNC,
+} from '@maktab/shared';
 
 export type OutboxState = 'pending' | 'failed';
 
@@ -51,7 +55,8 @@ const CAP_MS = 60_000;
 const BASE_MS = 1_000;
 
 const cfg = {
-  chunk: 25,
+  // The server refuses larger requests (per-request budget); a backlog goes out as several requests.
+  chunk: MAX_SUBMISSIONS_PER_SYNC,
   dbName: 'attendance-outbox',
   url: '/api/attendance/sync',
   now: (): number => Date.now(),

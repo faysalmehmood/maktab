@@ -20,6 +20,7 @@ import type {
   SubjectDto,
   TermDto,
 } from '@maktab/shared';
+import { parseWeeklyOff } from '../lib/attendance';
 import { mask } from '../lib/http';
 
 // Row (drizzle, camelCase) → response (snake_case, PLAN contract in packages/shared/src/dto.ts).
@@ -35,6 +36,8 @@ export const schoolDto = (r: typeof school.$inferSelect): SchoolDto => ({
   receipt_prefix: r.receiptPrefix,
   has_logo: !!r.logoKey,
   setup_completed_at: r.setupCompletedAt,
+  attendance_mode: r.attendanceMode,
+  weekly_off: parseWeeklyOff(r.weeklyOff),
 });
 
 export const sessionDto = (r: typeof session.$inferSelect): SessionDto => ({

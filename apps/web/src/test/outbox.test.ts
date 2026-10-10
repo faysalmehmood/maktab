@@ -90,7 +90,10 @@ function fakeServer() {
         return json({ error: { code: 'bad_json', message: 'invalid JSON' } }, 400);
       }
       if (!Array.isArray(body) || body.length > MAX_SUBMISSIONS_PER_SYNC) {
-        return json({ error: { code: 'bad_request', message: 'array of <= 50' } }, 400);
+        return json(
+          { error: { code: 'bad_request', message: `array of <= ${MAX_SUBMISSIONS_PER_SYNC}` } },
+          400,
+        );
       }
       return json({ results: body.map((s) => apply(s, takenBy)) });
     };
@@ -149,7 +152,7 @@ beforeEach(() => {
     dbName: `outbox-${n++}`,
     url: '/api/attendance/sync',
     now: () => Date.now(),
-    chunk: 25,
+    chunk: MAX_SUBMISSIONS_PER_SYNC,
   });
   server = fakeServer();
 });

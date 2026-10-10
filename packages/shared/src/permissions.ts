@@ -18,6 +18,8 @@ export const RESOURCES = {
   payslip: ['read', 'approve', 'pay'],
   exam: ['marks_entry', 'read'],
   send_queue: ['use'],
+  /** The message outbox (absence alerts now; fee reminders in M3/M5). Read-only until M5. */
+  message: ['read'],
   settings: ['manage'],
   role: ['manage'],
   backup: ['manage'],
@@ -116,6 +118,10 @@ export const MATRIX = {
   },
   send_queue: {
     use: g({ owner: all, admin: all, accountant: all, teacher: 'own_groups' }),
+  },
+  // Queued messages carry guardian names and phones; a teacher sees those of their own groups.
+  message: {
+    read: g({ owner: all, admin: all, accountant: all, teacher: 'own_groups' }),
   },
   settings: { manage: g({ owner: all, admin: all }) },
   role: { manage: g({ owner: all }) },
