@@ -12,6 +12,8 @@ import {
   expenseRegister,
   generatePayslips,
   incomeExpense,
+  myPayslips,
+  type PayslipDetail,
   type PayslipRow,
   parseAllowances,
   paySalary,
@@ -66,7 +68,7 @@ import type { Context, Hono } from 'hono';
 import { principalRoles } from '../auth/principal';
 import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
-import { bucket, deleteReplaced, readImageUpload, serveObject } from '../lib/files';
+import { bucket, readImageUpload, serveObject } from '../lib/files';
 import { idParam, jsonBody, notFoundError, queryParams, todayPk, userId } from '../lib/http';
 import { auditSql, changed, tx } from '../lib/tx';
 import { decide } from '../perm/matrix';
@@ -112,6 +114,17 @@ function officeScope(c: Context<AppEnv>): { excludeOwners: boolean } {
   return { excludeOwners: s.kind === 'no_owner' };
 }
 
+/**
+ * May the caller see what owners are paid (F1)? Only with `payslip.read` = all (owner, admin). The
+ * money reports are open to the accountant (receipt.read), so their salaries line, net, cashbook
+ * and CSVs leave owners out or mask them.
+ */
+function ownersVisible(c: Context<AppEnv>): boolean {
+  const p = c.get('principal');
+  if (!p) return false;
+  return decide(principalRoles(p), { resource: 'payslip', action: 'read' }) === 'all';
+}
+
 /** 404 (not 403: existence is not leaked) when the slip's staff member is outside the caller's scope. */
 async function staffInScope(c: Context<AppEnv>, staffId: string): Promise<void> {
   const s = payrollScope(c);
@@ -139,6 +152,8 @@ const slipDto = (r: PayslipRow): PayslipDto => ({
   pay: r.pay,
   net: r.net,
   paid: r.paid,
+  // Status stays `approved` until the net is paid (enum is final); the UI says "Partly paid".
+  paid_partial: r.status === 'approved' && r.paid > 0,
   approved_by_name: r.approved_by_name,
   approved_at: r.approved_at,
   void_reason: r.void_reason,
@@ -151,10 +166,11 @@ async function schoolHeader(db: AppDb): Promise<PayslipDetailDto['school']> {
   return s ?? { name: '', name_ur: null, address: null, phone: null };
 }
 
-async function slipDetailDto(c: Context<AppEnv>, id: string): Promise<PayslipDetailDto> {
-  const db = c.get('db');
-  const d = await payslipDetail(db, id);
-  if (!d) throw notFoundError('Payslip');
+function detailDto(
+  c: Context<AppEnv>,
+  d: PayslipDetail,
+  school: PayslipDetailDto['school'],
+): PayslipDetailDto {
   const p = c.get('principal');
   const roles = p ? principalRoles(p) : [];
   return {
@@ -166,8 +182,15 @@ async function slipDetailDto(c: Context<AppEnv>, id: string): Promise<PayslipDet
       d.status === 'draft' &&
       decide(roles, { resource: 'payslip', action: 'approve' }) !== false &&
       d.staff_user_id !== p?.user.id,
-    school: await schoolHeader(db),
+    school,
   };
+}
+
+async function slipDetailDto(c: Context<AppEnv>, id: string): Promise<PayslipDetailDto> {
+  const db = c.get('db');
+  const d = await payslipDetail(db, id);
+  if (!d) throw notFoundError('Payslip');
+  return detailDto(c, d, await schoolHeader(db));
 }
 
 const expenseDto = (r: ExpenseRegisterRow): ExpenseDto => ({
@@ -326,11 +349,24 @@ export function moneyRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const id = idParam(c);
       const e = await expenseById(db, id);
       if (!e) throw notFoundError('Expense');
+      // F5: not on a void expense; a replacement only by its recorder or an owner/admin. Checked
+      // before the upload so a refused request stores nothing; the old object is never deleted
+      // (each version stays, the audit row names the key it replaced).
+      const p = c.get('principal');
+      const canReplaceAny =
+        !!p && decide(principalRoles(p), { resource: 'expense', action: 'void' }) !== false;
+      if (e.voided_by)
+        throw new ApiError(409, 'already_void', 'This expense is void; its bill is final');
+      if (e.created_by !== userId(c) && !canReplaceAny)
+        throw new ApiError(
+          403,
+          'forbidden',
+          'Only whoever recorded this expense, or an owner/admin, can change its bill photo',
+        );
       const { bytes, type } = await readImageUpload(c, MAX_PHOTO_BYTES);
       const key = `expenses/${id}/${newId()}`;
       await files.put(key, bytes, { httpMetadata: { contentType: type } });
-      const old = await setExpensePhoto(db, { id, key, by: userId(c) });
-      await deleteReplaced(files, old, key);
+      await setExpensePhoto(db, { id, key, by: userId(c), canReplaceAny });
       return c.json({ has_photo: true });
     },
   );
@@ -530,16 +566,12 @@ export function moneyRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     table,
     { method: 'GET', path: '/api/payslips/mine', access: requires('payslip', 'read') },
     async (c) => {
+      // Four queries whatever the number of slips (M4 fix pass, F2): the slips with the advance
+      // balance, every line and every payment through one json_each each, the school header once.
       const db = c.get('db');
-      const me = userId(c);
-      const rows = await db.all<{ id: string }>(
-        sql`SELECT p.id FROM payslip p JOIN staff st ON st.id = p.staff_id
-            WHERE st.user_id = ${me} AND p.status IN ('approved', 'paid')
-            ORDER BY p.period_key DESC LIMIT 36`,
-      );
-      const out: PayslipDetailDto[] = [];
-      for (const r of rows) out.push(await slipDetailDto(c, r.id));
-      return c.json({ payslips: out });
+      const details = await myPayslips(db, userId(c));
+      const school = await schoolHeader(db);
+      return c.json({ payslips: details.map((d) => detailDto(c, d, school)) });
     },
   );
 
@@ -704,7 +736,18 @@ export function moneyRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     { method: 'GET', path: '/api/reports/income-expense', access: money },
     async (c) => {
       const q = queryParams(c, monthRangeQuerySchema);
-      const r: IncomeExpenseDto = await incomeExpense(c.get('db'), { from: q.from, to: q.to });
+      const visible = ownersVisible(c);
+      const full = await incomeExpense(
+        c.get('db'),
+        { from: q.from, to: q.to },
+        { excludeOwners: !visible },
+      );
+      // Without owner pay visible, the reconciliation's salary-paid side would reveal it: only
+      // whether the books tie is shown.
+      const r: IncomeExpenseDto = visible
+        ? full
+        : { ...full, reconciliation: { ties: full.reconciliation.ties } };
+      const salariesLabel = visible ? 'Salaries' : 'Salaries (excluding management)';
       if (q.format === 'csv') {
         const rows: (string | number | null)[][] = [
           ...r.months.map((m) => [
@@ -728,12 +771,12 @@ export function moneyRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           [],
           ['Expenses by category'],
           ...r.expenses.by_category.map((x) => [x.name, rupees(x.amount)]),
-          ['Salaries', rupees(r.salaries.pay)],
+          [salariesLabel, rupees(r.salaries.pay)],
         ];
         return csv(
           c,
           `income-expense-${q.from}-${q.to}.csv`,
-          ['Month', 'Income', 'Expenses', 'Salaries', 'Net'],
+          ['Month', 'Income', 'Expenses', salariesLabel, 'Net'],
           rows,
         );
       }
@@ -747,7 +790,12 @@ export function moneyRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     { method: 'GET', path: '/api/reports/cashbook', access: money },
     async (c) => {
       const q = queryParams(c, cashbookQuerySchema);
-      const r = await cashbook(c.get('db'), { accountId: q.account_id, from: q.from, to: q.to });
+      const r = await cashbook(c.get('db'), {
+        accountId: q.account_id,
+        from: q.from,
+        to: q.to,
+        maskOwners: !ownersVisible(c),
+      });
       const body: CashbookDto = {
         ...r,
         rows: r.rows.map(({ cash_session_id: _s, ...x }) => x),
@@ -864,7 +912,11 @@ export function moneyRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const db = c.get('db');
       const period = q.period ?? thisMonth();
       const today = todayPk();
-      const r = await incomeExpense(db, { from: period, to: period });
+      const r = await incomeExpense(
+        db,
+        { from: period, to: period },
+        { excludeOwners: !ownersVisible(c) },
+      );
       const [dues] = await db.all<{ n: number }>(
         sql`SELECT coalesce(sum(max(0, d.due - coalesce(pc.credit, 0))), 0) AS n
             FROM (SELECT payer_id, sum(due) AS due FROM charge_status
@@ -882,6 +934,7 @@ export function moneyRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         income: r.income.total,
         expenses: r.expenses.total,
         salaries: r.salaries.pay,
+        salaries_scope: r.salaries.scope,
         net: r.net,
         dues_outstanding: Number(dues?.n ?? 0),
         defaulters: late.length,

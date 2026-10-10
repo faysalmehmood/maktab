@@ -255,9 +255,9 @@ async function main() {
         unallocated: after.income.unallocated - b.income.unallocated,
         expenses: after.expenses.total - b.expenses.total,
         salaries: after.salaries.pay - b.salaries.pay,
-        salaryPaid: after.reconciliation.salary_paid - b.reconciliation.salary_paid,
-        advances: after.reconciliation.advances_paid - b.reconciliation.advances_paid,
-        movement: after.reconciliation.movement - b.reconciliation.movement,
+        salaryPaid: (after.reconciliation.salary_paid ?? 0) - (b.reconciliation.salary_paid ?? 0),
+        advances: (after.reconciliation.advances_paid ?? 0) - (b.reconciliation.advances_paid ?? 0),
+        movement: (after.reconciliation.movement ?? 0) - (b.reconciliation.movement ?? 0),
       };
       expectOk(
         d.income === RS(30000) &&

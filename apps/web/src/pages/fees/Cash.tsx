@@ -192,7 +192,8 @@ function TodayDrawer() {
 
 function TransferForm() {
   const { t } = useTranslation();
-  const accounts = useAccounts().data?.accounts ?? [];
+  const acc = useAccounts().data;
+  const accounts = acc?.accounts ?? [];
   const [d, setD] = useState({ from: '', to: '', amount: '', note: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useMutation({
@@ -223,6 +224,14 @@ function TransferForm() {
       {a.name}
     </option>
   ));
+  // Cash moves only out of the caller's own drawer (F3/F6); into any account.
+  const fromOpts = accounts
+    .filter((a) => a.kind !== 'cash' || a.id === acc?.my_drawer)
+    .map((a) => (
+      <option key={a.id} value={a.id}>
+        {a.name}
+      </option>
+    ));
   return (
     <Card className="gap-3 py-4">
       <CardHeader className="px-4">
@@ -238,7 +247,7 @@ function TransferForm() {
               onChange={(e) => setD({ ...d, from: e.target.value })}
             >
               <option value="">—</option>
-              {opts}
+              {fromOpts}
             </Select>
           </Field>
           <Field id="transfer-to" label="fee.cash.to" required error={errors.to}>

@@ -205,23 +205,28 @@ UNION ALL
 SELECT 'receipt_no_format', r.payer_type, r.payer_id, r.id, 1, 0
 FROM receipt r
 WHERE r.kind <> 'opening'
+  -- `<series>-<year>-<n>`, n zero-padded to at least 5 digits (00001 … 99999, then 100000 …; M4 fix
+  -- pass), issued: 1 ≤ n < next_no.
   AND NOT EXISTS (SELECT 1 FROM receipt_series s
-                  WHERE r.receipt_no = s.series || '-' || s.year || '-' || substr(r.receipt_no, -5)
-                    AND substr(r.receipt_no, -5) GLOB '[0-9][0-9][0-9][0-9][0-9]'
-                    AND CAST(substr(r.receipt_no, -5) AS INTEGER) BETWEEN 1 AND s.next_no - 1)
+                  WHERE substr(r.receipt_no, 1, length(s.series) + 6) = s.series || '-' || s.year || '-'
+                    AND r.receipt_no = s.series || '-' || s.year || '-'
+                        || printf('%05d', CAST(substr(r.receipt_no, length(s.series) + 7) AS INTEGER))
+                    AND CAST(substr(r.receipt_no, length(s.series) + 7) AS INTEGER) BETWEEN 1 AND s.next_no - 1)
 UNION ALL
 SELECT 'expense_cash_no_session', 'expense', e.category_id, e.id, 1, 0
 FROM expense e JOIN account a ON a.id = e.account_id
 WHERE a.kind = 'cash' AND e.cash_session_id IS NULL
 UNION ALL
+-- Paid beyond the net; a negative net (only a draft can carry one) counts as 0 (M4 fix pass), so a
+-- draft whose deductions exceed its pay is not reported as overpaid when nothing was paid.
 SELECT 'payslip_overpaid', 'staff', p.staff_id, p.id,
-       (SELECT coalesce(sum(CASE WHEN l.kind IN ('basic', 'allowance') THEN l.amount ELSE -l.amount END), 0)
-        FROM payslip_line l WHERE l.payslip_id = p.id) AS expected,
+       max(0, (SELECT coalesce(sum(CASE WHEN l.kind IN ('basic', 'allowance') THEN l.amount ELSE -l.amount END), 0)
+               FROM payslip_line l WHERE l.payslip_id = p.id)) AS expected,
        (SELECT coalesce(sum(s.amount), 0) FROM salary_payment s WHERE s.payslip_id = p.id) AS actual
 FROM payslip p
 WHERE (SELECT coalesce(sum(s.amount), 0) FROM salary_payment s WHERE s.payslip_id = p.id)
-    > (SELECT coalesce(sum(CASE WHEN l.kind IN ('basic', 'allowance') THEN l.amount ELSE -l.amount END), 0)
-       FROM payslip_line l WHERE l.payslip_id = p.id)
+    > max(0, (SELECT coalesce(sum(CASE WHEN l.kind IN ('basic', 'allowance') THEN l.amount ELSE -l.amount END), 0)
+              FROM payslip_line l WHERE l.payslip_id = p.id))
 UNION ALL
 SELECT 'advance_negative', 'staff', st.id, NULL, 0,
        (SELECT coalesce(sum(a.amount), 0) FROM staff_advance a WHERE a.staff_id = st.id)
@@ -231,4 +236,13 @@ FROM staff st
 WHERE (SELECT coalesce(sum(a.amount), 0) FROM staff_advance a WHERE a.staff_id = st.id)
     < (SELECT coalesce(sum(l.amount), 0) FROM payslip_line l JOIN payslip p ON p.id = l.payslip_id
        WHERE p.staff_id = st.id AND p.status IN ('approved', 'paid') AND l.kind = 'advance_recovery')
+)
+-- M4 fix pass (F6): cash moved out of a drawer by transfer outside any session (the trigger
+-- transfer_shape refuses it now; older rows could carry it). Nested: five terms per SELECT on D1.
+UNION ALL
+SELECT * FROM (
+SELECT 'transfer_cash_no_session' AS issue, 'transfer' AS payer_type, t.from_account AS payer_id, t.id AS receipt_id,
+       1 AS expected, 0 AS actual
+FROM transfer t JOIN account a ON a.id = t.from_account
+WHERE a.kind = 'cash' AND t.cash_session_id IS NULL
 );

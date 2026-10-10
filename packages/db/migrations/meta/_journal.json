@@ -113,6 +113,20 @@
       "when": 1791650694310,
       "tag": "0015_m4_money_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1791652723356,
+      "tag": "0016_m4_fix_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1791654433596,
+      "tag": "0017_m4_fix_rules",
+      "breakpoints": true
     }
   ]
 }

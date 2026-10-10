@@ -60,75 +60,80 @@ function SlipsTable({
   showMonth?: boolean;
 }) {
   const { t } = useTranslation();
+  // Scroll inside a card (the attendance register's pattern): at 360 px in Urdu the table is wider
+  // than the screen, and without a min-w-0 box around its own scroller an RTL page clipped its
+  // start (left) edge instead of scrolling (verify pass).
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {showMonth && <TableHead>{t('money.common.month')}</TableHead>}
-            <TableHead>{t('money.common.staff')}</TableHead>
-            <TableHead>{t('money.common.status')}</TableHead>
-            <TableHead className="text-end">{t('money.salary.pay')}</TableHead>
-            <TableHead className="text-end">{t('money.salary.recovery')}</TableHead>
-            <TableHead className="text-end">{t('money.salary.net')}</TableHead>
-            <TableHead className="text-end">{t('money.salary.paid')}</TableHead>
-            <TableHead className="text-end">{t('money.salary.left')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((r) => (
-            <TableRow key={r.id} data-slip={r.id}>
-              {showMonth && (
+    <Card className="min-w-0 max-w-full gap-0 overflow-hidden py-0" id="slips-card">
+      <div className="max-w-full overflow-x-auto" data-scroll="slips">
+        <Table className="whitespace-nowrap">
+          <TableHeader>
+            <TableRow>
+              {showMonth && <TableHead>{t('money.common.month')}</TableHead>}
+              <TableHead>{t('money.common.staff')}</TableHead>
+              <TableHead>{t('money.common.status')}</TableHead>
+              <TableHead className="text-end">{t('money.salary.pay')}</TableHead>
+              <TableHead className="text-end">{t('money.salary.recovery')}</TableHead>
+              <TableHead className="text-end">{t('money.salary.net')}</TableHead>
+              <TableHead className="text-end">{t('money.salary.paid')}</TableHead>
+              <TableHead className="text-end">{t('money.salary.left')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.id} data-slip={r.id}>
+                {showMonth && (
+                  <TableCell>
+                    <bdi className="num">{r.period_key}</bdi>
+                  </TableCell>
+                )}
                 <TableCell>
-                  <bdi className="num">{r.period_key}</bdi>
+                  <Link to={`/salary/${r.id}`} className={linkCls} id={`slip-link-${r.id}`}>
+                    <bdi>{r.staff_name}</bdi>
+                  </Link>
                 </TableCell>
-              )}
-              <TableCell>
-                <Link to={`/salary/${r.id}`} className={linkCls} id={`slip-link-${r.id}`}>
-                  <bdi>{r.staff_name}</bdi>
-                </Link>
-              </TableCell>
-              <TableCell>
-                <PayslipStatusBadge status={r.status} />
-              </TableCell>
-              <TableCell className="text-end">
-                <Money paisa={r.pay} />
-              </TableCell>
-              <TableCell className="text-end">
-                <Money paisa={r.recovery} />
-              </TableCell>
-              <TableCell className="text-end font-medium">
-                <Money paisa={r.net} />
-              </TableCell>
-              <TableCell className="text-end">
-                <Money paisa={r.paid} />
-              </TableCell>
-              <TableCell className="text-end">
-                <Money paisa={r.status === 'void' ? 0 : r.net - r.paid} />
-              </TableCell>
-            </TableRow>
-          ))}
-          {totals && (
-            <TableRow className="font-medium" id="slips-totals">
-              <TableCell colSpan={showMonth ? 3 : 2}>{t('money.salary.totals')}</TableCell>
-              <TableCell className="text-end">
-                <Money paisa={totals.pay} />
-              </TableCell>
-              <TableCell />
-              <TableCell className="text-end">
-                <Money paisa={totals.net} />
-              </TableCell>
-              <TableCell className="text-end">
-                <Money paisa={totals.paid} />
-              </TableCell>
-              <TableCell className="text-end">
-                <Money paisa={totals.net - totals.paid} />
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
+                <TableCell>
+                  <PayslipStatusBadge status={r.status} partial={r.paid_partial} />
+                </TableCell>
+                <TableCell className="text-end">
+                  <Money paisa={r.pay} />
+                </TableCell>
+                <TableCell className="text-end">
+                  <Money paisa={r.recovery} />
+                </TableCell>
+                <TableCell className="text-end font-medium">
+                  <Money paisa={r.net} />
+                </TableCell>
+                <TableCell className="text-end">
+                  <Money paisa={r.paid} />
+                </TableCell>
+                <TableCell className="text-end">
+                  <Money paisa={r.status === 'void' ? 0 : r.net - r.paid} />
+                </TableCell>
+              </TableRow>
+            ))}
+            {totals && (
+              <TableRow className="font-medium" id="slips-totals">
+                <TableCell colSpan={showMonth ? 3 : 2}>{t('money.salary.totals')}</TableCell>
+                <TableCell className="text-end">
+                  <Money paisa={totals.pay} />
+                </TableCell>
+                <TableCell />
+                <TableCell className="text-end">
+                  <Money paisa={totals.net} />
+                </TableCell>
+                <TableCell className="text-end">
+                  <Money paisa={totals.paid} />
+                </TableCell>
+                <TableCell className="text-end">
+                  <Money paisa={totals.net - totals.paid} />
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </Card>
   );
 }
 
@@ -212,7 +217,7 @@ export function SalaryPage() {
   });
   const rows = q.data?.payslips ?? [];
   return (
-    <section className="flex max-w-5xl flex-col gap-4">
+    <section className="flex min-w-0 max-w-5xl flex-col gap-4">
       <PageTitle
         actions={
           <>
@@ -366,7 +371,7 @@ export function PayslipPage() {
         <bdi className="num">{slip.period_key}</bdi>
       </PageTitle>
       <div className="flex flex-wrap items-center gap-2">
-        <PayslipStatusBadge status={slip.status} />
+        <PayslipStatusBadge status={slip.status} partial={slip.paid_partial} />
         {slip.approved_by_name && (
           <span className="text-sm text-muted-foreground">
             {t('money.salary.approvedBy')} <bdi>{slip.approved_by_name}</bdi>
@@ -532,7 +537,7 @@ export function MyPayslipsPage() {
           <CardHeader className="px-4">
             <CardTitle className="flex flex-wrap items-center gap-2">
               <bdi className="num">{s.period_key}</bdi>
-              <PayslipStatusBadge status={s.status} />
+              <PayslipStatusBadge status={s.status} partial={s.paid_partial} />
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 px-4">
@@ -582,7 +587,7 @@ export function SalaryRegisterPage() {
   });
   const rows = q.data?.payslips ?? [];
   return (
-    <section className="flex max-w-5xl flex-col gap-4">
+    <section className="flex min-w-0 max-w-5xl flex-col gap-4">
       <PageTitle
         actions={
           <ReportActions

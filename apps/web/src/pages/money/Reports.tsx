@@ -34,6 +34,23 @@ const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** PLAN §14.11 report pack: every report print-ready and CSV (the API's formula-safe writer). */
+
+/**
+ * The salaries line: "Salaries", or "Salaries (excluding management)" for a caller who may not see
+ * owners' pay (F1). Its tooltip says what the figure is (F8: earnings − deductions, owed for the
+ * month; advance recovery is not a deduction).
+ */
+export function SalariesLabel({ scope }: { scope: IncomeExpenseDto['salaries']['scope'] }) {
+  const { t } = useTranslation();
+  return (
+    <span title={t('money.reports.salariesHint')} data-scope={scope} className="salaries-label">
+      {scope === 'excluding_owners'
+        ? t('money.reports.salariesLineExMgmt')
+        : t('money.reports.salariesLine')}
+    </span>
+  );
+}
+
 export function ReportsHub() {
   const { t } = useTranslation();
   const roles = useRoles();
@@ -222,7 +239,9 @@ export function IncomeExpensePage() {
             </Card>
             <Card className="gap-1 py-3">
               <CardContent className="px-4">
-                <p className="text-xs text-muted-foreground">{t('money.reports.salariesLine')}</p>
+                <p className="text-xs text-muted-foreground">
+                  <SalariesLabel scope={r.salaries.scope} />
+                </p>
                 <p className="text-lg font-semibold">
                   <Money paisa={r.salaries.pay} />
                 </p>
@@ -249,7 +268,9 @@ export function IncomeExpensePage() {
                   <TableHead>{t('money.common.month')}</TableHead>
                   <TableHead className="text-end">{t('money.reports.income')}</TableHead>
                   <TableHead className="text-end">{t('money.reports.expensesLine')}</TableHead>
-                  <TableHead className="text-end">{t('money.reports.salariesLine')}</TableHead>
+                  <TableHead className="text-end">
+                    <SalariesLabel scope={r.salaries.scope} />
+                  </TableHead>
                   <TableHead className="text-end">{t('money.reports.net')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -315,7 +336,7 @@ export function IncomeExpensePage() {
                     </li>
                   ))}
                   <li className="flex gap-2">
-                    {t('money.reports.salariesLine')}
+                    <SalariesLabel scope={r.salaries.scope} />
                     <span className="ms-auto">
                       <Money paisa={r.salaries.pay} />
                     </span>
@@ -329,38 +350,41 @@ export function IncomeExpensePage() {
               <CardTitle className="text-base">{t('money.reports.reconciliation')}</CardTitle>
             </CardHeader>
             <CardContent className="px-4">
-              <ul className="flex flex-col gap-1 text-sm">
-                <li className="flex gap-2">
-                  {t('money.reports.income')}
-                  <span className="ms-auto">
-                    <Money paisa={r.reconciliation.income} />
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  {t('money.reports.expensesLine')}
-                  <span className="ms-auto">
-                    <Money paisa={-r.reconciliation.expenses} />
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  {t('money.reports.recSalaryPaid')}
-                  <span className="ms-auto">
-                    <Money paisa={-r.reconciliation.salary_paid} />
-                  </span>
-                </li>
-                <li className="flex gap-2">
-                  {t('money.reports.recAdvances')}
-                  <span className="ms-auto">
-                    <Money paisa={-r.reconciliation.advances_paid} />
-                  </span>
-                </li>
-                <li className="flex gap-2 border-t pt-1 font-medium">
-                  {t('money.reports.recMovement')}
-                  <span className="ms-auto">
-                    <Money paisa={r.reconciliation.movement} />
-                  </span>
-                </li>
-              </ul>
+              {/* Without owner pay visible only `ties` comes back (F1): the lines are left out. */}
+              {r.reconciliation.movement !== undefined && (
+                <ul className="flex flex-col gap-1 text-sm" id="ie-rec-lines">
+                  <li className="flex gap-2">
+                    {t('money.reports.income')}
+                    <span className="ms-auto">
+                      <Money paisa={r.reconciliation.income ?? 0} />
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    {t('money.reports.expensesLine')}
+                    <span className="ms-auto">
+                      <Money paisa={-(r.reconciliation.expenses ?? 0)} />
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    {t('money.reports.recSalaryPaid')}
+                    <span className="ms-auto">
+                      <Money paisa={-(r.reconciliation.salary_paid ?? 0)} />
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    {t('money.reports.recAdvances')}
+                    <span className="ms-auto">
+                      <Money paisa={-(r.reconciliation.advances_paid ?? 0)} />
+                    </span>
+                  </li>
+                  <li className="flex gap-2 border-t pt-1 font-medium">
+                    {t('money.reports.recMovement')}
+                    <span className="ms-auto">
+                      <Money paisa={r.reconciliation.movement} />
+                    </span>
+                  </li>
+                </ul>
+              )}
               <p
                 className={cn(
                   'mt-2 text-sm',
@@ -460,7 +484,9 @@ export function CashbookPage() {
                   </TableCell>
                 </TableRow>
                 {b.rows.map((x) => (
-                  <TableRow key={`${x.kind}-${x.ref_id}`} data-kind={x.kind}>
+                  // Masked owner rows share a ref_id ('owner_draw'); the running balance changes on
+                  // every row (no movement is 0), so it keeps the key unique.
+                  <TableRow key={`${x.kind}-${x.ref_id}-${x.date}-${x.balance}`} data-kind={x.kind}>
                     <TableCell>
                       <bdi className="num">{x.date}</bdi>
                     </TableCell>

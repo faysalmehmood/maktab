@@ -14,6 +14,7 @@ import {
   expenseRegister,
   generatePayslips,
   incomeExpense,
+  openSession,
   outstandingAdvance,
   paySalary,
   payslipDetail,
@@ -96,6 +97,8 @@ let db: AppDb;
 beforeEach(async () => {
   db = createTestDb();
   await seed(db);
+  // Paying out of a drawer needs the payer to have opened it (M4 fix pass: never auto-opened).
+  await openSession(db, { collectorId: 'U2', businessDate: TODAY });
 });
 
 const cat = async (code: string) =>
@@ -302,15 +305,27 @@ describe('payslips', () => {
     await approvePayslip(db, { id: own.id, by: 'A' });
     await expectFail(() => approvePayslip(db, { id: own.id, by: 'A' }), /not_draft|draft/);
 
+    const lines = [
+      { kind: 'basic' as const, amount: RS(30000) },
+      { kind: 'advance_recovery' as const, amount: RS(1000) },
+    ];
+    // Recovery with no advance outstanding is refused when the lines are written (verify pass)…
+    await expectFail(
+      () => createPayslip(db, { staffId: 'ST_T', periodKey: '2026-10', lines, by: 'U2' }),
+      /recovery_exceeds_advance/,
+    );
     const t = await createPayslip(db, {
       staffId: 'ST_T',
       periodKey: '2026-10',
-      lines: [
-        { kind: 'basic', amount: RS(30000) },
-        { kind: 'advance_recovery', amount: RS(1000) },
-      ],
+      lines: lines.slice(0, 1),
       by: 'U2',
     });
+    await expectFail(() => setPayslipLines(db, { id: t.id, lines, by: 'U2' }), /recovery_exceeds/);
+    // …and a line slipped in by hand is still caught at approval (helper, then trigger).
+    await run(
+      db,
+      `INSERT INTO payslip_line (id, payslip_id, kind, amount) VALUES ('rl', '${t.id}', 'advance_recovery', ${RS(1000)})`,
+    );
     await expectFail(() => approvePayslip(db, { id: t.id, by: 'A' }), /recovery/);
     await expectFail(
       () =>
@@ -593,7 +608,7 @@ describe('reports', () => {
       ['rent', RS(10000)],
       ['stationery', RS(1500)],
     ]);
-    expect(r.salaries).toEqual({ pay: RS(14500), slips: 1 });
+    expect(r.salaries).toEqual({ pay: RS(14500), slips: 1, scope: 'all' });
     expect(r.net).toBe(RS(8000 - 11500 - 14500));
     expect(r.months).toEqual([
       {

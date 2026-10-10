@@ -6,7 +6,12 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { AmountInput, Money } from '@/components/fees/common';
 import { Field, PageTitle } from '@/components/form';
-import { AccountSelect, MoneyErrorNote, ReportActions } from '@/components/money/common';
+import {
+  AccountSelect,
+  MoneyErrorNote,
+  payOutAccounts,
+  ReportActions,
+} from '@/components/money/common';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -67,7 +72,9 @@ export function AddAdvanceDialog({
   const qc = useQueryClient();
   const today = karachiToday();
   const staff = (usePayrollStaff(open).data?.staff ?? []).filter((s) => s.status === 'active');
-  const accounts = useAccounts(open).data?.accounts ?? [];
+  const acc = useAccounts(open).data;
+  // Cash leaves only the payer's own drawer (F3): other drawers are not offered.
+  const accounts = payOutAccounts(acc?.accounts ?? [], acc?.my_drawer);
   const blank: Draft = { staff: staffId ?? '', amount: '', account: '', date: today, note: '' };
   const [d, setD] = useState<Draft>(blank);
   const [errors, setErrors] = useState<Record<string, string>>({});

@@ -20,6 +20,22 @@ const show = (v: unknown): string =>
 
 type DiffRow = { field: string; before: unknown; after: unknown };
 
+/**
+ * Record types and actions in words (en/ur, verify pass); an unknown code shows as itself. The raw
+ * code stays available as the tooltip (title) for whoever needs to search for it.
+ */
+export function useAuditLabels() {
+  const { t, i18n } = useTranslation();
+  const label = (group: 'entities' | 'actions', code: string) => {
+    const key = `money.audit.${group}.${code}`;
+    return i18n.exists(key) ? String(t(key as 'money.audit.title')) : code;
+  };
+  return {
+    entity: (code: string) => label('entities', code),
+    action: (code: string) => label('actions', code),
+  };
+}
+
 /** Any diff shape → field rows: {before, after} objects are compared key by key. */
 export function diffRows(diff: unknown): DiffRow[] {
   if (!diff || typeof diff !== 'object' || Array.isArray(diff))
@@ -40,6 +56,7 @@ export function diffRows(diff: unknown): DiffRow[] {
 
 function AuditEntry({ row }: { row: AuditRowDto }) {
   const { t } = useTranslation();
+  const label = useAuditLabels();
   const [open, setOpen] = useState(false);
   const rows = diffRows(row.diff);
   return (
@@ -47,8 +64,12 @@ function AuditEntry({ row }: { row: AuditRowDto }) {
       <CardContent className="flex flex-col gap-1 px-4 text-sm">
         <div className="flex flex-wrap items-center gap-2">
           <bdi className="num text-muted-foreground">{row.at.replace('T', ' ').slice(0, 19)}</bdi>
-          <bdi className="font-medium">{row.entity}</bdi>
-          <bdi>{row.action}</bdi>
+          <span className="font-medium" title={row.entity} data-code={row.entity}>
+            {label.entity(row.entity)}
+          </span>
+          <span title={row.action} data-code={row.action}>
+            {label.action(row.action)}
+          </span>
           <span className="ms-auto">
             {t('money.audit.user')}: <bdi>{row.user_name ?? row.user_id ?? '—'}</bdi>
           </span>
@@ -104,6 +125,7 @@ function AuditEntry({ row }: { row: AuditRowDto }) {
 
 export function AuditPage() {
   const { t } = useTranslation();
+  const label = useAuditLabels();
   const [entity, setEntity] = useState('');
   const [entityId, setEntityId] = useState('');
   const [from, setFrom] = useState('');
@@ -136,8 +158,8 @@ export function AuditPage() {
           <Select id="audit-entity" value={entity} onChange={(e) => setEntity(e.target.value)}>
             <option value="">{t('money.common.all')}</option>
             {(entities.data?.entities ?? []).map((e) => (
-              <option key={e.entity} value={e.entity}>
-                {e.entity} ({e.n})
+              <option key={e.entity} value={e.entity} title={e.entity}>
+                {label.entity(e.entity)} ({e.n})
               </option>
             ))}
           </Select>

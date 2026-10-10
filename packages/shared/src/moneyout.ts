@@ -189,6 +189,8 @@ export type PayslipDto = {
   /** pay − advance recovery: what is paid out. */
   net: number;
   paid: number;
+  /** Approved with some salary paid but not all (status stays `approved`; the UI: "Partly paid"). */
+  paid_partial: boolean;
   approved_by_name: string | null;
   approved_at: string | null;
   void_reason: string | null;
@@ -266,23 +268,37 @@ export type IncomeExpenseDto = {
     }[];
     total: number;
   };
-  salaries: { pay: number; slips: number };
+  /**
+   * `excluding_owners` (F1): the caller may not see owners' pay, so owner-role staff are left out of
+   * salaries and net; the UI labels the line "Salaries (excluding management)".
+   */
+  salaries: { pay: number; slips: number; scope: 'all' | 'excluding_owners' };
   net: number;
   months: { period: string; income: number; expenses: number; salaries: number; net: number }[];
+  /** Callers who may not see owners' pay get `{ ties }` only (the salary-paid side would show it). */
   reconciliation: {
-    income: number;
-    expenses: number;
-    salary_paid: number;
-    advances_paid: number;
-    expected_movement: number;
-    movement: number;
+    income?: number;
+    expenses?: number;
+    salary_paid?: number;
+    advances_paid?: number;
+    expected_movement?: number;
+    movement?: number;
     ties: boolean;
   };
 };
 
 export type CashbookRowDto = {
   date: string;
-  kind: 'receipt' | 'expense' | 'salary' | 'advance' | 'transfer_in' | 'transfer_out';
+  /** `owner_draw`: an owner's salary/advance, masked (party "—") for callers who may not see it. */
+  kind:
+    | 'receipt'
+    | 'expense'
+    | 'salary'
+    | 'advance'
+    | 'transfer_in'
+    | 'transfer_out'
+    | 'opening'
+    | 'owner_draw';
   subkind: string | null;
   ref_id: string;
   ref_no: string | null;
@@ -325,6 +341,8 @@ export type MonthDashboardDto = {
   income: number;
   expenses: number;
   salaries: number;
+  /** As IncomeExpenseDto.salaries.scope: the tile says "Salaries (excluding management)". */
+  salaries_scope: 'all' | 'excluding_owners';
   net: number;
   dues_outstanding: number;
   defaulters: number;
@@ -350,4 +368,9 @@ export const MONEY_ERROR_CODES = [
   'already_paid',
   'exceeds_net',
   'idempotency_conflict',
+  'not_your_drawer',
+  'no_open_session',
+  'already_open',
+  'account_has_movements',
+  'opening_already_set',
 ] as const;

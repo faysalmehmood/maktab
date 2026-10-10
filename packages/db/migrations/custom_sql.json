@@ -57,6 +57,14 @@
         "30_ledger.sql": "da2164f25773e8883ed0e41ced24c8363c54907054e458e06ddeb29e0480b76d",
         "60_money_out.sql": "73f02ebe699e19f53061034ebefb14fbf0e1964743a8cd7595380216eecd8156"
       }
+    },
+    {
+      "migration": "0017_m4_fix_rules",
+      "sha256": "eee776a90726b8d283691a74add955156f7204be8701ddb1873d5b3642376e0b",
+      "files": {
+        "30_ledger.sql": "5d951daabd26405ab50ed73edbda7b6f653441c86ea0df5acc4234fb797692a1",
+        "60_money_out.sql": "2baf0dda57604c77ea246ddef8c160f1ab151d416bce93f2ddadf9576efbb67c"
+      }
     }
   ]
 }

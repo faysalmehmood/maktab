@@ -87,6 +87,17 @@ export async function openSession(
   const opening = input.opening ?? 0;
   if (!Number.isInteger(opening) || opening < 0)
     throw new FeeError('invalid', 'opening: paisa ≥ 0', 400);
+  // Opening an open drawer again is a no-op only with the same float; another float would be
+  // silently ignored (the session keeps its first opening), so it is refused (verify pass).
+  const existing = await sessionFor(db, input.collectorId, input.businessDate);
+  if (existing) {
+    if (existing.opening !== opening)
+      throw new FeeError(
+        'already_open',
+        'Your drawer for this day is already open with another opening float',
+      );
+    return existing;
+  }
   await runBatch(db, [
     ensureSessionStatement(input.collectorId, input.businessDate, input.id ?? newId(), opening),
   ]);
@@ -157,8 +168,9 @@ export async function reopenSession(
 }
 
 /**
- * A handover or bank deposit (never income or expense, PLAN §5.2). Out of a cash account it is
- * taken from the caller's drawer session for that day (opened if needed; refused if closed).
+ * A handover or bank deposit (never income or expense, PLAN §5.2). Out of a cash account it is taken
+ * from the caller's OWN drawer (their `drawer_account`) and their open session for that day (M4 fix
+ * pass, F6: never opened here; trigger transfer_shape is the backstop).
  */
 export async function recordTransfer(
   db: AppDb,
@@ -184,12 +196,28 @@ export async function recordTransfer(
     throw new FeeError('invalid', 'Unknown account', 400);
   const id = input.id ?? newId();
   const fromDrawer = from.kind === 'cash';
-  if (fromDrawer) await assertSessionOpen(db, input.by, input.date);
-  // Never open a drawer for a past day: a late handover goes into that day's session if it exists.
-  if (fromDrawer && input.date < karachiToday() && !(await sessionFor(db, input.by, input.date)))
-    throw new FeeError('bad_business_date', 'No cash session that day; record it for today', 400);
+  if (fromDrawer) {
+    const [mine] = await db.all<{ account_id: string | null }>(
+      sql`SELECT account_id FROM drawer_account WHERE user_id = ${input.by}`,
+    );
+    if (mine?.account_id !== input.fromAccount)
+      throw new FeeError('not_your_drawer', 'Cash can only leave your own drawer', 409);
+    const s = await sessionFor(db, input.by, input.date);
+    if (!s)
+      throw new FeeError(
+        input.date < karachiToday() ? 'bad_business_date' : 'no_open_session',
+        input.date < karachiToday()
+          ? 'No cash session that day; record it for today'
+          : 'Open your drawer first',
+        input.date < karachiToday() ? 400 : 409,
+      );
+    if (s.closed_at)
+      throw new FeeError(
+        'session_closed',
+        'Your cash session for this day is closed; ask an admin to reopen it',
+      );
+  }
   await runBatch(db, [
-    ...(fromDrawer ? [ensureSessionStatement(input.by, input.date)] : []),
     sql`INSERT INTO transfer (id, from_account, to_account, cash_session_id, amount, date, note, created_by)
         VALUES (${id}, ${input.fromAccount}, ${input.toAccount},
                 ${fromDrawer ? sessionIdFor(input.by, input.date) : null}, ${input.amount}, ${input.date},

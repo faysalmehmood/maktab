@@ -11,7 +11,7 @@ import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AmountInput, Money } from '@/components/fees/common';
 import { Field } from '@/components/form';
-import { AccountSelect, MoneyErrorNote } from '@/components/money/common';
+import { AccountSelect, MoneyErrorNote, payOutAccounts } from '@/components/money/common';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -238,7 +238,9 @@ export function PayDialog({
 }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const accounts = useAccounts(open).data?.accounts ?? [];
+  const acc = useAccounts(open).data;
+  // Cash leaves only the payer's own drawer (F3): other drawers are not offered.
+  const accounts = payOutAccounts(acc?.accounts ?? [], acc?.my_drawer);
   const left = slip.net - slip.paid;
   const today = karachiToday();
   const [amount, setAmount] = useState(() => (left > 0 ? paisaToRupeeText(left) : ''));

@@ -207,7 +207,7 @@ describe('money out on D1', () => {
     expect(r.income.unallocated).toBe(RS(47000));
     expect(r.expenses.total).toBe(RS(10200));
     // Salaries = pay of approved/paid slips (ST00: 10,000 + 1,000), not payments; void and drafts out.
-    expect(r.salaries).toEqual({ pay: RS(11000), slips: 1 });
+    expect(r.salaries).toEqual({ pay: RS(11000), slips: 1, scope: 'all' });
     expect(r.reconciliation.ties).toBe(true);
     const balances = await accountBalances(db);
     expect(balances.reduce((a, b) => a + b.balance, 0)).toBe(r.reconciliation.movement);

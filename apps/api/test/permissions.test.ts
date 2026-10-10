@@ -210,6 +210,8 @@ POST   /api/cash/sessions/:id/reopen             D A A D D D
 POST   /api/transfers                            D A A A D D
 GET    /api/accounts                             D A A A D D
 POST   /api/accounts                             D A A D D D
+PUT    /api/accounts/:id                         D A A D D D
+POST   /api/accounts/:id/opening                 D A D D D D
 GET    /api/admissions/preview-fees              D A A A D D
 GET    /api/fees/student/:id                     D A A A D D
 GET    /api/dashboard/fees                       D A A A D D

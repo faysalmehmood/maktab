@@ -99,6 +99,21 @@ describe('expenses over HTTP', () => {
     const rent = cats.body.categories.find((c) => c.code === 'rent')?.id as string;
     const salaries = cats.body.categories.find((c) => c.code === 'salaries')?.id as string;
 
+    // Paying out of a drawer never opens it behind the payer's back (verify pass): 409 until the
+    // accountant opens their drawer with the float they hold.
+    const closedDrawer = await s.as.acct<{ error: { code: string } }>('POST', '/api/expenses', {
+      category_id: rent,
+      amount: RS(1200),
+      account_id: s.cash,
+    });
+    expect([closedDrawer.status, closedDrawer.body.error.code]).toEqual([409, 'no_open_session']);
+    expect((await s.as.acct('POST', '/api/cash/sessions', { opening: RS(2000) })).status).toBe(201);
+    const twice = await s.as.acct<{ error: { code: string } }>('POST', '/api/cash/sessions', {
+      opening: RS(500),
+    });
+    expect([twice.status, twice.body.error.code]).toEqual([409, 'already_open']);
+    expect((await s.as.acct('POST', '/api/cash/sessions', { opening: RS(2000) })).status).toBe(201);
+
     const id = newId();
     const a = await s.as.acct<{ expense: ExpenseDto }>('POST', '/api/expenses', {
       id,
@@ -288,15 +303,19 @@ describe('payroll over HTTP', () => {
     );
     expect(ap.body.payslip.status).toBe('approved');
     expect(ap.body.payslip.advance.outstanding).toBe(0);
+    expect((await s.as.acct('POST', '/api/cash/sessions', { opening: RS(25000) })).status).toBe(
+      201,
+    );
     const p1 = await s.as.acct<{ payslip: PayslipDetailDto }>('POST', `/api/payslips/${tId}/pay`, {
       amount: RS(20000),
       account_id: s.cash,
     });
-    expect([p1.status, p1.body.payslip.paid, p1.body.payslip.status]).toEqual([
-      201,
-      RS(20000),
-      'approved',
-    ]);
+    expect([
+      p1.status,
+      p1.body.payslip.paid,
+      p1.body.payslip.status,
+      p1.body.payslip.paid_partial,
+    ]).toEqual([201, RS(20000), 'approved', true]);
     const over = await s.as.acct<{ error: { code: string } }>('POST', `/api/payslips/${tId}/pay`, {
       amount: RS(7001),
       account_id: s.bank,
@@ -314,7 +333,7 @@ describe('payroll over HTTP', () => {
       amount: RS(7000),
       account_id: s.bank,
     });
-    expect(p2.body.payslip.status).toBe('paid');
+    expect([p2.body.payslip.status, p2.body.payslip.paid_partial]).toEqual(['paid', false]);
 
     const t2 = list.body.payslips.find((p) => p.staff_id === 'ST_T2')?.id as string;
     const vd = await s.as.admin<{ payslip: PayslipDetailDto }>('POST', `/api/payslips/${t2}/void`, {
@@ -403,7 +422,13 @@ describe('reports, drawer, audit, dashboard over HTTP', () => {
       accounts: { account_id: string; balance: number }[];
       total: number;
     }>('GET', '/api/reports/accounts');
-    expect(balances.body.total).toBe(ie.body.reconciliation.movement);
+    // The accountant sees only whether the books tie (F1); the owner sees the movement itself.
+    expect(Object.keys(ie.body.reconciliation)).toEqual(['ties']);
+    const ieOwner = await s.as.owner<IncomeExpenseDto>(
+      'GET',
+      `/api/reports/income-expense?from=${period}&to=${period}`,
+    );
+    expect(balances.body.total).toBe(ieOwner.body.reconciliation.movement);
     const book = await s.as.acct<CashbookDto>(
       'GET',
       `/api/reports/cashbook?account_id=${s.cash}&from=${period}-01&to=${today}`,

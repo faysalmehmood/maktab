@@ -37,6 +37,7 @@ import {
 } from '@/lib/fees';
 import type { FieldErrors } from '@/lib/form';
 import { useGroups, useProgrammes, useStaff } from '@/lib/queries';
+import { useRoles } from '@/lib/roles';
 
 function H({ children }: { children: string }) {
   return <h3 className="text-base font-semibold">{children}</h3>;
@@ -578,10 +579,64 @@ function PrefixInfo({ fees }: { fees: FeeSettingsDto }) {
   );
 }
 
+/**
+ * Pre-pilot opening balance of one account (owner only, once, before any money moves through it;
+ * the API answers 409 otherwise). Rupees in, paisa out.
+ */
+function OpeningForm({ account }: { account: Account }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [amount, setAmount] = useState('');
+  const [asOf, setAsOf] = useState(karachiToday());
+  const [err, setErr] = useState<string | undefined>();
+  const save = useMutation({
+    mutationFn: (paisa: number) =>
+      sendJson('POST', `/api/accounts/${account.id}/opening`, { amount: paisa, as_of: asOf }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['accounts'] });
+      toast.success(t('fee.setup.openingSaved'));
+    },
+  });
+  return (
+    <form
+      className="flex w-full flex-wrap items-end gap-2"
+      noValidate
+      id={`opening-form-${account.id}`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const p = rupeesToPaisa(amount);
+        if (p === null || p === undefined)
+          return setErr(amount ? 'amount_invalid' : 'amount_required');
+        setErr(undefined);
+        save.mutate(p);
+      }}
+    >
+      <Field id={`opening-amount-${account.id}`} label="fee.setup.opening" error={err}>
+        <AmountInput id={`opening-amount-${account.id}`} value={amount} onChange={setAmount} />
+      </Field>
+      <Field id={`opening-date-${account.id}`} label="fee.setup.openingAsOf">
+        <Input
+          id={`opening-date-${account.id}`}
+          type="date"
+          className="num"
+          max={karachiToday()}
+          value={asOf}
+          onChange={(e) => setAsOf(e.target.value)}
+        />
+      </Field>
+      <Button type="submit" variant="outline" disabled={save.isPending}>
+        {t('fee.setup.openingSet')}
+      </Button>
+      <ErrorNote error={save.error} />
+    </form>
+  );
+}
+
 function AccountsEditor() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const accounts = useAccounts().data?.accounts ?? [];
+  const isOwner = useRoles().includes('owner');
   const staff = (useStaff().data?.items ?? []).filter((s) => s.staff_id);
   const [d, setD] = useState({ name: '', kind: 'cash' as Account['kind'], holder: '' });
   const [err, setErr] = useState<string | undefined>();
@@ -604,6 +659,7 @@ function AccountsEditor() {
     <div className="flex flex-col gap-3">
       <H>{t('fee.setup.accounts')}</H>
       <p className="text-xs text-muted-foreground">{t('fee.setup.accountsHint')}</p>
+      {isOwner && <p className="text-xs text-muted-foreground">{t('fee.setup.openingHint')}</p>}
       <ul className="flex flex-col divide-y" id="accounts-list">
         {accounts.map((a) => (
           <li key={a.id} className="flex min-h-11 flex-wrap items-center gap-2">
@@ -613,6 +669,22 @@ function AccountsEditor() {
               <span className="text-sm text-muted-foreground">
                 <bdi>{holder(a.holder_staff_id)}</bdi>
               </span>
+            )}
+            {a.kind === 'cash' && a.has_movements && (
+              <Lock
+                className="size-4 text-muted-foreground"
+                aria-label={t('fee.setup.holderFixed')}
+              >
+                <title>{t('fee.setup.holderFixed')}</title>
+              </Lock>
+            )}
+            {a.opening_as_of ? (
+              <span className="text-sm text-muted-foreground" data-opening={a.id}>
+                {t('fee.setup.opening')}: <Money paisa={a.opening_balance ?? 0} /> ·{' '}
+                <Num>{a.opening_as_of}</Num>
+              </span>
+            ) : (
+              isOwner && !a.has_movements && <OpeningForm account={a} />
             )}
           </li>
         ))}

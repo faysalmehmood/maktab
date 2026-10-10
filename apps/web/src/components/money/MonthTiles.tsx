@@ -60,7 +60,12 @@ export function MonthTiles() {
         </Tile>
         <Tile
           id="tile-month-spending"
-          title={t('money.dash.spending')}
+          // Without owner pay visible the figure leaves management out, and says so (F1).
+          title={
+            d.salaries_scope === 'excluding_owners'
+              ? t('money.dash.spendingExMgmt')
+              : t('money.dash.spending')
+          }
           to="/reports/income-expense"
         >
           <Money paisa={d.expenses + d.salaries} />

@@ -5,10 +5,16 @@ import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AmountInput, Money, ReasonDialog } from '@/components/fees/common';
 import { Field, PageTitle } from '@/components/form';
-import { AccountSelect, MoneyErrorNote, ReportActions } from '@/components/money/common';
+import {
+  AccountSelect,
+  MoneyErrorNote,
+  payOutAccounts,
+  ReportActions,
+} from '@/components/money/common';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -69,7 +75,9 @@ export function AddExpenseDialog({
   const qc = useQueryClient();
   const today = karachiToday();
   const cats = (useExpenseCategories(open).data?.categories ?? []).filter((c) => !c.system);
-  const accounts = useAccounts(open).data?.accounts ?? [];
+  const acc = useAccounts(open).data;
+  // Cash leaves only the payer's own drawer (F3): other drawers are not offered.
+  const accounts = payOutAccounts(acc?.accounts ?? [], acc?.my_drawer);
   const blank: Draft = {
     category: '',
     amount: '',
@@ -371,16 +379,14 @@ export function ExpenseFilters({ f }: { f: ReturnType<typeof useExpenseFilters> 
       <Field id="exp-q" label="money.common.search">
         <Input id="exp-q" value={f.q} maxLength={60} onChange={(e) => f.setQ(e.target.value)} />
       </Field>
-      <label className="flex min-h-11 items-center gap-2 self-end text-sm">
-        <input
-          id="exp-include-void"
-          type="checkbox"
-          className="size-5"
-          checked={f.includeVoid}
-          onChange={(e) => f.setIncludeVoid(e.target.checked)}
-        />
-        {t('money.common.includeVoid')}
-      </label>
+      {/* The shared 44 px row label: the whole line is the touch target (verify pass). */}
+      <Checkbox
+        id="exp-include-void"
+        className="min-w-11 self-end"
+        checked={f.includeVoid}
+        onChange={(e) => f.setIncludeVoid(e.target.checked)}
+        label={t('money.common.includeVoid')}
+      />
     </div>
   );
 }

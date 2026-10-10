@@ -85,6 +85,20 @@ const DB_CONFLICTS: [RegExp, string, string][] = [
     'Salaries are recorded as payslips, not expenses',
   ],
   [/expense already voided/, 'already_void', 'This expense is already void'],
+  // M4 fix pass: own drawer only, frozen holder/opening, transfers out of a drawer need its session.
+  [
+    /leaves only the payer's own drawer|lands in its collector's own drawer/,
+    'not_your_drawer',
+    'Cash can only leave your own drawer',
+  ],
+  [/its holder is fixed/, 'account_has_movements', 'Money has moved through this account'],
+  [/opening balance is fixed/, 'account_has_movements', 'Money has moved through this account'],
+  [/opening balance is already set/, 'opening_already_set', 'The opening balance is already set'],
+  [
+    /transfer out of a drawer needs the holder's open cash session/,
+    'no_open_session',
+    'Open your drawer first',
+  ],
   [
     /UNIQUE constraint failed: payslip\.staff_id/,
     'already_exists',

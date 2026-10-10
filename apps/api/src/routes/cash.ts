@@ -1,13 +1,19 @@
 import {
+  accountList,
   closeSession,
+  drawerAccountOf,
   openSession,
   recordTransfer,
   reopenSession,
   type SessionRow,
   sessionFor,
+  setAccountOpening,
+  updateAccount,
 } from '@maktab/db';
 import {
   accountInputSchema,
+  accountOpeningSchema,
+  accountUpdateSchema,
   newId,
   sessionCloseSchema,
   sessionOpenSchema,
@@ -17,6 +23,7 @@ import {
 import { sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { z } from 'zod';
+import { principalRoles } from '../auth/principal';
 import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
 import { sessionDtos } from '../lib/fees';
@@ -159,10 +166,60 @@ export function cashRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     table,
     { method: 'GET', path: '/api/accounts', access: requires('cash_session', 'transfer') },
     async (c) => {
-      const rows = await c
-        .get('db')
-        .all(sql`SELECT id, name, kind, holder_staff_id FROM account ORDER BY kind, name`);
-      return c.json({ accounts: rows });
+      // `my_drawer`: the caller's own drawer — the only cash account they can pay out of or move
+      // cash from (M4 fix pass, F3); pickers offer it and the bank/wallet accounts.
+      const db = c.get('db');
+      const rows = await accountList(db);
+      return c.json({
+        accounts: rows.map((r) => ({ ...r, has_movements: !!r.has_movements })),
+        my_drawer: await drawerAccountOf(db, userId(c)),
+      });
+    },
+  );
+
+  defineRoute(
+    app,
+    table,
+    { method: 'PUT', path: '/api/accounts/:id', access: requires('settings', 'manage') },
+    async (c) => {
+      const input = await jsonBody(c, accountUpdateSchema);
+      const db = c.get('db');
+      const id = idParam(c);
+      await updateAccount(db, {
+        accountId: id,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.holder_staff_id !== undefined ? { holderStaffId: input.holder_staff_id } : {}),
+        by: userId(c),
+      });
+      const [row] = (await accountList(db)).filter((a) => a.id === id);
+      return c.json({ account: row ? { ...row, has_movements: !!row.has_movements } : null });
+    },
+  );
+
+  /**
+   * Pre-pilot opening balance: owners only (settings.manage, then the owner role here), once, before
+   * any money moved through the account (409 opening_already_set / account_has_movements).
+   */
+  defineRoute(
+    app,
+    table,
+    { method: 'POST', path: '/api/accounts/:id/opening', access: requires('settings', 'manage') },
+    async (c) => {
+      const p = c.get('principal');
+      if (!p || !principalRoles(p).includes('owner'))
+        throw new ApiError(403, 'forbidden', 'Only an owner sets an opening balance');
+      const input = await jsonBody(c, accountOpeningSchema);
+      const db = c.get('db');
+      const id = idParam(c);
+      await setAccountOpening(db, {
+        accountId: id,
+        amount: input.amount,
+        asOf: input.as_of,
+        today: todayPk(),
+        by: userId(c),
+      });
+      const [row] = (await accountList(db)).filter((a) => a.id === id);
+      return c.json({ account: row ? { ...row, has_movements: !!row.has_movements } : null });
     },
   );
 

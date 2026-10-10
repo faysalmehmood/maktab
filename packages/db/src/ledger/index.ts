@@ -82,7 +82,13 @@ const insertReceipt = (r: {
           (SELECT series || '-' || year || '-' || printf('%05d', next_no - 1) FROM receipt_series
            WHERE series = ${r.series.series} AND year = ${r.series.year}),
           ${r.kind}, ${r.reversesId}, ${r.payerType}, ${r.payerId}, ${r.amount}, ${r.method},
-          ${r.accountId ?? null}, ${r.collectorId}, ${sessionValue(r.cashSessionId)}, ${r.businessDate},
+          ${
+            r.method === 'cash'
+              ? // Cash lands in the drawer of the session's holder, stored now (M4 fix pass, F4).
+                sql`(SELECT d.account_id FROM drawer_account d JOIN cash_session s ON s.collector_id = d.user_id
+                     WHERE s.id = ${sessionValue(r.cashSessionId)})`
+              : (r.accountId ?? null)
+          }, ${r.collectorId}, ${sessionValue(r.cashSessionId)}, ${r.businessDate},
           ${r.idempotencyKey}, ${r.reference ?? null}, ${r.note ?? null}, ${r.collectorId})`;
 
 /** Idempotent on `id`: a retried allocation inserts nothing (and so fires no trigger). */

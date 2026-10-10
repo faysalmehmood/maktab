@@ -19,6 +19,9 @@ export type Account = {
   name: string;
   kind: 'cash' | 'bank' | 'wallet';
   holder_staff_id: string | null;
+  opening_balance?: number;
+  opening_as_of?: string | null;
+  has_movements?: boolean;
 };
 
 // ---- amounts ----------------------------------------------------------------------------------
@@ -165,7 +168,7 @@ export const useFeeSettings = () =>
 export const useAccounts = (enabled = true) =>
   useQuery({
     queryKey: ['accounts'],
-    queryFn: () => getJson<{ accounts: Account[] }>('/api/accounts'),
+    queryFn: () => getJson<{ accounts: Account[]; my_drawer?: string | null }>('/api/accounts'),
     enabled,
   });
 

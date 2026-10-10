@@ -407,6 +407,14 @@ export const feeEn = {
     accountKind: 'Kind',
     accountKinds: { cash: 'Cash drawer', bank: 'Bank', wallet: 'Wallet' },
     holder: 'Held by',
+    holderFixed:
+      'Money has moved through this drawer: its holder is fixed. Add a new drawer for a new holder.',
+    opening: 'Opening balance',
+    openingAsOf: 'As of',
+    openingSet: 'Set opening balance',
+    openingHint:
+      'Owner only, once, before any money moves through the account: what it held on the day you start.',
+    openingSaved: 'Opening balance saved',
     nobody: 'Nobody',
     addAccount: 'Add account',
     saved: 'Saved',
@@ -876,6 +884,14 @@ export const feeUr: Shape<typeof feeEn> = {
     accountKind: 'قسم',
     accountKinds: { cash: 'کیش دراز', bank: 'بینک', wallet: 'والٹ' },
     holder: 'کس کے پاس',
+    holderFixed:
+      'اس دراز سے رقم گزر چکی ہے: اس کا مالک اب نہیں بدلتا۔ نئے شخص کے لیے نیا دراز بنائیں۔',
+    opening: 'ابتدائی بیلنس',
+    openingAsOf: 'بتاریخ',
+    openingSet: 'ابتدائی بیلنس درج کریں',
+    openingHint:
+      'صرف مالک، صرف ایک بار، اکاؤنٹ میں کوئی لین دین ہونے سے پہلے: شروع کے دن اس میں کتنی رقم تھی۔',
+    openingSaved: 'ابتدائی بیلنس محفوظ ہو گیا',
     nobody: 'کوئی نہیں',
     addAccount: 'اکاؤنٹ شامل کریں',
     saved: 'محفوظ ہو گیا',

@@ -39,7 +39,15 @@ const accounts = {
   accounts: [
     { id: CASH, name: 'Drawers', kind: 'cash', holder_staff_id: null },
     { id: BANK, name: 'HBL current', kind: 'bank', holder_staff_id: null },
+    // Someone else's drawer: never offered for paying out (F3).
+    {
+      id: '01JACC00000000000000OTHER0',
+      name: 'Other drawer',
+      kind: 'cash',
+      holder_staff_id: 'ST9',
+    },
   ],
+  my_drawer: CASH,
 };
 const categories = {
   categories: [
@@ -93,7 +101,7 @@ const ie: IncomeExpenseDto = {
     ],
     total: RS(1000),
   },
-  salaries: { pay: RS(3000), slips: 1 },
+  salaries: { pay: RS(3000), slips: 1, scope: 'all' },
   net: RS(4000),
   months: [
     { period: '2026-09', income: RS(5000), expenses: RS(1000), salaries: RS(3000), net: RS(1000) },
@@ -160,6 +168,7 @@ const month: MonthDashboardDto = {
   income: RS(8000),
   expenses: RS(1000),
   salaries: RS(3000),
+  salaries_scope: 'all',
   net: RS(4000),
   dues_outstanding: RS(500),
   defaulters: 2,

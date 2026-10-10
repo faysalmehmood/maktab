@@ -1,6 +1,16 @@
+import { newId } from '@maktab/shared';
 import { type SQL, sql } from 'drizzle-orm';
 import type { AppDb } from '../client';
-import { addPeriods, assertPeriod, FeeError, periodEnd, periodStart } from './util';
+import {
+  addPeriods,
+  assertPeriod,
+  auditStatement,
+  DATE_RE,
+  FeeError,
+  periodEnd,
+  periodStart,
+  runBatch,
+} from './util';
 
 /**
  * Money reports (PLAN §14.8, §14.11). Derived at query time, never stored.
@@ -10,13 +20,22 @@ import { addPeriods, assertPeriod, FeeError, periodEnd, periodStart } from './ut
  * credit (receipt kind `opening`) is not money and never income. Transfers move money between
  * accounts and advances are a receivable: neither is income or expense.
  * Expense = Σ non-void expenses by date + salaries = Σ payslip pay (earnings − deductions) of approved
- * or paid slips, by the slip's month — what was earned, not what was paid.
+ * or paid slips, by the slip's month — what the school owes its staff for that month (M4 fix pass,
+ * F8: deductions such as unpaid leave are pay not owed; advance recovery is not a deduction, it
+ * settles a receivable). There is no withholding (tax/EOBI) line kind.
+ *
+ * Owner-pay privacy (M4 fix pass, F1): a caller who may not read owners' payslips (the accountant,
+ * scope `all_except_owner`) gets salaries — and so the net — without owner-role staff
+ * (`excludeOwners`, `salaries.scope = 'excluding_owners'`, labelled "Salaries (excluding
+ * management)"), and owner salary/advance rows in the cashbook masked as `owner_draw` with no name.
+ * The amounts in the accounts are real bank/drawer movements and stay.
  *
  * Account movements (cashbook, balances, the reconciliation) all read the `money_movement` view
  * (sql/60_money_out.sql), so they tie out by construction.
  */
 
 export type MonthRange = { from: string; to: string };
+export type SalaryScope = 'all' | 'excluding_owners';
 
 function checkRange(r: MonthRange): void {
   assertPeriod(r.from);
@@ -56,7 +75,8 @@ export type IncomeExpenseReport = {
   to: string;
   income: { by_head: IncomeHeadRow[]; unallocated: number; total: number };
   expenses: { by_category: ExpenseCategoryRow[]; total: number };
-  salaries: { pay: number; slips: number };
+  /** `excluding_owners`: owner-role staff are left out (the caller cannot read owners' pay). */
+  salaries: { pay: number; slips: number; scope: SalaryScope };
   /** income − expenses − salaries */
   net: number;
   months: IncomeExpenseMonth[];
@@ -75,7 +95,11 @@ export type IncomeExpenseReport = {
   };
 };
 
-export async function incomeExpense(db: AppDb, r: MonthRange): Promise<IncomeExpenseReport> {
+export async function incomeExpense(
+  db: AppDb,
+  r: MonthRange,
+  o: { excludeOwners?: boolean } = {},
+): Promise<IncomeExpenseReport> {
   checkRange(r);
   const d0 = periodStart(r.from);
   const d1 = periodEnd(r.to);
@@ -99,9 +123,11 @@ export async function incomeExpense(db: AppDb, r: MonthRange): Promise<IncomeExp
         GROUP BY e.category_id, period`,
   );
   const salaries = await db.all<{ period: string; pay: number; slips: number }>(
-    sql`SELECT period_key AS period, coalesce(sum(pay), 0) AS pay, count(*) AS slips FROM payslip_net
-        WHERE status IN ('approved', 'paid') AND period_key BETWEEN ${r.from} AND ${r.to}
-        GROUP BY period_key`,
+    sql`SELECT n.period_key AS period, coalesce(sum(n.pay), 0) AS pay, count(*) AS slips
+        FROM payslip_net n JOIN staff st ON st.id = n.staff_id
+        WHERE n.status IN ('approved', 'paid') AND n.period_key BETWEEN ${r.from} AND ${r.to}
+          ${o.excludeOwners ? excludeOwnersSql(sql`st.user_id`) : sql``}
+        GROUP BY n.period_key`,
   );
   const [moves] = await db.all<{
     salary_paid: number;
@@ -111,7 +137,7 @@ export async function incomeExpense(db: AppDb, r: MonthRange): Promise<IncomeExp
     sql`SELECT coalesce(sum(CASE WHEN kind = 'salary' THEN -amount END), 0) AS salary_paid,
           coalesce(sum(CASE WHEN kind = 'advance' THEN -amount END), 0) AS advances_paid,
           coalesce(sum(amount), 0) AS movement
-        FROM money_movement WHERE date BETWEEN ${d0} AND ${d1}`,
+        FROM money_movement WHERE date BETWEEN ${d0} AND ${d1} AND kind <> 'opening'`,
   );
 
   const heads = new Map<string, IncomeHeadRow>();
@@ -175,7 +201,11 @@ export async function incomeExpense(db: AppDb, r: MonthRange): Promise<IncomeExp
       by_category: [...cats.values()].sort((a, b) => b.amount - a.amount),
       total: expenseTotal,
     },
-    salaries: { pay, slips: sum(salaries, (x) => x.slips) },
+    salaries: {
+      pay,
+      slips: sum(salaries, (x) => x.slips),
+      scope: o.excludeOwners ? 'excluding_owners' : 'all',
+    },
     net: incomeTotal - expenseTotal - pay,
     months,
     reconciliation: {
@@ -200,8 +230,9 @@ export type AccountBalance = {
 };
 
 /**
- * Every account's balance from its movements up to `asOf` (inclusive; default: all). A row with
- * `account_id` null collects drawer cash taken while no cash account existed.
+ * Every account's balance from its movements up to `asOf` (inclusive; default: all), starting from
+ * its opening balance (a movement of kind 'opening' on its as-of date). A row with `account_id` null
+ * collects drawer cash taken while no cash account existed.
  */
 export async function accountBalances(
   db: AppDb,
@@ -229,7 +260,19 @@ export async function accountBalances(
 
 export type CashbookRow = {
   date: string;
-  kind: 'receipt' | 'expense' | 'salary' | 'advance' | 'transfer_in' | 'transfer_out';
+  /**
+   * `owner_draw`: an owner's salary or advance shown to a caller who may not see owners' pay (the
+   * party is "—"); `opening`: the account's opening balance.
+   */
+  kind:
+    | 'receipt'
+    | 'expense'
+    | 'salary'
+    | 'advance'
+    | 'transfer_in'
+    | 'transfer_out'
+    | 'opening'
+    | 'owner_draw';
   subkind: string | null;
   ref_id: string;
   ref_no: string | null;
@@ -262,12 +305,26 @@ const partySql: SQL = sql`CASE m.kind
                       JOIN staff st ON st.id = p.staff_id WHERE sp.id = m.ref_id)
   WHEN 'advance' THEN (SELECT st.name FROM staff_advance a JOIN staff st ON st.id = a.staff_id
                        WHERE a.id = m.ref_id)
+  WHEN 'opening' THEN NULL
   ELSE (SELECT name FROM account WHERE id = m.ref_no) END`;
 
-/** One account between two dates: opening balance, every movement with a running balance, closing. */
+/** The staff member's user is an owner (salary and advance movements; else 0). */
+const ownerMoveSql: SQL = sql`CASE m.kind
+  WHEN 'salary' THEN EXISTS (SELECT 1 FROM salary_payment sp JOIN payslip p ON p.id = sp.payslip_id
+                             JOIN staff st ON st.id = p.staff_id JOIN role ro ON ro.user_id = st.user_id
+                             WHERE sp.id = m.ref_id AND ro.role = 'owner')
+  WHEN 'advance' THEN EXISTS (SELECT 1 FROM staff_advance a JOIN staff st ON st.id = a.staff_id
+                              JOIN role ro ON ro.user_id = st.user_id WHERE a.id = m.ref_id AND ro.role = 'owner')
+  ELSE 0 END`;
+
+/**
+ * One account between two dates: opening balance, every movement with a running balance, closing.
+ * `maskOwners` (F1): an owner's salary/advance row becomes kind `owner_draw`, party "—", no subkind
+ * or reference (the amount stays: it is a real movement of the account).
+ */
 export async function cashbook(
   db: AppDb,
-  o: { accountId: string; from: string; to: string },
+  o: { accountId: string; from: string; to: string; maskOwners?: boolean },
 ): Promise<Cashbook> {
   if (o.from > o.to) throw new FeeError('invalid', 'from: after to', 400);
   const [account] = await db.all<{ id: string; name: string; kind: string }>(
@@ -279,7 +336,20 @@ export async function cashbook(
         WHERE account_id = ${o.accountId} AND date < ${o.from}`,
   );
   const raw = await db.all<Omit<CashbookRow, 'balance'>>(
-    sql`SELECT m.date, m.kind, m.subkind, m.ref_id,
+    o.maskOwners
+      ? sql`SELECT date, CASE WHEN owner THEN 'owner_draw' ELSE kind END AS kind,
+              CASE WHEN owner THEN NULL ELSE subkind END AS subkind,
+              CASE WHEN owner THEN 'owner_draw' ELSE ref_id END AS ref_id, ref_no,
+              CASE WHEN owner THEN '—' ELSE party END AS party, amount, cash_session_id
+            FROM (SELECT m.date, m.kind, m.subkind, m.ref_id,
+                    CASE WHEN m.kind IN ('receipt', 'expense') THEN m.ref_no END AS ref_no,
+                    ${partySql} AS party, m.amount, m.cash_session_id, ${ownerMoveSql} AS owner,
+                    m.created_at
+                  FROM money_movement m
+                  WHERE m.account_id = ${o.accountId} AND m.date BETWEEN ${o.from} AND ${o.to})
+            ORDER BY date, created_at, ref_id, kind
+            LIMIT 5000`
+      : sql`SELECT m.date, m.kind, m.subkind, m.ref_id,
           CASE WHEN m.kind IN ('receipt', 'expense') THEN m.ref_no END AS ref_no,
           ${partySql} AS party, m.amount, m.cash_session_id
         FROM money_movement m
@@ -456,6 +526,45 @@ export async function payslipDetail(db: AppDb, id: string): Promise<PayslipDetai
   };
 }
 
+/**
+ * A staff member's own approved/paid payslips with their lines, payments and advance balance, in
+ * three statements whatever the number of slips (M4 fix pass, F2: no per-slip loop).
+ */
+export async function myPayslips(db: AppDb, userId: string, limit = 36): Promise<PayslipDetail[]> {
+  const rows = await db.all<
+    PayslipRow & { advanced: number | null; recovered: number | null; outstanding: number | null }
+  >(
+    sql`SELECT n.id, n.staff_id, st.name AS staff_name, st.role AS staff_role, st.user_id AS staff_user_id,
+          n.period_key, n.status, n.earnings, n.deductions, n.recovery, n.pay, n.net, n.paid,
+          p.approved_by, (SELECT name FROM "user" WHERE id = p.approved_by) AS approved_by_name,
+          p.approved_at, p.void_reason, b.advanced, b.recovered, b.outstanding
+        FROM payslip_net n JOIN payslip p ON p.id = n.id JOIN staff st ON st.id = n.staff_id
+        LEFT JOIN advance_balance b ON b.staff_id = n.staff_id
+        WHERE st.user_id = ${userId} AND n.status IN ('approved', 'paid')
+        ORDER BY n.period_key DESC, n.id LIMIT ${limit}`,
+  );
+  if (!rows.length) return [];
+  const ids = JSON.stringify(rows.map((r) => r.id));
+  const lines = await db.all<PayslipDetail['lines'][number] & { payslip_id: string }>(
+    sql`SELECT id, payslip_id, kind, amount, note FROM payslip_line
+        WHERE payslip_id IN (SELECT value FROM json_each(${ids}))
+        ORDER BY CASE kind WHEN 'basic' THEN 0 WHEN 'allowance' THEN 1 WHEN 'deduction' THEN 2 ELSE 3 END,
+                 created_at, id`,
+  );
+  const payments = await db.all<PayslipDetail['payments'][number] & { payslip_id: string }>(
+    sql`SELECT sp.id, sp.payslip_id, sp.amount, sp.account_id, a.name AS account_name, sp.date, sp.note,
+          sp.cash_session_id
+        FROM salary_payment sp JOIN account a ON a.id = sp.account_id
+        WHERE sp.payslip_id IN (SELECT value FROM json_each(${ids})) ORDER BY sp.date, sp.created_at`,
+  );
+  return rows.map(({ advanced, recovered, outstanding, ...row }) => ({
+    ...row,
+    lines: lines.filter((l) => l.payslip_id === row.id).map(({ payslip_id: _p, ...l }) => l),
+    payments: payments.filter((x) => x.payslip_id === row.id).map(({ payslip_id: _p, ...x }) => x),
+    advance: { advanced: advanced ?? 0, recovered: recovered ?? 0, outstanding: outstanding ?? 0 },
+  }));
+}
+
 export type AdvanceRegisterRow = {
   staff_id: string;
   staff_name: string;
@@ -499,4 +608,113 @@ export async function advanceRegister(
         ORDER BY a.date DESC, a.created_at DESC LIMIT 1000`,
   );
   return { balances, advances };
+}
+
+// ---- Account set-up (M4 fix pass) -----------------------------------------------------------------
+
+async function accountHasMovements(db: AppDb, accountId: string): Promise<boolean> {
+  const [row] = await db.all<{ n: number }>(
+    sql`SELECT EXISTS (SELECT 1 FROM money_movement WHERE account_id = ${accountId} AND kind <> 'opening') AS n`,
+  );
+  return !!row?.n;
+}
+
+export type AccountRow = {
+  id: string;
+  name: string;
+  kind: 'cash' | 'bank' | 'wallet';
+  holder_staff_id: string | null;
+  opening_balance: number;
+  opening_as_of: string | null;
+  has_movements: number;
+};
+
+export async function accountList(db: AppDb): Promise<AccountRow[]> {
+  return db.all<AccountRow>(
+    sql`SELECT a.id, a.name, a.kind, a.holder_staff_id, a.opening_balance, a.opening_as_of,
+          EXISTS (SELECT 1 FROM money_movement m WHERE m.account_id = a.id AND m.kind <> 'opening') AS has_movements
+        FROM account a ORDER BY a.kind, a.name`,
+  );
+}
+
+/**
+ * The pre-pilot opening balance (owner only, enforced by the route): set once, before any money has
+ * moved through the account (409 `opening_already_set` / `account_has_movements`; trigger
+ * account_opening_once is the backstop). It may be negative only for a bank account (an overdraft).
+ */
+export async function setAccountOpening(
+  db: AppDb,
+  input: { accountId: string; amount: number; asOf: string; today: string; by: string },
+): Promise<void> {
+  if (!Number.isInteger(input.amount)) throw new FeeError('invalid', 'amount: paisa', 400);
+  if (!DATE_RE.test(input.asOf) || input.asOf > input.today)
+    throw new FeeError('invalid', 'as_of: a date, not in the future', 400);
+  const [a] = await db.all<{ kind: string; opening_as_of: string | null }>(
+    sql`SELECT kind, opening_as_of FROM account WHERE id = ${input.accountId}`,
+  );
+  if (!a) throw new FeeError('not_found', 'Account not found', 404);
+  if (input.amount < 0 && a.kind !== 'bank')
+    throw new FeeError('invalid', 'Only a bank account can open overdrawn', 400);
+  if (a.opening_as_of)
+    throw new FeeError('opening_already_set', 'The opening balance is already set');
+  if (await accountHasMovements(db, input.accountId))
+    throw new FeeError(
+      'account_has_movements',
+      'Money has already moved through this account; its opening balance is fixed',
+    );
+  await runBatch(db, [
+    sql`UPDATE account SET opening_balance = ${input.amount}, opening_as_of = ${input.asOf}
+        WHERE id = ${input.accountId}`,
+    auditStatement({
+      id: newId(),
+      userId: input.by,
+      entity: 'account',
+      entityId: input.accountId,
+      action: 'opening',
+      diff: {
+        before: { opening_balance: 0, opening_as_of: null },
+        after: { opening_balance: input.amount, opening_as_of: input.asOf },
+      },
+    }),
+  ]);
+}
+
+/**
+ * Rename an account or change who holds it (a drawer's holder decides whose cash lands in it). The
+ * holder is history once money has moved through the account (409 `account_has_movements`; trigger
+ * account_holder_frozen): open a new drawer account for the new holder instead.
+ */
+export async function updateAccount(
+  db: AppDb,
+  input: { accountId: string; name?: string; holderStaffId?: string | null; by: string },
+): Promise<void> {
+  const [a] = await db.all<{ name: string; holder_staff_id: string | null }>(
+    sql`SELECT name, holder_staff_id FROM account WHERE id = ${input.accountId}`,
+  );
+  if (!a) throw new FeeError('not_found', 'Account not found', 404);
+  const after = {
+    name: input.name ?? a.name,
+    holder_staff_id: input.holderStaffId === undefined ? a.holder_staff_id : input.holderStaffId,
+  };
+  if (after.name === a.name && after.holder_staff_id === a.holder_staff_id) return;
+  if (
+    after.holder_staff_id !== a.holder_staff_id &&
+    (await accountHasMovements(db, input.accountId))
+  )
+    throw new FeeError(
+      'account_has_movements',
+      'Money has already moved through this drawer; open a new drawer account for the new holder',
+    );
+  await runBatch(db, [
+    sql`UPDATE account SET name = ${after.name}, holder_staff_id = ${after.holder_staff_id}
+        WHERE id = ${input.accountId}`,
+    auditStatement({
+      id: newId(),
+      userId: input.by,
+      entity: 'account',
+      entityId: input.accountId,
+      action: 'update',
+      diff: { before: a, after },
+    }),
+  ]);
 }

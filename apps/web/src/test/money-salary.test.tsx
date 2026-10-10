@@ -30,6 +30,7 @@ const slipRow = (o: Partial<PayslipDto> = {}): PayslipDto => ({
   pay: RS(32000),
   net: RS(30000),
   paid: 0,
+  paid_partial: false,
   approved_by_name: null,
   approved_at: null,
   void_reason: null,
@@ -54,7 +55,10 @@ const accounts = {
   accounts: [
     { id: 'ACC-CASH', name: 'Drawers', kind: 'cash', holder_staff_id: null },
     { id: 'ACC-BANK', name: 'HBL', kind: 'bank', holder_staff_id: null },
+    // Someone else's drawer: never offered for paying out (F3).
+    { id: 'ACC-OTHER', name: 'Other drawer', kind: 'cash', holder_staff_id: 'ST9' },
   ],
+  my_drawer: 'ACC-CASH',
 };
 
 beforeAll(async () => {

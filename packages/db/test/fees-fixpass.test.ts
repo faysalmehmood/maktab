@@ -487,7 +487,7 @@ describe('L7 ledger triggers (reviewer ALLOWED attacks)', () => {
     // The helper's shape passes: R-2026-00003 is the number the bump just took.
     await run(
       `UPDATE receipt_series SET next_no = next_no + 1`,
-      `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, collector_id, cash_session_id, business_date, idempotency_key) VALUES ('ok','R-2026-00003','payment','family','F3',100,'cash','U2','CS','2026-10-06','kx6')`,
+      `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, account_id, collector_id, cash_session_id, business_date, idempotency_key) VALUES ('ok','R-2026-00003','payment','family','F3',100,'cash',(SELECT account_id FROM drawer_account WHERE user_id = 'U2'),'U2','CS','2026-10-06','kx6')`,
     );
     expect(await consistency()).toEqual([]);
   });

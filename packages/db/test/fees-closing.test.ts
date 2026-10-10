@@ -502,7 +502,7 @@ describe('scen.ts repros (M3a closing pass)', () => {
     await exec(
       db,
       `UPDATE receipt_series SET next_no = next_no + 1 WHERE series = 'R' AND year = 2026`,
-      `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, collector_id, cash_session_id, business_date, idempotency_key) VALUES ('old',(SELECT 'R-2026-' || printf('%05d', next_no - 1) FROM receipt_series WHERE series='R'),'payment','family','F3',${RS(300)},'cash','U2','${s?.id}','2026-10-09','kold')`,
+      `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, account_id, collector_id, cash_session_id, business_date, idempotency_key) VALUES ('old',(SELECT 'R-2026-' || printf('%05d', next_no - 1) FROM receipt_series WHERE series='R'),'payment','family','F3',${RS(300)},'cash',(SELECT account_id FROM drawer_account WHERE user_id = 'U2'),'U2','${s?.id}','2026-10-09','kold')`,
     );
     const day = async (d: string) =>
       (await collectionByCollector(db, { from: d, to: d })).map((r) => [r.method, r.received]);

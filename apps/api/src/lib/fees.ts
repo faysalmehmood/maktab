@@ -4,7 +4,6 @@ import {
   chargeStatements,
   chunkLogStatement,
   concessionStatement,
-  expectedSql,
   feeSettings,
   type GenEnrolment,
   loadContext,
@@ -213,28 +212,61 @@ export async function defaultAccount(db: AppDb, method: string): Promise<string 
   return null;
 }
 
-/** Sessions with live figures: an open session's expected is computed now. */
+/**
+ * Sessions with live figures: an open session's expected is computed now. Two statements whatever
+ * the number of sessions (M4 fix pass: no per-row queries in reads; the list holds up to 100).
+ * expected = opening + cash receipts − drawer expenses − salary − advances − handovers, the same sum
+ * as `expectedSql` (the close stores that one).
+ */
 export async function sessionDtos(db: AppDb, rows: SessionRow[]): Promise<CashSessionDto[]> {
-  const out: CashSessionDto[] = [];
-  for (const s of rows) {
-    const [live] = await db.all<{ expected: number; collector_name: string | null }>(
-      sql`SELECT ${expectedSql(s.id)} AS expected, (SELECT name FROM "user" WHERE id = ${s.collector_id}) AS collector_name`,
-    );
-    const byMethod = await db.all<{ method: string; amount: number; count: number }>(sql`
-      SELECT method, sum(amount) AS amount, count(*) AS count FROM receipt
-      WHERE cash_session_id = ${s.id} GROUP BY method ORDER BY method`);
-    const [outRow] = await db.all<CashSessionDto['paid_out']>(sql`SELECT
-      (SELECT coalesce(sum(amount), 0) FROM expense WHERE cash_session_id = ${s.id} AND voided_by IS NULL) AS expenses,
-      (SELECT coalesce(sum(amount), 0) FROM salary_payment WHERE cash_session_id = ${s.id}) AS salaries,
-      (SELECT coalesce(sum(amount), 0) FROM staff_advance WHERE cash_session_id = ${s.id}) AS advances,
-      (SELECT coalesce(sum(amount), 0) FROM transfer WHERE cash_session_id = ${s.id}) AS transfers`);
-    out.push({
+  if (!rows.length) return [];
+  const ids = JSON.stringify(rows.map((s) => s.id));
+  const figures = await db.all<{
+    id: string;
+    collector_name: string | null;
+    cash_in: number;
+    expenses: number;
+    salaries: number;
+    advances: number;
+    transfers: number;
+  }>(sql`SELECT s.id, (SELECT name FROM "user" WHERE id = s.collector_id) AS collector_name,
+      (SELECT coalesce(sum(amount), 0) FROM receipt WHERE cash_session_id = s.id AND method = 'cash') AS cash_in,
+      (SELECT coalesce(sum(amount), 0) FROM expense WHERE cash_session_id = s.id AND voided_by IS NULL) AS expenses,
+      (SELECT coalesce(sum(amount), 0) FROM salary_payment WHERE cash_session_id = s.id) AS salaries,
+      (SELECT coalesce(sum(amount), 0) FROM staff_advance WHERE cash_session_id = s.id) AS advances,
+      (SELECT coalesce(sum(amount), 0) FROM transfer WHERE cash_session_id = s.id) AS transfers
+    FROM cash_session s WHERE s.id IN (SELECT value FROM json_each(${ids}))`);
+  const methods = await db.all<{
+    session_id: string;
+    method: string;
+    amount: number;
+    count: number;
+  }>(sql`
+    SELECT cash_session_id AS session_id, method, sum(amount) AS amount, count(*) AS count FROM receipt
+    WHERE cash_session_id IN (SELECT value FROM json_each(${ids}))
+    GROUP BY cash_session_id, method ORDER BY method`);
+  return rows.map((s) => {
+    const f = figures.find((x) => x.id === s.id);
+    const paidOut = {
+      expenses: f?.expenses ?? 0,
+      salaries: f?.salaries ?? 0,
+      advances: f?.advances ?? 0,
+      transfers: f?.transfers ?? 0,
+    };
+    const live =
+      s.opening +
+      (f?.cash_in ?? 0) -
+      paidOut.expenses -
+      paidOut.salaries -
+      paidOut.advances -
+      paidOut.transfers;
+    return {
       id: s.id,
       collector_id: s.collector_id,
-      collector_name: live?.collector_name ?? null,
+      collector_name: f?.collector_name ?? null,
       business_date: s.business_date,
       opening: s.opening,
-      expected: s.closed_at && s.expected != null ? s.expected : (live?.expected ?? s.opening),
+      expected: s.closed_at && s.expected != null ? s.expected : live,
       counted: s.counted,
       variance: s.variance,
       closed_at: s.closed_at,
@@ -242,11 +274,10 @@ export async function sessionDtos(db: AppDb, rows: SessionRow[]): Promise<CashSe
       reopened_by: s.reopened_by,
       reopened_at: s.reopened_at,
       reopen_reason: s.reopen_reason,
-      by_method: byMethod,
-      paid_out: outRow ?? { expenses: 0, salaries: 0, advances: 0, transfers: 0 },
-    });
-  }
-  return out;
+      by_method: methods.filter((m) => m.session_id === s.id).map(({ session_id: _s, ...m }) => m),
+      paid_out: paidOut,
+    };
+  });
 }
 
 /** The print-ready receipt (PLAN §14.4): school header, both label sets, one block per child. */

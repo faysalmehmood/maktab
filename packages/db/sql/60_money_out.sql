@@ -40,6 +40,87 @@ BEGIN
 END;
 --> statement-breakpoint
 
+-- M4 fix pass (F3, F6): cash out of a drawer comes from the payer's OWN drawer. A movement on a cash
+-- account carries a session, and the account must be the drawer of that session's holder (the
+-- `drawer_account` lookup below), so nobody pays out of — or moves cash from — someone else's drawer.
+-- Receipts store the drawer they landed in (F4) and are held to the same rule. A transfer out of a
+-- cash account needs the holder's open session like any other cash out. The drawer checks run AFTER
+-- the insert (the row's other shape rules report first); the abort still rolls the batch back.
+CREATE TRIGGER expense_own_drawer AFTER INSERT ON expense WHEN NEW.cash_session_id IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'cash leaves only the payer''s own drawer')
+  WHERE NEW.account_id IS NOT (SELECT d.account_id FROM drawer_account d
+                               JOIN cash_session s ON s.collector_id = d.user_id WHERE s.id = NEW.cash_session_id);
+END;
+--> statement-breakpoint
+CREATE TRIGGER salary_payment_own_drawer AFTER INSERT ON salary_payment WHEN NEW.cash_session_id IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'cash leaves only the payer''s own drawer')
+  WHERE NEW.account_id IS NOT (SELECT d.account_id FROM drawer_account d
+                               JOIN cash_session s ON s.collector_id = d.user_id WHERE s.id = NEW.cash_session_id);
+END;
+--> statement-breakpoint
+CREATE TRIGGER staff_advance_own_drawer AFTER INSERT ON staff_advance WHEN NEW.cash_session_id IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'cash leaves only the payer''s own drawer')
+  WHERE NEW.account_id IS NOT (SELECT d.account_id FROM drawer_account d
+                               JOIN cash_session s ON s.collector_id = d.user_id WHERE s.id = NEW.cash_session_id);
+END;
+--> statement-breakpoint
+CREATE TRIGGER transfer_shape BEFORE INSERT ON transfer
+BEGIN
+  SELECT RAISE(ABORT, 'a transfer out of a drawer needs the holder''s open cash session; a bank transfer takes none')
+  WHERE ((SELECT kind FROM account WHERE id = NEW.from_account) = 'cash') <> (NEW.cash_session_id IS NOT NULL);
+END;
+--> statement-breakpoint
+CREATE TRIGGER transfer_own_drawer AFTER INSERT ON transfer WHEN NEW.cash_session_id IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'cash leaves only the payer''s own drawer')
+  WHERE NEW.from_account IS NOT (SELECT d.account_id FROM drawer_account d
+                                 JOIN cash_session s ON s.collector_id = d.user_id WHERE s.id = NEW.cash_session_id);
+END;
+--> statement-breakpoint
+CREATE TRIGGER receipt_own_drawer AFTER INSERT ON receipt
+WHEN NEW.method = 'cash' AND NEW.kind IN ('payment', 'refund', 'reversal')
+BEGIN
+  SELECT RAISE(ABORT, 'a cash receipt lands in its collector''s own drawer')
+  WHERE NEW.account_id IS NOT (SELECT d.account_id FROM drawer_account d
+                               JOIN cash_session s ON s.collector_id = d.user_id WHERE s.id = NEW.cash_session_id);
+END;
+--> statement-breakpoint
+-- A drawer expense is voided only while its session is open: the close froze the expected cash, so a
+-- late correction is a new entry in an open session (verify pass).
+CREATE TRIGGER expense_void_session_open BEFORE UPDATE OF voided_by ON expense
+WHEN OLD.voided_by IS NULL AND NEW.voided_by IS NOT NULL AND OLD.cash_session_id IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'cash session is closed')
+  WHERE (SELECT closed_at FROM cash_session WHERE id = OLD.cash_session_id) IS NOT NULL;
+END;
+--> statement-breakpoint
+-- An account's holder and opening balance are history once money has moved through it (F4): a new
+-- holder would re-route the drawer lookup, an opening balance would rewrite every running balance.
+-- The opening balance is set once (opening_as_of goes from NULL to a date, and then never changes).
+CREATE TRIGGER account_holder_frozen BEFORE UPDATE OF holder_staff_id ON account
+WHEN OLD.holder_staff_id IS NOT NEW.holder_staff_id
+BEGIN
+  SELECT RAISE(ABORT, 'account has movements; its holder is fixed')
+  WHERE EXISTS (SELECT 1 FROM money_movement m WHERE m.account_id = OLD.id AND m.kind <> 'opening');
+END;
+--> statement-breakpoint
+CREATE TRIGGER account_opening_once BEFORE UPDATE OF opening_balance, opening_as_of ON account
+WHEN OLD.opening_balance IS NOT NEW.opening_balance OR OLD.opening_as_of IS NOT NEW.opening_as_of
+BEGIN
+  SELECT RAISE(ABORT, 'opening balance is already set')
+  WHERE OLD.opening_as_of IS NOT NULL;
+  SELECT RAISE(ABORT, 'account has movements; its opening balance is fixed')
+  WHERE EXISTS (SELECT 1 FROM money_movement m WHERE m.account_id = OLD.id AND m.kind <> 'opening');
+  SELECT RAISE(ABORT, 'opening balance needs a date')
+  WHERE NEW.opening_as_of IS NULL OR NEW.opening_as_of NOT GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-[0-3][0-9]';
+  SELECT RAISE(ABORT, 'opening balance is whole paisa')
+  WHERE typeof(NEW.opening_balance) <> 'integer';
+END;
+--> statement-breakpoint
+
 -- Approval (maker-checker, PLAN §5.4): never by the staff member themself; the net is never negative;
 -- advance recovery never takes back more than is outstanding (recovery counts once the slip is
 -- approved, so the slip being approved is not yet in advance_balance).
@@ -111,9 +192,9 @@ SELECT s.id AS staff_id,
         WHERE p.staff_id = s.id AND p.status IN ('approved', 'paid') AND l.kind = 'advance_recovery') AS outstanding
 FROM staff s;
 --> statement-breakpoint
--- Which account a cash receipt landed in: cash receipts name no account (they go to the collector's
--- drawer), so they belong to the cash account the collector holds, else the shared cash account
--- (no holder), else the first cash account.
+-- A user's drawer: the cash account they hold, else the shared cash account (no holder), else the
+-- first cash account. A lookup only (M4 fix pass): cash receipts store the account they landed in at
+-- insert, and every cash movement must be on its session holder's drawer (triggers above).
 CREATE VIEW drawer_account AS
 SELECT u.id AS user_id,
        coalesce((SELECT a.id FROM account a JOIN staff s ON s.id = a.holder_staff_id
@@ -126,9 +207,12 @@ FROM "user" u;
 -- Every movement of money in or out of an account, signed (in > 0). Cashbook, account balances and
 -- the income/expense reconciliation all read this one view, so they tie out by construction.
 -- Opening credit (receipt kind 'opening') is not money and is left out; transfers are two rows.
+-- A cash receipt names the drawer it landed in (stored at insert since the M4 fix pass; older rows
+-- were backfilled by migration 0016), so changing who holds a drawer never moves history. An
+-- account's pre-pilot opening balance is one row of kind 'opening' on its as-of date (not P&L; the
+-- reconciliation leaves it out).
 CREATE VIEW money_movement AS
-SELECT CASE WHEN r.method = 'cash' THEN (SELECT d.account_id FROM drawer_account d WHERE d.user_id = r.collector_id)
-            ELSE r.account_id END AS account_id,
+SELECT r.account_id AS account_id,
        r.business_date AS date, 'receipt' AS kind, r.kind AS subkind, r.id AS ref_id, r.receipt_no AS ref_no,
        r.amount AS amount, r.cash_session_id, r.collector_id AS by_user, r.created_at
 FROM receipt r WHERE r.kind <> 'opening'
@@ -142,11 +226,15 @@ UNION ALL
 SELECT a.account_id, a.date, 'advance', NULL, a.id, a.staff_id, -a.amount, a.cash_session_id, a.created_by, a.created_at
 FROM staff_advance a
 UNION ALL
--- Both legs of a transfer in one term (D1 allows at most 5 terms in a compound SELECT).
+-- Both legs of a transfer and the opening balances in one term (D1 allows at most 5 terms in a
+-- compound SELECT).
 SELECT * FROM (
   SELECT t.from_account, t.date, 'transfer_out', NULL, t.id, t.to_account, -t.amount, t.cash_session_id, t.created_by, t.created_at
   FROM transfer t
   UNION ALL
   SELECT t.to_account, t.date, 'transfer_in', NULL, t.id, t.from_account, t.amount, NULL, t.created_by, t.created_at
   FROM transfer t
+  UNION ALL
+  SELECT a.id, a.opening_as_of, 'opening', NULL, a.id, NULL, a.opening_balance, NULL, a.created_by, a.opening_as_of
+  FROM account a WHERE a.opening_as_of IS NOT NULL
 );

@@ -251,6 +251,16 @@ export const accountInputSchema = z.object({
   kind: z.enum(ACCOUNT_KINDS),
   holder_staff_id: idSchema.nullable().optional(),
 });
+/** Rename, or change the holder (409 account_has_movements once money moved through it). */
+export const accountUpdateSchema = z.object({
+  name: reqText(60).optional(),
+  holder_staff_id: idSchema.nullable().optional(),
+});
+/** Pre-pilot opening balance (owner, once, before any movement). Paisa; negative = overdrawn bank. */
+export const accountOpeningSchema = z.object({
+  amount: z.number().int().min(-1_000_000_000_00).max(1_000_000_000_00),
+  as_of: isoDateSchema,
+});
 
 export const defaultersQuerySchema = z.object({
   grp_id: idSchema.optional(),

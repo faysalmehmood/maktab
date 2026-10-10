@@ -276,6 +276,13 @@ export const account = sqliteTable(
     name: text('name').notNull(),
     kind: text('kind', { enum: ACCOUNT_KINDS }).notNull(),
     holderStaffId: text('holder_staff_id').references(() => staff.id),
+    /**
+     * Pre-pilot carry-in (M4 fix pass): the money in the account at the start of `opening_as_of`.
+     * Set once, by an owner, before the account has any movement (sql/60_money_out.sql freezes it);
+     * balances and the cashbook start from it (a `money_movement` row of kind 'opening').
+     */
+    openingBalance: integer('opening_balance').notNull().default(0),
+    openingAsOf: text('opening_as_of'),
     ...stamps(),
   },
   () => [check('account_kind', oneOf('kind', ACCOUNT_KINDS))],

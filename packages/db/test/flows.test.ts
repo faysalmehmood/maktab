@@ -68,7 +68,7 @@ const R = (
     sql`INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method,
           account_id, collector_id, cash_session_id, business_date, idempotency_key)
         VALUES (${id}, ${no}, ${kind}, ${reverses}, 'family', ${payer}, ${amount}, ${method},
-          ${session ? null : 'A2'}, 'U1', ${session}, '2026-03-05', ${`k${n}`})`,
+          ${session ? sql`(SELECT account_id FROM drawer_account WHERE user_id = 'U1')` : 'A2'}, 'U1', ${session}, '2026-03-05', ${`k${n}`})`,
   ];
 };
 const bumpR = sql`UPDATE receipt_series SET next_no = next_no + 1 WHERE series = 'R' AND year = 2026`;

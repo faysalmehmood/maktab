@@ -26,6 +26,14 @@ export function MoneyErrorNote({ error }: { error: unknown }) {
   );
 }
 
+/**
+ * Accounts money can be paid out of (M4 fix pass, F3): the caller's own drawer and every bank or
+ * wallet — never someone else's drawer (the API refuses it with not_your_drawer).
+ */
+export function payOutAccounts(accounts: readonly Account[], myDrawer: string | null | undefined) {
+  return accounts.filter((a) => a.kind !== 'cash' || a.id === myDrawer);
+}
+
 /** Account picker: "<name> · Drawer/Bank/Wallet"; names are data (isolated by the option). */
 export function AccountSelect({
   id,
@@ -58,8 +66,21 @@ export function AccountSelect({
   );
 }
 
-export function PayslipStatusBadge({ status }: { status: PayslipStatus }) {
+/** Status badge; an approved slip with part of its net paid reads "Partly paid" (verify pass). */
+export function PayslipStatusBadge({
+  status,
+  partial = false,
+}: {
+  status: PayslipStatus;
+  partial?: boolean;
+}) {
   const { t } = useTranslation();
+  if (status === 'approved' && partial)
+    return (
+      <Badge variant="default" data-status="approved" data-partial="true">
+        {t('money.salary.partlyPaid')}
+      </Badge>
+    );
   const variant =
     status === 'void'
       ? 'destructive'

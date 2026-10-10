@@ -2,7 +2,7 @@ import { newId } from '@maktab/shared';
 import { type SQL, sql } from 'drizzle-orm';
 import type { AppDb } from '../client';
 import type { PAYSLIP_LINE_KINDS } from '../schema';
-import { assertSessionOpen, ensureSessionStatement, sessionIdFor } from './cash';
+import { sessionFor, sessionIdFor } from './cash';
 import { seriesFor } from './collect';
 import { bumpSeries, ensureSeries } from './index';
 import { assertPeriod, auditStatement, DATE_RE, FeeError, karachiToday, runBatch } from './util';
@@ -41,28 +41,59 @@ async function accountFor(db: AppDb, accountId: string | null | undefined): Prom
   return a;
 }
 
+/** The drawer (cash account) a user pays out of and takes cash into: `drawer_account` (a lookup). */
+export async function drawerAccountOf(db: AppDb, userId: string): Promise<string | null> {
+  const [row] = await db.all<{ account_id: string | null }>(
+    sql`SELECT account_id FROM drawer_account WHERE user_id = ${userId}`,
+  );
+  return row?.account_id ?? null;
+}
+
 /**
- * The date rule and the drawer prelude for money paid out. Returns the statements that open the
- * payer's session (cash only) and the SQL resolving its id inside the batch.
+ * Cash out of a drawer (M4 fix pass, F3 + verify pass): only out of the payer's OWN drawer, and only
+ * into a session they opened (counted the float) — paying out never opens a drawer with opening 0
+ * behind the payer's back. 409 `not_your_drawer` / `no_open_session` / `session_closed`.
+ */
+export async function assertOwnOpenDrawer(
+  db: AppDb,
+  o: { accountId: string; by: string; date: string },
+): Promise<void> {
+  const mine = await drawerAccountOf(db, o.by);
+  if (mine !== o.accountId)
+    throw new FeeError('not_your_drawer', 'Cash can only leave your own drawer', 409);
+  const s = await sessionFor(db, o.by, o.date);
+  if (!s)
+    throw new FeeError(
+      'no_open_session',
+      'Open your drawer first (Cash → open with the float you hold)',
+      409,
+    );
+  if (s.closed_at)
+    throw new FeeError(
+      'session_closed',
+      'Your cash session for this day is closed; ask an admin to reopen it',
+    );
+}
+
+/**
+ * The date rule and the drawer rule for money paid out. Returns the SQL resolving the payer's
+ * session id inside the batch (cash only).
  */
 async function moneyOut(
   db: AppDb,
   o: { account: AccountRow; date: string; today: string; by: string },
-): Promise<{ prelude: SQL[]; sessionId: SQL | null }> {
+): Promise<{ sessionId: SQL | null }> {
   if (!DATE_RE.test(o.date)) throw new FeeError('bad_business_date', 'date: YYYY-MM-DD', 400);
   if (o.date > o.today) throw new FeeError('bad_business_date', 'date: in the future', 400);
-  if (o.account.kind !== 'cash') return { prelude: [], sessionId: null };
+  if (o.account.kind !== 'cash') return { sessionId: null };
   if (o.date !== o.today)
     throw new FeeError(
       'bad_business_date',
       'Cash cannot be backdated: it leaves today’s drawer',
       400,
     );
-  await assertSessionOpen(db, o.by, o.today);
-  return {
-    prelude: [ensureSessionStatement(o.by, o.today)],
-    sessionId: sessionIdFor(o.by, o.today),
-  };
+  await assertOwnOpenDrawer(db, { accountId: o.account.id, by: o.by, date: o.today });
+  return { sessionId: sessionIdFor(o.by, o.today) };
 }
 
 // ---- Expenses ----------------------------------------------------------------------------------
@@ -140,11 +171,10 @@ export async function recordExpense(
   const account = await accountFor(db, input.accountId);
   const today = input.today ?? karachiToday();
   const date = input.date ?? today;
-  const { prelude, sessionId } = await moneyOut(db, { account, date, today, by: input.by });
+  const { sessionId } = await moneyOut(db, { account, date, today, by: input.by });
   const series = seriesFor(EXPENSE_SERIES, date, today);
   await runBatch(db, [
     ensureSeries(series),
-    ...prelude,
     bumpSeries(series),
     sql`INSERT INTO expense (id, expense_no, category_id, account_id, cash_session_id, amount, vendor,
           date, note, receipt_key, created_by)
@@ -175,6 +205,17 @@ export async function voidExpense(
   const e = await expenseById(db, input.id);
   if (!e) throw new FeeError('not_found', 'Expense not found', 404);
   if (e.voided_by) throw new FeeError('already_void', 'This expense is already void');
+  if (e.cash_session_id) {
+    // The close froze the drawer's expected cash: a late correction is a new entry (trigger too).
+    const [s] = await db.all<{ closed_at: string | null }>(
+      sql`SELECT closed_at FROM cash_session WHERE id = ${e.cash_session_id}`,
+    );
+    if (s?.closed_at)
+      throw new FeeError(
+        'session_closed',
+        'The drawer this was paid from is closed; record a correction in an open session instead',
+      );
+  }
   await runBatch(db, [
     sql`UPDATE expense SET voided_by = ${input.by}, void_reason = ${reason}
         WHERE id = ${input.id} AND voided_by IS NULL`,
@@ -195,15 +236,27 @@ export async function voidExpense(
   return after;
 }
 
-/** Attach (or replace) the bill photo key; the photo is not money, so this is an ordinary update. */
+/**
+ * Attach (or replace) the bill photo (M4 fix pass, F5): only while the expense is not void, and a
+ * replacement only by whoever recorded it or an owner/admin (`canReplaceAny`). The old object is
+ * never deleted — every version stays in storage and each change is an audit row with the key it
+ * replaced (`expensePhotoVersions`).
+ */
 export async function setExpensePhoto(
   db: AppDb,
-  input: { id: string; key: string; by: string },
+  input: { id: string; key: string; by: string; canReplaceAny: boolean },
 ): Promise<string | null> {
   const e = await expenseById(db, input.id);
   if (!e) throw new FeeError('not_found', 'Expense not found', 404);
+  if (e.voided_by) throw new FeeError('already_void', 'This expense is void; its bill is final');
+  if (e.created_by !== input.by && !input.canReplaceAny)
+    throw new FeeError(
+      'forbidden',
+      'Only whoever recorded this expense, or an owner/admin, can change its bill photo',
+      403,
+    );
   await runBatch(db, [
-    sql`UPDATE expense SET receipt_key = ${input.key} WHERE id = ${input.id}`,
+    sql`UPDATE expense SET receipt_key = ${input.key} WHERE id = ${input.id} AND voided_by IS NULL`,
     auditStatement({
       id: newId(),
       userId: input.by,
@@ -214,6 +267,19 @@ export async function setExpensePhoto(
     }),
   ]);
   return e.receipt_key;
+}
+
+/** Every bill photo an expense has had, oldest first, from its audit rows (objects are kept). */
+export async function expensePhotoVersions(
+  db: AppDb,
+  id: string,
+): Promise<{ key: string; at: string; by: string | null; current: boolean }[]> {
+  const rows = await db.all<{ key: string | null; at: string; by: string | null }>(
+    sql`SELECT json_extract(diff, '$.after.receipt_key') AS key, at, user_id AS by FROM audit
+        WHERE entity = 'expense' AND entity_id = ${id} AND action = 'photo' ORDER BY at, rowid`,
+  );
+  const live = rows.filter((r): r is { key: string; at: string; by: string | null } => !!r.key);
+  return live.map((r, i) => ({ ...r, current: i === live.length - 1 }));
 }
 
 // ---- Advances ----------------------------------------------------------------------------------
@@ -265,9 +331,8 @@ export async function recordAdvance(
   const account = await accountFor(db, input.accountId);
   const today = input.today ?? karachiToday();
   const date = input.date ?? today;
-  const { prelude, sessionId } = await moneyOut(db, { account, date, today, by: input.by });
+  const { sessionId } = await moneyOut(db, { account, date, today, by: input.by });
   await runBatch(db, [
-    ...prelude,
     sql`INSERT INTO staff_advance (id, staff_id, amount, account_id, cash_session_id, date, note, created_by)
         VALUES (${id}, ${input.staffId}, ${input.amount}, ${account.id}, ${sessionId}, ${date},
                 ${input.note ?? null}, ${input.by})`,
@@ -336,27 +401,37 @@ export function payslipTotals(lines: readonly { kind: string; amount: number }[]
 }
 
 /**
- * Suggested recovery = min(outstanding advance, pct of the slip's pay), in whole rupees, never more
- * than the pay itself.
+ * Suggested recovery = min(outstanding advance, pct of the slip's NET before recovery — earnings less
+ * every other deduction), in whole rupees, never more than that net (verify pass: a percentage of
+ * gross could take more than a quarter of what the staff member actually takes home).
  */
-export function suggestedRecovery(outstanding: number, pay: number, pct: number): number {
-  if (outstanding <= 0 || pay <= 0 || pct <= 0) return 0;
-  const cap = Math.floor((pay * Math.min(pct, 100)) / 100 / 100) * 100;
-  return Math.max(0, Math.min(outstanding, cap, pay));
+export function suggestedRecovery(
+  outstanding: number,
+  netBeforeRecovery: number,
+  pct: number,
+): number {
+  if (outstanding <= 0 || netBeforeRecovery <= 0 || pct <= 0) return 0;
+  const cap = Math.floor((netBeforeRecovery * Math.min(pct, 100)) / 100 / 100) * 100;
+  return Math.max(0, Math.min(outstanding, cap, netBeforeRecovery));
 }
 
-/** The lines a new payslip starts with: basic, each allowance, and the suggested recovery. */
+/**
+ * The lines a new payslip starts with: basic, each allowance, any standing deductions, and the
+ * suggested recovery (a share of the net after those deductions).
+ */
 export function defaultLines(o: {
   baseSalary: number | null;
   allowances: Allowance[];
+  deductions?: { amount: number; note?: string | null }[];
   outstanding: number;
   pct: number;
 }): PayslipLineInput[] {
   const lines: PayslipLineInput[] = [];
   if (o.baseSalary && o.baseSalary > 0) lines.push({ kind: 'basic', amount: o.baseSalary });
   for (const a of o.allowances) lines.push({ kind: 'allowance', amount: a.amount, note: a.label });
-  const pay = payslipTotals(lines).pay;
-  const rec = suggestedRecovery(o.outstanding, pay, o.pct);
+  for (const d of o.deductions ?? [])
+    if (d.amount > 0) lines.push({ kind: 'deduction', amount: d.amount, note: d.note ?? null });
+  const rec = suggestedRecovery(o.outstanding, payslipTotals(lines).pay, o.pct);
   if (rec > 0) lines.push({ kind: 'advance_recovery', amount: rec, note: null });
   return lines;
 }
@@ -368,6 +443,22 @@ function checkLines(lines: readonly PayslipLineInput[]): void {
   }
   if (payslipTotals(lines).net < 0)
     throw new FeeError('negative_net', 'Deductions and recovery exceed the pay', 400);
+}
+
+/** Recovery on a draft is never more than the advance still outstanding (409, at edit time too). */
+async function assertRecoveryWithin(
+  db: AppDb,
+  staffId: string,
+  lines: readonly PayslipLineInput[],
+): Promise<void> {
+  const rec = payslipTotals(lines).recovery;
+  if (rec <= 0) return;
+  const bal = await outstandingAdvance(db, staffId);
+  if (rec > bal.outstanding)
+    throw new FeeError(
+      'recovery_exceeds_advance',
+      'Advance recovery is more than the advance still outstanding',
+    );
 }
 
 async function recoveryPct(db: AppDb): Promise<number> {
@@ -448,7 +539,7 @@ export async function createPayslip(
       outstanding: avail,
       pct: await recoveryPct(db),
     });
-  }
+  } else await assertRecoveryWithin(db, st.id, lines);
   checkLines(lines);
   const id = input.id ?? newId();
   await runBatch(db, [
@@ -578,6 +669,7 @@ export async function setPayslipLines(
   const s = await slipState(db, input.id);
   if (s.status !== 'draft') throw new FeeError('not_draft', 'Only a draft payslip can be changed');
   checkLines(input.lines);
+  await assertRecoveryWithin(db, s.staff_id, input.lines);
   const before = await db.all<{ kind: string; amount: number; note: string | null }>(
     sql`SELECT kind, amount, note FROM payslip_line WHERE payslip_id = ${input.id} ORDER BY created_at, id`,
   );
@@ -618,6 +710,10 @@ export async function approvePayslip(
   await runBatch(db, [
     sql`UPDATE payslip SET status = 'approved', approved_by = ${input.by}, approved_at = ${now}
         WHERE id = ${input.id} AND status = 'draft'`,
+    // A slip with nothing to pay out (net 0: a full advance recovery, or no lines) is settled the
+    // moment it is approved (M4 fix pass, F7); payslip_paid_settled agrees (0 paid ≥ net 0).
+    sql`UPDATE payslip SET status = 'paid'
+        WHERE id = ${input.id} AND status = 'approved' AND (SELECT net FROM payslip_net WHERE id = ${input.id}) <= 0`,
     auditStatement({
       id: newId(),
       userId: input.by,
@@ -670,9 +766,8 @@ export async function paySalary(
   const account = await accountFor(db, input.accountId);
   const today = input.today ?? karachiToday();
   const date = input.date ?? today;
-  const { prelude, sessionId } = await moneyOut(db, { account, date, today, by: input.by });
+  const { sessionId } = await moneyOut(db, { account, date, today, by: input.by });
   await runBatch(db, [
-    ...prelude,
     sql`INSERT INTO salary_payment (id, payslip_id, amount, account_id, cash_session_id, date, note, created_by)
         VALUES (${id}, ${input.payslipId}, ${input.amount}, ${account.id}, ${sessionId}, ${date},
                 ${input.note ?? null}, ${input.by})`,
