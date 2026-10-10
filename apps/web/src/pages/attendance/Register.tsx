@@ -1,0 +1,485 @@
+import {
+  type AttendanceSubmission,
+  type AttendanceSyncResult,
+  type MarkCounts,
+  type MarkStatus,
+  newId,
+  type RegisterResponse,
+} from '@maktab/shared';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { CloudOff, History, MessageSquareText, StickyNote } from 'lucide-react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link, useParams, useSearchParams } from 'react-router';
+import { Counts, DayOffNote, StatusChip, todayPk } from '@/components/attendance/common';
+import { ErrorNote, Num, PageTitle, useErrorText } from '@/components/form';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { toast } from '@/components/ui/sonner';
+import { Textarea } from '@/components/ui/textarea';
+import { sendJson } from '@/lib/api';
+import {
+  canCorrect,
+  canReadMessages,
+  initials,
+  nextStatus,
+  timeOf,
+  useRegister,
+} from '@/lib/attendance';
+import { useRoles } from '@/lib/roles';
+import { cn } from '@/lib/utils';
+import { saveRegister } from '@/offline/sync';
+
+type Draft = Record<string, { status: MarkStatus; note: string }>;
+
+/** Everyone present by default; a register already taken opens with its current marks. */
+const draftFrom = (r: RegisterResponse): Draft =>
+  Object.fromEntries(
+    r.rows.map((x) => [x.student_id, { status: x.status ?? 'P', note: x.note ?? '' }]),
+  );
+
+function tally(d: Draft): MarkCounts {
+  const c: MarkCounts = { P: 0, A: 0, L: 0, E: 0 };
+  for (const v of Object.values(d)) c[v.status]++;
+  return c;
+}
+
+function Avatar({ id, name, hasPhoto }: { id: string; name: string; hasPhoto: boolean }) {
+  if (hasPhoto)
+    return (
+      <img
+        src={`/api/students/${id}/photo`}
+        alt=""
+        loading="lazy"
+        className="size-10 shrink-0 rounded-full object-cover"
+      />
+    );
+  return (
+    <span
+      aria-hidden
+      className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted font-sans text-sm font-medium"
+    >
+      {initials(name)}
+    </span>
+  );
+}
+
+/** Office correction: same marks, plus a mandatory reason (PLAN §14.3; audit keeps it). */
+export function CorrectionDialog({
+  onSubmit,
+  onClose,
+  pending,
+  error,
+}: {
+  onSubmit: (reason: string) => void;
+  onClose: () => void;
+  pending: boolean;
+  error: unknown;
+}) {
+  const { t } = useTranslation();
+  const [reason, setReason] = useState('');
+  const [missing, setMissing] = useState(false);
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (reason.trim().length < 3) return setMissing(true);
+    onSubmit(reason.trim());
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('attendance.correct')}</DialogTitle>
+          <DialogDescription>{t('attendance.reasonHint')}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
+          <Label htmlFor="correction-reason">{t('attendance.reason')}</Label>
+          <Textarea
+            id="correction-reason"
+            value={reason}
+            aria-invalid={missing || undefined}
+            onChange={(e) => {
+              setReason(e.target.value);
+              setMissing(false);
+            }}
+          />
+          {missing && (
+            <p role="alert" className="text-xs text-destructive">
+              {t('errors.required')}
+            </p>
+          )}
+          <ErrorNote error={error} />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? t('common.saving') : t('common.save')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function HistorySheet({ r, onClose }: { r: RegisterResponse; onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Sheet open onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side="end" className="w-80 overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>{t('attendance.history')}</SheetTitle>
+          <SheetDescription>
+            <Num>{r.date}</Num>
+          </SheetDescription>
+        </SheetHeader>
+        {r.history.length === 0 ? (
+          <p className="px-4 text-sm text-muted-foreground">{t('attendance.historyEmpty')}</p>
+        ) : (
+          <ol className="flex flex-col divide-y px-4">
+            {r.history.map((h) => (
+              <li key={h.register_id} className="flex flex-col gap-1 py-3 text-sm">
+                <span className="flex flex-wrap items-center gap-2">
+                  <bdi className="font-medium">{h.taken_by_name ?? '—'}</bdi>
+                  <Num>{timeOf(h.taken_at)}</Num>
+                  {h.is_current && <Badge>{t('attendance.current')}</Badge>}
+                  {h.kind === 'correct' && (
+                    <Badge variant="outline">{t('attendance.correction')}</Badge>
+                  )}
+                </span>
+                {h.reason && (
+                  <span className="text-muted-foreground">
+                    <bdi>{h.reason}</bdi>
+                  </span>
+                )}
+                <Counts counts={h.counts} />
+              </li>
+            ))}
+          </ol>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function NoteSheet({
+  name,
+  note,
+  onSave,
+  onClose,
+}: {
+  name: string;
+  note: string;
+  onSave: (note: string) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [value, setValue] = useState(note);
+  return (
+    <Sheet open onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side="bottom">
+        <SheetHeader>
+          <SheetTitle>{t('attendance.noteFor', { name })}</SheetTitle>
+          <SheetDescription className="sr-only">{t('attendance.note')}</SheetDescription>
+        </SheetHeader>
+        <form
+          className="flex flex-col gap-3 px-4 pb-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSave(value.trim());
+          }}
+        >
+          <Input
+            aria-label={t('attendance.note')}
+            maxLength={200}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoFocus
+          />
+          <Button type="submit">{t('common.done')}</Button>
+        </form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+type Saved =
+  | { kind: 'answered'; result: AttendanceSyncResult }
+  | { kind: 'offline' }
+  | { kind: 'paused' };
+
+export function RegisterPage() {
+  const { t } = useTranslation();
+  const errorText = useErrorText();
+  const { grpId } = useParams();
+  const [params] = useSearchParams();
+  const date = params.get('date') ?? todayPk();
+  const subject = params.get('subject') ?? '';
+  const roles = useRoles();
+  const qc = useQueryClient();
+  const reg = useRegister(grpId, date, subject);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
+  const [saved, setSaved] = useState<Saved | null>(null);
+
+  // A different register (or a refetch after saving) starts a fresh draft.
+  const loadedFor = reg.data
+    ? `${reg.data.grp_id}|${date}|${subject}|${reg.data.current?.register_id ?? ''}`
+    : '';
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the register changes
+  useEffect(() => {
+    if (reg.data) setDraft(draftFrom(reg.data));
+  }, [loadedFor]);
+
+  const counts = useMemo(() => (draft ? tally(draft) : null), [draft]);
+  const office = canCorrect(roles);
+
+  const submission = (): AttendanceSubmission | null => {
+    if (!reg.data || !draft) return null;
+    return {
+      client_id: newId(),
+      grp_id: reg.data.grp_id,
+      date,
+      grp_subject_id: subject,
+      taken_at: new Date().toISOString(),
+      marks: reg.data.rows.map((r) => {
+        const d = draft[r.student_id];
+        return { student_id: r.student_id, status: d?.status ?? 'P', note: d?.note || null };
+      }),
+    };
+  };
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['attendance'] });
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const sub = submission();
+      if (!sub) throw new Error('not loaded');
+      return saveRegister(sub);
+    },
+    onSuccess: async (out) => {
+      if (out.kind === 'queued') {
+        setSaved({ kind: 'offline' });
+        toast.info(t('attendance.savedOffline'));
+        return;
+      }
+      if (out.kind === 'paused') {
+        setSaved({ kind: 'paused' });
+        toast.warning(t('attendance.signInAgain'));
+        return;
+      }
+      const r = out.result;
+      setSaved(out);
+      if (r.status === 'rejected') {
+        toast.error(errorText(Object.assign(new Error(r.error ?? 'invalid'))));
+        return;
+      }
+      if (r.status === 'stale') toast.warning(t('attendance.stale'));
+      else
+        toast.success(t(r.status === 'replaced' ? 'attendance.savedReplaced' : 'attendance.saved'));
+      await refresh();
+    },
+  });
+
+  const correct = useMutation({
+    mutationFn: (reason: string) => {
+      const sub = submission();
+      if (!sub) throw new Error('not loaded');
+      const { taken_at: _ignored, ...rest } = sub;
+      return sendJson<AttendanceSyncResult>('POST', '/api/attendance/correct', { ...rest, reason });
+    },
+    onSuccess: async (result) => {
+      setCorrecting(false);
+      setSaved({ kind: 'answered', result });
+      toast.success(t('attendance.corrected'));
+      await refresh();
+    },
+  });
+
+  if (reg.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (!reg.data || !draft || !counts)
+    return <ErrorNote error={reg.error ?? new Error('not_found')} />;
+  const r = reg.data;
+  // Office users editing a register that already exists make a correction (with reason).
+  const isCorrection = office && !!r.current;
+  const closed = !!r.day_off;
+  const queued = saved?.kind === 'answered' ? (saved.result.queued_messages ?? 0) : 0;
+
+  const cycle = (id: string) =>
+    setDraft((d) => {
+      const cur = d?.[id];
+      return d && cur ? { ...d, [id]: { ...cur, status: nextStatus(cur.status) } } : d;
+    });
+
+  const noteStudent = noteFor ? r.rows.find((x) => x.student_id === noteFor) : undefined;
+
+  return (
+    <section className="flex max-w-2xl flex-col gap-3 pb-28">
+      <PageTitle
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+            <History aria-hidden />
+            {t('attendance.history')}
+            {r.history.length > 0 && <Num>({r.history.length})</Num>}
+          </Button>
+        }
+      >
+        <bdi>{r.programme_name}</bdi> · <bdi>{r.grp_name}</bdi>
+      </PageTitle>
+      <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        <Num>{date}</Num>
+        {r.current ? (
+          // One inline span: Badge is inline-flex, which would drop the spaces between parts.
+          <Badge variant="secondary">
+            <span>
+              {t('attendance.taken')} · <bdi>{r.current.taken_by_name ?? ''}</bdi>{' '}
+              <Num>{timeOf(r.current.taken_at)}</Num>
+            </span>
+          </Badge>
+        ) : (
+          <Badge variant="destructive">{t('attendance.notTaken')}</Badge>
+        )}
+      </p>
+      <DayOffNote dayOff={r.day_off} />
+
+      {saved?.kind === 'offline' && (
+        <p
+          role="status"
+          className="flex items-center gap-2 rounded-md bg-amber-100 p-3 text-sm text-amber-950"
+        >
+          <CloudOff className="size-4 shrink-0" aria-hidden />
+          {t('attendance.savedOffline')}
+        </p>
+      )}
+      {saved?.kind === 'paused' && (
+        <p role="alert" className="rounded-md bg-amber-100 p-3 text-sm text-amber-950">
+          {t('attendance.signInAgain')}{' '}
+          <Link to="/login" className="underline">
+            {t('attendance.signIn')}
+          </Link>
+        </p>
+      )}
+      {saved?.kind === 'answered' && saved.result.status === 'rejected' && (
+        <ErrorNote error={Object.assign(new Error(saved.result.error ?? 'invalid'))} />
+      )}
+      {queued > 0 && (
+        <p
+          role="status"
+          className="flex flex-wrap items-center gap-2 rounded-md bg-muted p-3 text-sm"
+        >
+          <MessageSquareText className="size-4 shrink-0" aria-hidden />
+          <span className="flex-1">{t('attendance.queued', { n: queued })}</span>
+          {canReadMessages(roles) && (
+            <Button asChild size="sm" variant="outline">
+              <Link to="/messages">{t('attendance.openQueue')}</Link>
+            </Button>
+          )}
+        </p>
+      )}
+
+      {!closed && <p className="text-sm text-muted-foreground">{t('attendance.tapHint')}</p>}
+
+      <ul className="flex flex-col divide-y rounded-lg border">
+        {r.rows.map((row) => {
+          const d = draft[row.student_id];
+          if (!d) return null;
+          return (
+            <li key={row.student_id} className="flex items-center gap-1 pe-2">
+              <button
+                type="button"
+                disabled={closed}
+                onClick={() => cycle(row.student_id)}
+                aria-label={`${row.name}: ${t(`attendance.status.${d.status}`)}`}
+                className={cn(
+                  'flex min-h-16 min-w-0 flex-1 items-center gap-3 px-3 text-start hover:bg-accent disabled:opacity-60',
+                  d.status !== 'P' && 'bg-red-50/60 dark:bg-red-950/30',
+                )}
+              >
+                <Avatar id={row.student_id} name={row.name} hasPhoto={row.has_photo} />
+                <span className="w-8 shrink-0 text-sm text-muted-foreground">
+                  <Num>{row.roll_no ?? '—'}</Num>
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <bdi className="truncate">{row.name}</bdi>
+                  {d.note && <bdi className="truncate text-xs text-muted-foreground">{d.note}</bdi>}
+                </span>
+                <StatusChip status={d.status} className="size-12" />
+              </button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={closed}
+                aria-label={t('attendance.noteFor', { name: row.name })}
+                onClick={() => setNoteFor(row.student_id)}
+              >
+                <StickyNote aria-hidden className={cn(d.note && 'text-primary')} />
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-background/95 p-3 backdrop-blur md:static md:border-0 md:bg-transparent md:p-0">
+        <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-3">
+          <Counts counts={counts} />
+          <Button
+            size="lg"
+            className="ms-auto min-w-40"
+            disabled={closed || save.isPending || correct.isPending || r.rows.length === 0}
+            onClick={() => (isCorrection ? setCorrecting(true) : save.mutate())}
+          >
+            {save.isPending
+              ? t('common.saving')
+              : isCorrection
+                ? t('attendance.correct')
+                : t('attendance.save')}
+          </Button>
+        </div>
+      </div>
+
+      {noteStudent && (
+        <NoteSheet
+          name={noteStudent.name}
+          note={draft[noteStudent.student_id]?.note ?? ''}
+          onClose={() => setNoteFor(null)}
+          onSave={(note) => {
+            setDraft((d) => {
+              const cur = d?.[noteStudent.student_id];
+              return d && cur ? { ...d, [noteStudent.student_id]: { ...cur, note } } : d;
+            });
+            setNoteFor(null);
+          }}
+        />
+      )}
+      {historyOpen && <HistorySheet r={r} onClose={() => setHistoryOpen(false)} />}
+      {correcting && (
+        <CorrectionDialog
+          pending={correct.isPending}
+          error={correct.error}
+          onClose={() => setCorrecting(false)}
+          onSubmit={(reason) => correct.mutate(reason)}
+        />
+      )}
+    </section>
+  );
+}

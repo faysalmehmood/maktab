@@ -16,8 +16,9 @@ import { currentLanguage } from '@/i18n';
 import { errorKey, type FieldErrors } from '@/lib/form';
 import { resizeToJpeg } from '@/lib/image';
 
-/** First Strong Isolate … Pop: keeps a Latin number intact inside an Urdu sentence. */
-export const isolate = (s: string) => `⁨${s}⁩`;
+import { isolate } from '@/lib/utils';
+
+export { isolate };
 
 export type GuardianDraft = {
   name: string;

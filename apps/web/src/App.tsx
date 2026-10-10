@@ -28,6 +28,18 @@ const AdmissionPage = lazy(() =>
 const ImportPage = lazy(() =>
   import('@/pages/students/Import').then((m) => ({ default: m.ImportPage })),
 );
+const TodayPage = lazy(() =>
+  import('@/pages/attendance/Today').then((m) => ({ default: m.TodayPage })),
+);
+const RegisterPage = lazy(() =>
+  import('@/pages/attendance/Register').then((m) => ({ default: m.RegisterPage })),
+);
+const ReportPage = lazy(() =>
+  import('@/pages/attendance/Report').then((m) => ({ default: m.ReportPage })),
+);
+const MessagesPage = lazy(() =>
+  import('@/pages/Messages').then((m) => ({ default: m.MessagesPage })),
+);
 const GroupsPage = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupsPage })));
 const GroupDetail = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupDetail })));
 
@@ -120,7 +132,38 @@ export function App() {
             </Loading>
           }
         />
-        <Route path="attendance" element={<Placeholder title="nav.attendance" />} />
+        <Route
+          path="attendance"
+          element={
+            <Loading>
+              <TodayPage />
+            </Loading>
+          }
+        />
+        <Route
+          path="attendance/register/:grpId"
+          element={
+            <Loading>
+              <RegisterPage />
+            </Loading>
+          }
+        />
+        <Route
+          path="attendance/report"
+          element={
+            <Loading>
+              <ReportPage />
+            </Loading>
+          }
+        />
+        <Route
+          path="messages"
+          element={
+            <Loading>
+              <MessagesPage />
+            </Loading>
+          }
+        />
         <Route path="fees" element={<Placeholder title="nav.fees" />} />
         <Route
           path="settings"

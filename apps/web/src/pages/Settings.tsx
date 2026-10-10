@@ -3,6 +3,7 @@ import { Wand2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { AttendanceSettingsForm, HolidaysEditor } from '@/components/setup/attendance';
 import { CustomFieldsEditor } from '@/components/setup/customFields';
 import { GroupsEditor } from '@/components/setup/groups';
 import { ProgrammesEditor, SeedLadderButton, SubjectsEditor } from '@/components/setup/programmes';
@@ -25,6 +26,7 @@ const SECTIONS = [
   'groups',
   'staff',
   'customFields',
+  'attendance',
 ] as const;
 type Section = (typeof SECTIONS)[number];
 
@@ -157,6 +159,12 @@ export function SettingsPage() {
         <Section title={t('staff.title')}>
           {canManageRoles(roles) && <InviteForm />}
           <StaffList />
+        </Section>
+      )}
+      {shown === 'attendance' && school.data?.school && (
+        <Section title={t('settings.sections.attendance')}>
+          <AttendanceSettingsForm school={school.data.school} />
+          <HolidaysEditor />
         </Section>
       )}
       {shown === 'customFields' && (

@@ -113,3 +113,28 @@ bdi {
   direction: ltr;
   font-family: var(--font-sans);
 }
+
+/*
+ * Monthly attendance register (pages/attendance/Report.tsx): A4 landscape via a named page, so
+ * other printouts (receipts in M3) keep their own size. 31 day columns + totals fit at 9 px.
+ */
+@page register {
+  size: A4 landscape;
+  margin: 8mm;
+}
+@media print {
+  .attendance-report {
+    page: register;
+  }
+  .attendance-report table {
+    font-size: 9px;
+  }
+  .attendance-report th,
+  .attendance-report td {
+    border: 1px solid #999;
+    position: static;
+  }
+  body {
+    background: white;
+  }
+}

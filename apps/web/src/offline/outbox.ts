@@ -214,6 +214,17 @@ export async function retryFailed(): Promise<void> {
   await done(tx);
 }
 
+/** Drops entries the server refused (the teacher has seen why and will save a corrected copy). */
+export async function discardFailed(): Promise<void> {
+  const d = await db();
+  const tx = d.transaction('outbox', 'readwrite');
+  const s = tx.objectStore('outbox');
+  for (const e of (await req(s.getAll())) as OutboxEntry[]) {
+    if (e.state === 'failed') s.delete(e.client_id);
+  }
+  await done(tx);
+}
+
 /** Read-modify-write in one transaction; `fn` returns the new entry, or null to delete it. */
 async function update(id: string, fn: (e: OutboxEntry) => OutboxEntry | null): Promise<void> {
   const d = await db();

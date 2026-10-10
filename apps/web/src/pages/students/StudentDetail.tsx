@@ -16,6 +16,7 @@ import { type FormEvent, type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
+import { StudentAttendanceCard } from '@/components/students/attendance';
 import {
   emptyGuardian,
   type GuardianDraft,
@@ -40,6 +41,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson, uploadFile } from '@/lib/api';
+import { canReadAttendance } from '@/lib/attendance';
 import { type FieldErrors, issuesToErrors, todayIso } from '@/lib/form';
 import { useCurrentSession, useCustomFields, useGroups } from '@/lib/queries';
 import { canWriteStudents, useRoles } from '@/lib/roles';
@@ -642,6 +644,8 @@ export function StudentDetail() {
           )}
         </CardContent>
       </Card>
+
+      {canReadAttendance(roles) && <StudentAttendanceCard studentId={s.id} />}
 
       {statusOpen && <StatusDialog student={s} onClose={() => setStatusOpen(false)} />}
       {enrolmentAction && (
