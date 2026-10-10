@@ -15,6 +15,7 @@ import { coreRoutes } from './routes/core';
 import { feeRoutes } from './routes/fees';
 import { groupRoutes } from './routes/groups';
 import { importRoutes } from './routes/imports';
+import { moneyRoutes } from './routes/money';
 import { peopleRoutes } from './routes/people';
 import { receiptRoutes } from './routes/receipts';
 import { staffRoutes } from './routes/staff';
@@ -58,6 +59,7 @@ export function createApp(deps: AppDeps) {
   feeRoutes(app, routes);
   receiptRoutes(app, routes);
   cashRoutes(app, routes);
+  moneyRoutes(app, routes);
 
   return { app, routes };
 }

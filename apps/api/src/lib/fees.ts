@@ -223,6 +223,11 @@ export async function sessionDtos(db: AppDb, rows: SessionRow[]): Promise<CashSe
     const byMethod = await db.all<{ method: string; amount: number; count: number }>(sql`
       SELECT method, sum(amount) AS amount, count(*) AS count FROM receipt
       WHERE cash_session_id = ${s.id} GROUP BY method ORDER BY method`);
+    const [outRow] = await db.all<CashSessionDto['paid_out']>(sql`SELECT
+      (SELECT coalesce(sum(amount), 0) FROM expense WHERE cash_session_id = ${s.id} AND voided_by IS NULL) AS expenses,
+      (SELECT coalesce(sum(amount), 0) FROM salary_payment WHERE cash_session_id = ${s.id}) AS salaries,
+      (SELECT coalesce(sum(amount), 0) FROM staff_advance WHERE cash_session_id = ${s.id}) AS advances,
+      (SELECT coalesce(sum(amount), 0) FROM transfer WHERE cash_session_id = ${s.id}) AS transfers`);
     out.push({
       id: s.id,
       collector_id: s.collector_id,
@@ -238,6 +243,7 @@ export async function sessionDtos(db: AppDb, rows: SessionRow[]): Promise<CashSe
       reopened_at: s.reopened_at,
       reopen_reason: s.reopen_reason,
       by_method: byMethod,
+      paid_out: outRow ?? { expenses: 0, salaries: 0, advances: 0, transfers: 0 },
     });
   }
   return out;

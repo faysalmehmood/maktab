@@ -9,6 +9,7 @@ export * from './fees';
 export * from './i18n';
 export * from './import';
 export * from './money';
+export * from './moneyout';
 export * from './permissions';
 export * from './phone';
 export * from './roles';

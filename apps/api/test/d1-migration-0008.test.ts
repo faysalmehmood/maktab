@@ -43,9 +43,12 @@ describe('migration 0008 on D1 with receipts present', () => {
         `INSERT INTO student (id, family_id, admission_no, name, admission_date) VALUES ('X', 'F', '1', 'Ali', '2026-04-01')`,
         `INSERT INTO fee_head (id, name, kind, cadence) VALUES ('FH', 'Tuition', 'tuition', 'monthly')`,
         `INSERT INTO charge (id, student_id, fee_head_id, period_key, payer_type, payer_id, amount, due_date, kind) VALUES ('C1', 'X', 'FH', '2026-04', 'family', 'F', 100000, '2026-04-10', 'fee')`,
-        `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, collector_id, business_date, idempotency_key) VALUES ('R1', 'R-1', 'payment', 'family', 'F', 100000, 'cash', 'U', '2026-04-05', 'k1')`,
+        `INSERT INTO cash_session (id, collector_id, business_date) VALUES ('CS', 'U', '2026-04-05')`,
+        `INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, collector_id, cash_session_id, business_date, idempotency_key) VALUES ('R1', 'R-2026-00001', 'payment', 'family', 'F', 100000, 'cash', 'U', 'CS', '2026-04-05', 'k1')`,
         `INSERT INTO receipt_allocation (id, receipt_id, charge_id, amount) VALUES ('A1', 'R1', 'C1', 100000)`,
-        `INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method, collector_id, business_date, idempotency_key) VALUES ('R2', 'R-2', 'reversal', 'R1', 'family', 'F', -100000, 'cash', 'U', '2026-04-06', 'k2')`,
+        `INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method, collector_id, cash_session_id, business_date, idempotency_key) VALUES ('R2', 'R-2026-00002', 'reversal', 'R1', 'family', 'F', -100000, 'cash', 'U', 'CS', '2026-04-06', 'k2')`,
+        // Well-formed numbers and drawer sessions: M4's ledger_consistency flags anything else.
+        `INSERT INTO receipt_series (series, year, next_no) VALUES ('R', 2026, 3)`,
         `INSERT INTO receipt_allocation (id, receipt_id, charge_id, amount) VALUES ('A2', 'R2', 'C1', -100000)`,
       ].map((q) => proxy.env.DB.prepare(q)),
     );

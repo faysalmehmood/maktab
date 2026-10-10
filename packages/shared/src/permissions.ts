@@ -18,8 +18,10 @@ export const RESOURCES = {
   receipt: ['create', 'reverse', 'read'],
   /** read: sessions (accountants their own). transfer: handover / bank deposit. */
   cash_session: ['close_own', 'reopen_any', 'read', 'transfer'],
-  expense: ['create', 'void'],
-  payslip: ['read', 'approve', 'pay'],
+  /** read: the expense list and register (M4). */
+  expense: ['create', 'void', 'read'],
+  /** prepare: generate drafts, edit draft lines. pay: salary payments and staff advances. */
+  payslip: ['read', 'prepare', 'approve', 'pay'],
   exam: ['marks_entry', 'read'],
   send_queue: ['use'],
   /** The message outbox (absence alerts now; fee reminders in M3/M5). Read-only until M5. */
@@ -117,9 +119,12 @@ export const MATRIX = {
     create: g({ owner: all, admin: all, accountant: all }),
     // Separation of duties (PLAN §5.4): a void needs admin/owner.
     void: g({ owner: all, admin: all }),
+    read: g({ owner: all, admin: all, accountant: all }),
   },
   payslip: {
     read: g({ owner: all, admin: all, accountant: 'all_except_owner', teacher: 'own_only' }),
+    // The accountant prepares payroll (PLAN §5.4 "accountant: … payslips"); an owner/admin approves.
+    prepare: g({ owner: all, admin: all, accountant: 'all_except_owner' }),
     approve: g({ owner: all, admin: all }),
     pay: g({ owner: all, admin: all, accountant: all }),
   },

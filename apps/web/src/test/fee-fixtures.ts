@@ -257,5 +257,6 @@ export const cashSession = (o: Partial<CashSessionDto> = {}): CashSessionDto => 
   reopened_at: null,
   reopen_reason: null,
   by_method: [{ method: 'cash', amount: RS(7000), count: 2 }],
+  paid_out: { expenses: 0, salaries: 0, advances: 0, transfers: 0 },
   ...o,
 });

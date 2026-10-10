@@ -35,7 +35,9 @@ cash_session.read        all          all          own_only          -          
 cash_session.transfer    all          all          all               -             -
 expense.create           all          all          all               -             -
 expense.void             all          all          -                 -             -
+expense.read             all          all          all               -             -
 payslip.read             all          all          all_except_owner  own_only      -
+payslip.prepare          all          all          all_except_owner  -             -
 payslip.approve          all          all          -                 -             -
 payslip.pay              all          all          all               -             -
 exam.marks_entry         all          all          -                 own_subjects  -
@@ -211,6 +213,34 @@ POST   /api/accounts                             D A A D D D
 GET    /api/admissions/preview-fees              D A A A D D
 GET    /api/fees/student/:id                     D A A A D D
 GET    /api/dashboard/fees                       D A A A D D
+GET    /api/expenses/categories              D A A A D D
+GET    /api/expenses                         D A A A D D
+GET    /api/reports/expenses                 D A A A D D
+POST   /api/expenses                         D A A A D D
+POST   /api/expenses/:id/void                D A A D D D
+POST   /api/expenses/:id/photo               D A A A D D
+GET    /api/expenses/:id/photo               D A A A D D
+GET    /api/payroll/staff                    D A A A D D
+PUT    /api/payroll/staff/:id                D A A D D D
+POST   /api/payslips/generate                D A A A D D
+POST   /api/payslips                         D A A A D D
+GET    /api/payslips                         D A A A D D
+GET    /api/reports/salaries                 D A A A D D
+GET    /api/payslips/mine                    D A A A A D
+GET    /api/payslips/:id                     D A A A A D
+PUT    /api/payslips/:id/lines               D A A A D D
+POST   /api/payslips/:id/approve             D A A D D D
+POST   /api/payslips/:id/pay                 D A A A D D
+POST   /api/payslips/:id/void                D A A D D D
+GET    /api/advances                         D A A A D D
+GET    /api/reports/advances                 D A A A D D
+POST   /api/advances                         D A A A D D
+GET    /api/reports/income-expense           D A A A D D
+GET    /api/reports/cashbook                 D A A A D D
+GET    /api/reports/accounts                 D A A A D D
+GET    /api/audit                            D A D D D D
+GET    /api/audit/entities                   D A D D D D
+GET    /api/dashboard/month                  D A A A D D
 `;
 
 type Who = PrincipalRole | 'anonymous';

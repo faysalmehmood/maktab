@@ -487,6 +487,8 @@ export type CashSessionDto = {
   reopened_at: string | null;
   reopen_reason: string | null;
   by_method: { method: string; amount: number; count: number }[];
+  /** Money that left this drawer (M4): non-void expenses, salary paid, advances, handovers. */
+  paid_out: { expenses: number; salaries: number; advances: number; transfers: number };
 };
 
 export type DefaulterDto = {
