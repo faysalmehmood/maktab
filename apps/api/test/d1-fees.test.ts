@@ -229,6 +229,14 @@ describe('fees on D1', () => {
     await db.run(
       sql`INSERT INTO grp (id, programme_id, session_id, name) VALUES (${g}, 'P', 'SES', 'B')`,
     );
+    // A once head too (admission fee): its once-per-enrolment guard must run on D1 as well
+    // (smoke:m3 found it failing there and nowhere else).
+    await db.run(
+      sql`INSERT INTO fee_head (id, name, kind, cadence) VALUES ('ADM', 'Admission', 'admission', 'once')`,
+    );
+    await db.run(
+      sql`INSERT INTO fee_rate (id, fee_head_id, grp_id, amount, effective_from) VALUES ('ra', 'ADM', ${g}, ${RS(5000)}, '2026-01-01')`,
+    );
     const adm = await api<AdmissionResult>('POST', '/api/admissions', {
       family: { name: 'New' },
       guardians: [{ name: 'Abu', phone: '03001234567', consent_whatsapp: true }],
@@ -236,15 +244,15 @@ describe('fees on D1', () => {
       enrolment: { grp_id: g, start_date: today },
     });
     expect(adm.status).toBe(201);
-    expect(adm.body.fees?.charges).toHaveLength(1);
+    expect(adm.body.fees?.charges).toHaveLength(2);
     const r = await api<CollectResultDto>('POST', '/api/receipts', {
       idempotency_key: newId(),
       payer_id: adm.body.family_id,
-      amount: RS(3500),
+      amount: RS(8500),
       method: 'cash',
     });
     expect(r.status).toBe(201);
-    expect(r.body.receipt).toMatchObject({ allocated: RS(3000), unallocated: RS(500) });
+    expect(r.body.receipt).toMatchObject({ allocated: RS(8000), unallocated: RS(500) });
     const print = await api<{
       labels: { ur: { title: string } };
       totals: { credit_added: number };

@@ -16,8 +16,10 @@ minify = true
 directory = "../web/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-# Without this, SPA fallback would answer /api/* with index.html.
-run_worker_first = ["/api/*"]
+# Without this, SPA fallback would answer /api/* with index.html. /__scheduled is wrangler dev's
+# --test-scheduled trigger (smoke:m3); without --test-scheduled (and in production) the Worker
+# answers it with its JSON 404.
+run_worker_first = ["/api/*", "/__scheduled"]
 
 [[d1_databases]]
 binding = "DB"
