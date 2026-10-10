@@ -124,7 +124,7 @@ receipt(id, receipt_no UNIQUE, kind 'payment'|'reversal'|'refund', reverses_id U
         business_date, idempotency_key UNIQUE, reference, note)
   CHECK (kind='reversal') = (reverses_id IS NOT NULL AND amount < 0)
 receipt_allocation(receipt_id, charge_id, amount SIGNED)                           -- append-only
-account(id, name, kind 'cash'|'bank'|'wallet', holder_staff_id)
+account(id, name, kind 'cash'|'bank'|'wallet', holder_staff_id, opening_balance, opening_as_of)  -- holder and opening frozen once money moved
 cash_session(id, collector_id, business_date, opening, expected, counted, variance, closed_at, closed_by)  UNIQUE(collector_id, business_date)
 transfer(id, from_account, to_account, amount, date, note)                        -- never in P&L
 expense(id, expense_no, category_id, account_id, cash_session_id, amount, vendor, date, note, voided_by, void_reason)
@@ -138,7 +138,7 @@ Invariants (enforced by triggers where SQLite can, else by the single write path
 - Σ allocation per receipt ≤ receipt amount; Σ allocation per charge ≤ charge net. A trigger `RAISE(ABORT)` on violation rolls back the whole D1 batch.
 - Advance credit = receipt amount − allocations (derived). Unallocated credit auto-applies to future charges; past allocations never move, so a printed receipt never changes meaning.
 - Paid / partial / overdue are **computed** from charges, allocations and today's date. Nothing stores a balance. Net is computed per **root** charge (`parent_charge_id IS NULL`) as the sum of itself and its child lines (concession, fine, fine_waiver, reversal); child lines are never listed as separate dues. Allocations always target the root charge.
-- Income = Σ receipts (reversals net out), split by fee head via allocations; expense = Σ non-void expenses + Σ payslip earnings. Transfers, advances and concessions are excluded by construction → P&L cannot double-count.
+- Income = Σ receipts (reversals net out), split by fee head via allocations; expense = Σ non-void expenses + Σ payslip **pay = earnings − deductions** of approved/paid slips, by the slip's month — what the school owes its staff for that month (M4 fix pass decision: a deduction such as unpaid leave is pay not owed; advance recovery is not a deduction, it settles a receivable; there is no withholding/tax line kind). Transfers, advances, concessions and account opening balances are excluded by construction → P&L cannot double-count.
 - Receipt write = one D1 batch: `UPDATE receipt_series … ; INSERT receipt … SELECT next_no …; INSERT allocations …`. Client-generated receipt id and idempotency key make retries safe.
 
 Monthly generation: cron with catch-up + manual button; only active enrolments; session months only; mid-month joiner → explicit choice (full / pro-rata / backfill due today); leaver → `end_date` stops future runs; late fine = `fine` charge with `parent_charge_id`, unique per parent and period, waived by `fine_waiver`.
@@ -163,6 +163,7 @@ Permission model (user-confirmed 2026-10-10: teachers must never see other staff
 - **Role × resource × action** matrix, static and typed in code (so it is reviewable in one file and tested), with these roles: `owner` (everything, incl. roles and backups), `admin` (all operations, no backup/role changes), `accountant` (fees, receipts, cash, expenses, payslips), `teacher` (own groups only), `parent` (magic link, read-only, own children).
 - **Row scope on every query**, not just role: a teacher's queries are filtered to groups where they are class teacher or subject teacher; a parent link to its guardian's children; an accountant to all students but not to payroll of `owner`. Scope is applied in the data layer so a forgotten UI check cannot leak.
 - **Field scope:** salary, CNIC, B-form and phone numbers are returned only to roles that need them; the teacher endpoint for "my payslip" returns only `staff_id = me`. Lists mask CNIC.
+- **Owner pay (M4 fix pass):** a caller without `payslip.read = all` (the accountant) sees money reports with owner-role staff left out of salaries and net, labelled "Salaries (excluding management)" (en/ur) — income vs expense, the month dashboard tile and their CSVs; the reconciliation block is reduced to `ties`. In the cashbook an owner's salary or advance row is shown as kind `owner_draw`, party "—", no reference. **The amount stays**: it is a real movement of a bank account or drawer the accountant may reconcile against statements, so an owner's pay can be inferred from a bank line by someone who looks for it; the masking hides who and what, not that money left. Owners who want full privacy are paid from an account the accountant cannot see (not modelled in v1).
 - **Separation of duties:** a reversal or void needs `admin`/`owner`; a collector cannot reverse their own receipt without an admin; payslip approval is `owner`/`admin`, payment is `accountant`.
 - **Audit everything** (who, what, before/after) and show the audit trail to `owner`.
 - **Tests:** a permission test suite that calls every route as every role and asserts allow/deny, plus scope tests (teacher A cannot read teacher B's groups, marks, or payslip).
@@ -326,6 +327,7 @@ M3a closing pass: **cash cannot be backdated** — cash is counted into today's 
 - Fine job runs after grace day: adds `fine` charges per overdue tuition charge (once per period), shows a list; office can waive per student with reason.
 - Defaulters: by group, by months overdue, by amount; filters "exclude sponsored"; actions: "Remind all" (Send queue), export, print list for class teacher.
 - Generation never sticks (M3a fix pass): a group whose chunk fails is logged as a failed `billing_chunk` (status `failed`, `error_code`), skipped for the rest of the tick (and by "Generate", which returns `failed` and moves on), and retried by the cron every tick; fines still run. `GET /api/fees/runs` lists it under `failing`. A group with a finished chunk is never re-sent; a student added to it later is billed with "re-generate" for that student.
+- Re-open period (M4 fix pass): a group whose month finished with no fees billed (rates were missing) is listed on the billing screen; owner/admin "Re-open period" appends a `billing_chunk` row with status `reopened` (fresh cursor; the log stays append-only) and Generate bills it. The preview counts each (student, head, period) once across groups, so a student in a class and a batch is not counted twice (preview = commit).
 - Due date: the school's due day; a mid-period joiner or transfer gets the same grace from their start (start + due day − 1 days). No late fine in the first period of an enrolment that started after the 1st. Pro-rata follows the enrolment chain (a mid-month transfer bills each row's days at its own rate, once). A student in a class and a batch is planned from both, primary first.
 - Void (M3a fix pass): `POST /api/charges/:id/void` (fee.manage) zeroes a fee (or what is left of a fine) with a `reversal` line and a required reason; paid money is released first and becomes credit, which is applied to the payer's other dues. Charges are never deleted.
 - Enums are final (last pass, migration 0010): receipt methods `cash, bank, jazzcash, easypaisa, cheque, other`; payslip status `draft → approved → paid`, or `void` before any payment.
@@ -335,6 +337,8 @@ M3a closing pass: **cash cannot be backdated** — cash is counted into today's 
 2. Handover: "Transfer to owner / bank deposit" creates a `transfer` (never income or expense).
 3. Owner sees all sessions, variances, and can reopen a session with reason.
 Rules: a closed session takes no more rows; a late-found error is corrected in a new session with a reversal + re-entry.
+
+M4 fix pass (drawers): cash leaves only the payer's **own** drawer (`drawer_account(by)`: the cash account they hold, else the shared one) and only into a session they opened — paying out (expense, salary, advance) or a handover never opens a drawer (409 `no_open_session`; opening an open drawer with another float is 409 `already_open`); a trigger refuses any cash movement whose account is not its session holder's drawer (`not_your_drawer`). Cash receipts store the drawer account at insert (migration 0016 backfilled older rows), so changing who holds a drawer never moves history, and a drawer's holder is frozen once money moved through it (409 `account_has_movements`; add a new drawer for a new holder). A drawer expense cannot be voided after its session closed (`session_closed`; correct with a new entry). Accounts carry a pre-pilot opening balance (owner, once, before any movement; Settings → Fees → Accounts) that balances and the cashbook start from.
 
 ### 14.7 Concessions and sponsorships (admin decides; keep it simple)
 - One screen, one action: Student → Fees → "Reduce fee": reason (sibling / orphan / staff child / scholarship / topper / needy / other), % or fixed amount, which fee head (default: monthly tuition), from date, optional to date (blank = until ended), note. Whoever has the `admin`/`owner` role can do it; no proposal/approval workflow. Can be done at admission, mid-session, or for the next session; takes effect from the next generation, and the current month can be re-generated for that student.
@@ -348,7 +352,8 @@ Rules: a closed session takes no more rows; a late-found error is corrected in a
 ### 14.8 Expenses and salary (owner / accountant)
 - Expense: date, category, amount, paid from (drawer or bank), vendor, note, optional photo of bill → `expense_no`; void with reason only.
 - Salary: per staff, monthly payslip from base + allowances − deductions − advance recovery; "Approve" (owner) → "Pay" (amount, from account, date) → slip print/PDF. Advances: separate screen; outstanding shown on the payslip.
-- Income vs expense report: by month; income by fee head; expenses by category; salaries line; transfers and advances excluded; "unallocated credit" shown separately.
+- Income vs expense report: by month; income by fee head; expenses by category; salaries line (earnings − deductions; tooltip says so in en/ur); transfers and advances excluded; "unallocated credit" shown separately.
+- M4 fix pass: a payslip whose net is 0 (full recovery, or no lines) is `paid` on approval; an approved slip with part paid is shown "Partly paid" (`paid_partial`, status stays `approved`); recovery above the outstanding advance is refused when lines are written; suggested recovery = min(outstanding, 25% of the net after other deductions). Bill photos: replaced only before void, by whoever recorded the expense or an owner/admin; old photos are never deleted (each version is an audit row). Reads have no per-row query loops (`/api/payslips/mine` ≤ 4 queries, cash session lists 2).
 
 ### 14.9 Send queue (office / class teacher, phone)
 1. Queue shows pending messages grouped by template: absence today, fee due, fee overdue, payment received, notice. Each shows guardian, phone, preview text in the guardian's language.
@@ -391,6 +396,8 @@ Stop and ask the user only for: GitHub publish, production deploy to `school.con
 - Tap targets 44 px everywhere, no pointer media-query exceptions; data-derived names in mixed-direction text are wrapped in `<bdi>`.
 - Exports use the formula-safe CSV writer in `@maktab/shared`.
 - D1 allows at most 5 terms in one `UNION`; nest unions in views (seen in migration 0015).
+- Numbers are `<series>-<year>-<n>` with n zero-padded to **at least** 5 digits (100000 follows 99999); `ledger_consistency` accepts that.
+- Thermal receipts: while the 58 mm receipt is on screen the whole document prints on the `receipt-thermal` named page (`html, body { page: receipt-thermal }`): any box left on the default page — the app shell, the toaster's empty section — forces a page-type switch and a blank Letter/A4 second page. Check with `node apps/web/scripts/print-pages.mjs <url> --expect 1` (CDP `printToPDF`).
 - Offline behaviour is tested with `navigator.onLine=false` + the `offline` event; money UI attempts carry one idempotency key per attempt, independent of any view hash, kept until a definite outcome.
 
 **M3 must remember (from the M1 review)**
