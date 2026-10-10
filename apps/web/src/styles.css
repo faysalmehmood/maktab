@@ -138,3 +138,156 @@ bdi {
     background: white;
   }
 }
+
+/*
+ * Receipts (components/fees/ReceiptPrint.tsx), from the exp3 print experiment: Nastaliq for Urdu at
+ * line-height 2, every number a Latin `.num` run, A5 portrait or 58 mm thermal via named pages (the
+ * thermal height is measured at load and injected as `@page receipt-thermal`).
+ */
+@page receipt-a5 {
+  size: A5 portrait;
+  margin: 10mm;
+}
+.receipt {
+  position: relative;
+  color: #111;
+  background: white;
+  font-variant-numeric: lining-nums;
+  font-family: var(--font-sans);
+  line-height: 1.35;
+  margin-inline: auto;
+  overflow: hidden;
+}
+.receipt[lang="ur"] {
+  font-family: var(--font-urdu);
+  line-height: 2;
+}
+.receipt .num,
+.receipt bdi {
+  unicode-bidi: isolate;
+  direction: ltr;
+  font-family: var(--font-sans);
+  line-height: 1.3;
+  display: inline-block;
+}
+/* Urdu names inside the receipt keep Nastaliq (bdi is for isolation, not the font). */
+.receipt[lang="ur"] bdi:not(.num) {
+  font-family: var(--font-urdu);
+  line-height: 2;
+  direction: rtl;
+}
+.receipt-a5 {
+  max-width: 128mm;
+  font-size: 11pt;
+  padding: 4mm;
+  border: 1px solid var(--border);
+}
+.receipt-thermal {
+  width: 54mm;
+  font-size: 9pt;
+  padding: 1mm;
+  border: 1px dashed var(--border);
+}
+.receipt-head {
+  text-align: center;
+  border-bottom: 2px solid #000;
+  padding-bottom: 0.3em;
+  margin-bottom: 0.5em;
+}
+.receipt-head h1 {
+  margin: 0;
+  font-size: 1.5em;
+  font-weight: 700;
+}
+.receipt-thermal .receipt-head h1 {
+  font-size: 1.2em;
+}
+.receipt-logo {
+  max-height: 14mm;
+  margin-inline: auto;
+}
+.receipt-sub {
+  font-size: 0.85em;
+  color: #555;
+}
+.receipt-title {
+  font-weight: 600;
+}
+.receipt-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 0.8em;
+  margin: 0.4em 0;
+}
+.receipt-thermal .receipt-meta {
+  grid-template-columns: 1fr;
+}
+.receipt-meta dt {
+  color: #555;
+}
+.receipt-meta dd {
+  margin: 0;
+  font-weight: 600;
+}
+.receipt-lines {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  border-top: 1px solid #999;
+}
+.receipt-lines th,
+.receipt-lines td {
+  padding: 0.15em 0.4em;
+  text-align: start;
+  vertical-align: middle;
+}
+.receipt-lines tr {
+  border-bottom: 1px dotted #999;
+}
+.receipt-lines .end {
+  text-align: end;
+}
+.receipt-lines .total td {
+  border-top: 2px solid #000;
+  font-weight: 700;
+}
+.receipt-foot {
+  text-align: center;
+  border-top: 1px solid #999;
+  padding-top: 0.3em;
+  font-size: 0.9em;
+}
+.receipt-banner {
+  border: 2px solid #b91c1c;
+  color: #b91c1c;
+  text-align: center;
+  font-weight: 700;
+  padding: 0.2em;
+}
+.receipt-watermark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 2.2em;
+  font-weight: 800;
+  color: rgb(185 28 28 / 0.18);
+  transform: rotate(-24deg);
+  pointer-events: none;
+  text-align: center;
+}
+@media print {
+  .receipt-a5 {
+    page: receipt-a5;
+    border: 0;
+    max-width: none;
+    padding: 0;
+  }
+  .receipt-thermal {
+    page: receipt-thermal;
+    border: 0;
+  }
+  .receipt-thermal th {
+    display: none;
+  }
+}
