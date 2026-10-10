@@ -203,7 +203,7 @@ export function ReceiptPage() {
             aria-pressed={fmt === 'a5'}
             onClick={() => set('fmt', 'a5')}
           >
-            {t('fee.receipt.a5')}
+            <bdi className="num">{t('fee.receipt.a5')}</bdi>
           </button>
           <button
             type="button"
@@ -212,7 +212,7 @@ export function ReceiptPage() {
             aria-pressed={fmt === 'thermal'}
             onClick={() => set('fmt', 'thermal')}
           >
-            {t('fee.receipt.thermal')}
+            <bdi className="num">{t('fee.receipt.thermal')}</bdi>
           </button>
           <span className="ms-2 text-sm text-muted-foreground">{t('fee.receipt.language')}</span>
           <button
