@@ -6,15 +6,7 @@ import {
   generateCharges,
   generationCursor,
 } from './generate';
-import {
-  dayOf,
-  errorCode,
-  feeSettings,
-  karachiToday,
-  periodOf,
-  rootMessage,
-  runBatch,
-} from './util';
+import { errorCode, feeSettings, karachiToday, periodOf, rootMessage, runBatch } from './util';
 
 /**
  * The scheduled job (PLAN §8 Workers cron, §14.5). Runs every 30 minutes; each invocation does at
@@ -22,12 +14,18 @@ import {
  * budget, and resumes where the last one stopped (cursor = billing_chunk rows):
  *   1. generate the current Karachi month, group by group, until every group has a finished chunk
  *      ("catch-up": a missed 1st is finished by the next invocation, any day of the month);
- *   2. after the grace day, apply late fines for the month, 200 roots per chunk, until none remain.
+ *   2. apply late fines to every overdue tuition root of any period (due date passed), oldest first,
+ *      200 roots per chunk, until none remain.
  * Both steps are idempotent; nothing runs before the setup wizard is finished.
  *
- * It never sticks (M3 fix pass): a group whose chunk throws is logged as a failed chunk (status
- * 'failed', error code), skipped for the rest of this tick, and retried on the next one; the other
- * groups and the fines still run.
+ * It never sticks and never starves (M3a closing pass): a group whose chunk throws is logged as a
+ * failed chunk (status 'failed', error code, `fail_streak`, `retry_after`) and skipped for the rest of
+ * the tick. Healthy and unattempted groups always go first and failing groups last; a failure does
+ * not use the tick's budget (`maxChunks` counts successful chunks; `maxFailures` separately bounds the
+ * failed attempts per tick, so one tick stays within the D1 query budget). After its n-th consecutive
+ * failure a group waits 2^n ticks (capped at 24 h) before it is retried; at 3 in a row it is
+ * `attention_required` (GET /api/fees/runs `failing`, dashboard `billing_alerts`). The other groups and
+ * the fines always run.
  */
 export type CronReport = {
   today: string;
@@ -50,6 +48,8 @@ export async function generateChunkOrLog(
     afterStudentId: string | null;
     by: string | null;
     proRata?: boolean;
+    /** Clock for the backoff window (ms since epoch); default Date.now(). */
+    now?: number;
   },
 ): Promise<{ ok: true; result: GenerateResult } | { ok: false; code: string; message: string }> {
   try {
@@ -73,6 +73,7 @@ export async function generateChunkOrLog(
           code,
           message,
           by: input.by,
+          now: new Date(input.now ?? Date.now()).toISOString(),
         }),
       );
     } catch (logErr) {
@@ -84,24 +85,28 @@ export async function generateChunkOrLog(
 
 export async function runScheduled(
   db: AppDb,
-  o: { now?: number; maxChunks?: number } = {},
+  o: { now?: number; maxChunks?: number; maxFailures?: number } = {},
 ): Promise<CronReport> {
-  const today = karachiToday(o.now);
+  const nowMs = o.now ?? Date.now();
+  const today = karachiToday(nowMs);
   const period = periodOf(today);
   const report: CronReport = { today, period, generated: [], failed: [], fines: [] };
   const settings = await feeSettings(db);
   if (!settings.setupCompleted) return { ...report, skipped: 'setup_incomplete' };
-  let budget = o.maxChunks ?? 3;
+  const maxChunks = o.maxChunks ?? 3;
+  const maxFailures = o.maxFailures ?? 3;
+  const nowIso = new Date(nowMs).toISOString();
   const failed: string[] = [];
-  while (budget > 0) {
-    const cur = await generationCursor(db, period, { exclude: failed });
+  let successes = 0;
+  while (successes < maxChunks && failed.length < maxFailures) {
+    const cur = await generationCursor(db, period, { exclude: failed, now: nowIso });
     if (!cur) break;
-    budget--;
     const r = await generateChunkOrLog(db, {
       period,
       grpId: cur.grp_id,
       afterStudentId: cur.after_student_id,
       by: null,
+      now: nowMs,
     });
     if (!r.ok) {
       failed.push(cur.grp_id);
@@ -111,6 +116,7 @@ export async function runScheduled(
       );
       continue;
     }
+    successes++;
     report.generated.push({
       grp_id: r.result.grp_id,
       counts: r.result.counts,
@@ -118,15 +124,17 @@ export async function runScheduled(
       next_student_id: r.result.next_student_id,
     });
   }
-  // Fines run whatever happened above (a failed group must not hold back everyone else's fines);
-  // at least one fines chunk per tick once the grace day has passed.
+  const budget = maxChunks - successes;
+  // Fines run whatever happened above (a failed group must not hold back everyone else's fines):
+  // every overdue tuition root of any period up to this month (its due date is the grace day), so a
+  // month the cron missed is still fined; at least one fines chunk per tick.
   const rule = settings.fineRule;
-  if (rule?.enabled && today > dayOf(period, rule.grace_day)) {
+  if (rule?.enabled) {
     let fineBudget = Math.max(1, budget);
     while (fineBudget > 0) {
       fineBudget--;
       try {
-        const f = await applyLateFines(db, { period, asOf: today, by: null });
+        const f = await applyLateFines(db, { asOf: today, by: null });
         report.fines.push({ applied: f.applied, done: f.done });
         if (f.done || f.applied === 0) break;
       } catch (err) {

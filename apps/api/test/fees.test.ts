@@ -769,4 +769,38 @@ describe('M3a fix pass over HTTP', () => {
     expect(rg.body.counts.fees).toBe(2);
     expect(await s.db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
   });
+
+  it('three failures in a row: attention_required in GET /api/fees/runs and billing_alerts on the dashboard', async () => {
+    const s = await family();
+    // A student admitted without charges, so this month's chunk for 5-B has work to fail on.
+    const nb = await admitNew(s.api, s.g5b.id, 'Unbilled', { fees: { charge: false } });
+    expect(nb.status).toBe(201);
+    await s.db.run(
+      sql.raw(
+        `CREATE TRIGGER test_boom BEFORE INSERT ON charge WHEN NEW.student_id = '${nb.body.student_id}' AND NEW.period_key = '${period}' BEGIN SELECT RAISE(ABORT, 'boom'); END`,
+      ),
+    );
+    const dash = async () =>
+      (await s.api<{ billing_alerts: number }>('GET', '/api/dashboard/today')).body.billing_alerts;
+    expect(await dash()).toBe(0);
+    for (let i = 1; i <= 3; i++) {
+      const g = await s.api<GenerateResultDto>('POST', '/api/fees/generate', {
+        period,
+        grp_id: s.g5b.id,
+      });
+      expect(g.body.failed?.grp_id).toBe(s.g5b.id);
+      expect(await dash()).toBe(i < 3 ? 0 : 1);
+    }
+    const runs = await s.api<{
+      attention_required: number;
+      failing: { grp_id: string; fail_streak: number; attention_required: boolean }[];
+    }>('GET', `/api/fees/runs?period=${period}`);
+    expect(runs.body.attention_required).toBe(1);
+    expect(runs.body.failing).toEqual([
+      expect.objectContaining({ grp_id: s.g5b.id, fail_streak: 3, attention_required: true }),
+    ]);
+    await s.db.run(sql`DROP TRIGGER test_boom`);
+    await s.api('POST', '/api/fees/generate', { period, grp_id: s.g5b.id });
+    expect(await dash()).toBe(0);
+  });
 });

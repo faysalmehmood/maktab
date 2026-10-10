@@ -148,7 +148,7 @@ describe('H1 overlapping sponsorships never stick generation', () => {
     expect(await consistency()).toEqual([]);
   });
 
-  it('cron logs a failing group, bills every other group, still fines, and retries next tick', async () => {
+  it('cron logs a failing group, bills every other group, still fines, and retries after its backoff', async () => {
     await run(
       `CREATE TRIGGER test_boom BEFORE INSERT ON charge WHEN NEW.student_id = 'S3' BEGIN SELECT RAISE(ABORT, 'boom'); END`,
     );
@@ -170,7 +170,9 @@ describe('H1 overlapping sponsorships never stick generation', () => {
       after_student_id: null,
     });
     await run('DROP TRIGGER test_boom');
-    const r2 = await runScheduled(db, { now: now + 1_800_000 });
+    // Inside its backoff (2 ticks after the first failure) the cron leaves it alone.
+    expect((await runScheduled(db, { now: now + 1_800_000 })).generated).toEqual([]);
+    const r2 = await runScheduled(db, { now: now + 3_600_000 });
     expect(r2.failed).toEqual([]);
     expect(r2.generated.map((g) => g.grp_id)).toEqual(['G5B']);
     expect(await generationCursor(db, '2026-12')).toBeNull();

@@ -846,34 +846,84 @@ async function insertedCounts(
   };
 }
 
+/** The cron runs every 30 minutes (wrangler.toml triggers); backoff is counted in these ticks. */
+export const CRON_TICK_MS = 30 * 60_000;
 /**
- * Where a resumable run stands, in one read: the first group (by id) with billable enrolments whose
- * latest fees chunk is missing or unfinished, and its cursor. null = the period is complete.
+ * After the n-th consecutive failure a group waits 2^n ticks (1 h, 2 h, 4 h, …) before the cron tries
+ * it again, never longer than a day (failedChunkStatements computes it).
+ */
+export const BACKOFF_CAP_MS = 24 * 3_600_000;
+/** This many consecutive failures of one group for a period = attention_required. */
+export const ATTENTION_AFTER = 3;
+
+/**
+ * Where a resumable run stands, in one read: a group with billable enrolments whose latest fees
+ * chunk is missing or unfinished, and its cursor. null = the period is complete.
+ *
+ * Order (M3a closing pass): with `afterGrpId` (the button's "next"), strictly by group id after it;
+ * otherwise healthy or unattempted groups first and groups whose latest chunk FAILED last, so a bad
+ * group can never starve the others. With `now` (the cron), a failed group still inside its backoff
+ * window (billing_chunk.retry_after) is not offered at all.
  */
 export async function generationCursor(
   db: AppDb,
   period: string,
-  o: { exclude?: readonly string[]; afterGrpId?: string | null } = {},
+  o: { exclude?: readonly string[]; afterGrpId?: string | null; now?: string | null } = {},
 ): Promise<{ grp_id: string; after_student_id: string | null } | null> {
   const [row] = await db.all<{ grp_id: string; next_student_id: string | null }>(sql`
     WITH g AS (SELECT DISTINCT e.grp_id FROM enrolment e WHERE ${eligible(period)}),
     last AS (
-      SELECT k.grp_id, k.done, k.next_student_id,
+      SELECT k.grp_id, k.done, k.next_student_id, k.status, k.retry_after,
              row_number() OVER (PARTITION BY k.grp_id ORDER BY k.created_at DESC, k.id DESC) AS rn
       FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id
       WHERE r.period_key = ${period} AND k.kind = 'fees' AND k.grp_id IS NOT NULL)
-    SELECT g.grp_id, l.next_student_id FROM g LEFT JOIN last l ON l.grp_id = g.grp_id AND l.rn = 1
+    SELECT g.grp_id, l.next_student_id, coalesce(l.status = 'failed', 0) AS failing
+    FROM g LEFT JOIN last l ON l.grp_id = g.grp_id AND l.rn = 1
     WHERE (l.done IS NULL OR l.done = 0) AND g.grp_id > ${o.afterGrpId ?? ''}
       AND g.grp_id NOT IN (SELECT value FROM json_each(${JSON.stringify(o.exclude ?? [])}))
-    ORDER BY g.grp_id LIMIT 1`);
+      ${
+        o.now
+          ? sql`AND (l.status IS NULL OR l.status <> 'failed' OR l.retry_after IS NULL OR l.retry_after <= ${o.now})`
+          : sql``
+      }
+    ORDER BY ${o.afterGrpId ? sql`` : sql`failing,`} g.grp_id LIMIT 1`);
   return row ? { grp_id: row.grp_id, after_student_id: row.next_student_id ?? null } : null;
+}
+
+export type BillingAlert = {
+  grp_id: string;
+  fail_streak: number;
+  error_code: string | null;
+  error_message: string | null;
+  retry_after: string | null;
+  at: string;
+  attention_required: boolean;
+};
+
+/**
+ * Groups whose latest fees chunk for the period failed, with their streak; `attention_required` once
+ * the streak reaches ATTENTION_AFTER (the M3b banner; dashboard `billing_alerts` counts those).
+ */
+export async function failingGroups(db: AppDb, period: string): Promise<BillingAlert[]> {
+  const rows = await db.all<Omit<BillingAlert, 'attention_required'>>(sql`
+    WITH last AS (
+      SELECT k.grp_id, k.status, k.fail_streak, k.error_code, k.error_message, k.retry_after,
+             k.created_at,
+             row_number() OVER (PARTITION BY k.grp_id ORDER BY k.created_at DESC, k.id DESC) AS rn
+      FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id
+      WHERE r.period_key = ${period} AND k.kind = 'fees' AND k.grp_id IS NOT NULL)
+    SELECT grp_id, fail_streak, error_code, error_message, retry_after, created_at AS at
+    FROM last WHERE rn = 1 AND status = 'failed' ORDER BY grp_id`);
+  return rows.map((r) => ({ ...r, attention_required: r.fail_streak >= ATTENTION_AFTER }));
 }
 
 /**
  * Logs a chunk that failed (status 'failed', done 0, the cursor it started from) so the period never
  * sticks on one bad group: the cursor moves on within this tick, GET /api/fees/runs shows it, and the
- * next tick retries it (its latest chunk is unfinished). One batch; the run header is created if the
- * failed batch rolled it back.
+ * cron retries it after its backoff. The streak (previous row failed → its streak + 1, else 1) and
+ * `retry_after` (now + 2^streak ticks, at most 24 h) are computed inside the insert, so logging needs
+ * no read that could fail the same way. One batch; the run header is created if the failed batch
+ * rolled it back.
  */
 export function failedChunkStatements(o: {
   period: string;
@@ -882,14 +932,26 @@ export function failedChunkStatements(o: {
   code: string;
   message: string;
   by: string | null;
+  /** ISO instant the backoff is counted from. */
+  now: string;
 }): SQL[] {
+  const tickMin = CRON_TICK_MS / 60_000;
+  const capTicks = BACKOFF_CAP_MS / CRON_TICK_MS;
   return [
     sql`INSERT INTO billing_run (id, period_key, run_at, run_by)
         SELECT ${newId()}, ${o.period}, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ${o.by}
         WHERE NOT EXISTS (SELECT 1 FROM billing_run WHERE period_key = ${o.period})`,
     sql`INSERT INTO billing_chunk (id, run_id, kind, grp_id, student_id, next_student_id, done, status,
-          error_code, error_message, created_by)
-        VALUES (${newId()}, (SELECT id FROM billing_run WHERE period_key = ${o.period}), 'fees', ${o.grpId},
-          NULL, ${o.afterStudentId}, 0, 'failed', ${o.code}, ${o.message.slice(0, 500)}, ${o.by})`,
+          error_code, error_message, fail_streak, retry_after, created_by)
+        SELECT ${newId()}, (SELECT id FROM billing_run WHERE period_key = ${o.period}), 'fees', ${o.grpId},
+          NULL, ${o.afterStudentId}, 0, 'failed', ${o.code}, ${o.message.slice(0, 500)}, n.streak,
+          strftime('%Y-%m-%dT%H:%M:%fZ', ${o.now},
+                   '+' || (min(${capTicks}, 1 << min(n.streak, 10)) * ${tickMin}) || ' minutes'),
+          ${o.by}
+        FROM (SELECT 1 + coalesce((
+                SELECT CASE WHEN k.status = 'failed' THEN k.fail_streak ELSE 0 END
+                FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id
+                WHERE r.period_key = ${o.period} AND k.kind = 'fees' AND k.grp_id = ${o.grpId}
+                ORDER BY k.created_at DESC, k.id DESC LIMIT 1), 0) AS streak) n`,
   ];
 }

@@ -1,4 +1,4 @@
-import { type AppDb, holiday, school } from '@maktab/db';
+import { type AppDb, failingGroups, holiday, school } from '@maktab/db';
 import {
   type AbsenteeDto,
   type AttendanceReport,
@@ -616,6 +616,9 @@ export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           grp_name: groupLabel(programme_name, a.grp_name),
         })),
         queued_absence_messages: Number(queued?.n ?? 0),
+        billing_alerts: (await failingGroups(db, date.slice(0, 7))).filter(
+          (f) => f.attention_required,
+        ).length,
       };
       return c.json(body);
     },

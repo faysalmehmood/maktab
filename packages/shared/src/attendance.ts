@@ -278,4 +278,9 @@ export type DashboardTodayResponse = {
   registers: { total: number; taken: number; not_taken: TodayItem[] };
   absentees: AbsenteeDto[];
   queued_absence_messages: number;
+  /**
+   * Groups whose fee generation for this month has failed three times in a row
+   * (attention_required; details in GET /api/fees/runs). M3b shows a banner when > 0.
+   */
+  billing_alerts: number;
 };

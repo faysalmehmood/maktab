@@ -4,7 +4,15 @@ import type { AppDb } from '../client';
 import { allocationsStatement, planRelease } from './alloc';
 import { applyCredit } from './collect';
 import { chunkLogStatement } from './generate';
-import { assertPeriod, auditStatement, FeeError, feeSettings, roundRupee, runBatch } from './util';
+import {
+  assertPeriod,
+  auditStatement,
+  FeeError,
+  feeSettings,
+  periodOf,
+  roundRupee,
+  runBatch,
+} from './util';
 
 /**
  * Late fines (PLAN §5.2, §14.5). After the grace (= due) day, each family tuition root of the period
@@ -16,10 +24,17 @@ import { assertPeriod, auditStatement, FeeError, feeSettings, roundRupee, runBat
  * mid-month joiner is never fined for the month they joined; someone who starts on the 1st has a
  * normal month; a transfer continues its chain and is fined normally after its pushed due date).
  * Chunked: at most `limit` roots per request; `done` says whether any remain.
+ *
+ * Without `period` (the cron, and POST /api/fees/fines/apply with no period; M3a closing pass) every
+ * overdue family tuition root of any period up to `asOf`'s month is considered, oldest due date first:
+ * a month-old unpaid fee is fined even if the cron missed its month. Each fine carries its root's
+ * period, so charge_fine_once (parent, period) keeps it to one fine per root, whichever path wrote it.
  */
 
 export type PlannedFine = {
   id: string;
+  /** The root's period (the fine is filed under it). */
+  period_key: string;
   parent_charge_id: string;
   student_id: string;
   fee_head_id: string;
@@ -30,7 +45,9 @@ export type PlannedFine = {
 };
 
 export type FinesResult = {
+  /** The period asked for, or (all periods) asOf's month, which the chunk is logged under. */
   period: string;
+  all_periods: boolean;
   as_of: string;
   dry_run: boolean;
   enabled: boolean;
@@ -41,25 +58,40 @@ export type FinesResult = {
 
 export async function applyLateFines(
   db: AppDb,
-  input: { period: string; asOf: string; by: string | null; dryRun?: boolean; limit?: number },
+  input: {
+    /** One period; omit for every overdue root up to asOf's month. */
+    period?: string | null;
+    asOf: string;
+    by: string | null;
+    dryRun?: boolean;
+    limit?: number;
+  },
 ): Promise<FinesResult> {
-  assertPeriod(input.period);
+  if (input.period) assertPeriod(input.period);
+  const logPeriod = input.period || periodOf(input.asOf);
   const limit = Math.min(input.limit ?? 200, 200);
   const settings = await feeSettings(db);
   const rule = settings.fineRule;
-  const base = { period: input.period, as_of: input.asOf, dry_run: !!input.dryRun };
+  const base = {
+    period: logPeriod,
+    all_periods: !input.period,
+    as_of: input.asOf,
+    dry_run: !!input.dryRun,
+  };
   if (!rule?.enabled || rule.value <= 0)
     return { ...base, enabled: false, planned: [], applied: 0, done: true };
   const rows = await db.all<Omit<PlannedFine, 'id' | 'amount'>>(sql`
-    SELECT cs.id AS parent_charge_id, cs.student_id, cs.fee_head_id, cs.payer_id, c.enrolment_id, cs.due
+    SELECT cs.id AS parent_charge_id, cs.student_id, cs.fee_head_id, cs.payer_id, c.enrolment_id, cs.due,
+           cs.period_key
     FROM charge_status cs JOIN charge c ON c.id = cs.id JOIN fee_head h ON h.id = cs.fee_head_id
-    WHERE cs.period_key = ${input.period} AND cs.payer_type = 'family' AND h.kind = 'tuition'
+    WHERE ${input.period ? sql`cs.period_key = ${input.period}` : sql`cs.period_key <= ${logPeriod}`}
+      AND cs.payer_type = 'family' AND h.kind = 'tuition'
       AND cs.due > 0 AND cs.due_date < ${input.asOf}
       AND NOT EXISTS (SELECT 1 FROM enrolment e WHERE e.id = c.enrolment_id AND e.prev_enrolment_id IS NULL
                         AND substr(e.start_date, 1, 7) = cs.period_key AND e.start_date > cs.period_key || '-01')
       AND NOT EXISTS (SELECT 1 FROM charge f WHERE f.parent_charge_id = cs.id AND f.kind = 'fine'
-                        AND f.period_key = ${input.period})
-    ORDER BY cs.id LIMIT ${limit + 1}`);
+                        AND f.period_key = cs.period_key)
+    ORDER BY ${input.period ? sql`` : sql`cs.due_date, `}cs.id LIMIT ${limit + 1}`);
   const done = rows.length <= limit;
   const planned: PlannedFine[] = [];
   for (const r of rows.slice(0, limit)) {
@@ -78,25 +110,30 @@ export async function applyLateFines(
       pi: f.payer_id,
       e: f.enrolment_id,
       a: f.amount,
+      pk: f.period_key,
     })),
   );
+  // A run header per period touched (old periods may predate the generator) and the log's period.
+  const periods = JSON.stringify([...new Set([logPeriod, ...planned.map((f) => f.period_key)])]);
   const stmts: SQL[] = [
     sql`INSERT INTO billing_run (id, period_key, run_at, run_by)
-        SELECT ${newId()}, ${input.period}, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ${input.by}
-        WHERE NOT EXISTS (SELECT 1 FROM billing_run WHERE period_key = ${input.period})`,
+        SELECT ${newId()} || '-' || p.value, p.value, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ${input.by}
+        FROM json_each(${periods}) p
+        WHERE NOT EXISTS (SELECT 1 FROM billing_run WHERE period_key = p.value)`,
     sql`INSERT INTO charge (id, student_id, enrolment_id, fee_head_id, period_key, payer_type, payer_id,
           amount, due_date, kind, parent_charge_id, reason, run_id, created_by)
-        SELECT j.id, j.s, j.e, j.h, ${input.period}, 'family', j.pi, j.a, ${input.asOf}, 'fine', j.par,
-               'late fine', (SELECT id FROM billing_run WHERE period_key = ${input.period}), ${input.by}
+        SELECT j.id, j.s, j.e, j.h, j.pk, 'family', j.pi, j.a, ${input.asOf}, 'fine', j.par,
+               'late fine', (SELECT id FROM billing_run WHERE period_key = j.pk), ${input.by}
         FROM (SELECT json_extract(value, '$.id') AS id, json_extract(value, '$.par') AS par,
                      json_extract(value, '$.s') AS s, json_extract(value, '$.h') AS h,
                      json_extract(value, '$.pi') AS pi, json_extract(value, '$.e') AS e,
-                     json_extract(value, '$.a') AS a FROM json_each(${json})) j
+                     json_extract(value, '$.a') AS a, json_extract(value, '$.pk') AS pk
+              FROM json_each(${json})) j
         WHERE NOT EXISTS (SELECT 1 FROM charge f WHERE f.parent_charge_id = j.par AND f.kind = 'fine'
-                            AND f.period_key = ${input.period})
+                            AND f.period_key = j.pk)
           AND (SELECT net - paid FROM charge_net WHERE id = j.par) > 0`,
     chunkLogStatement({
-      period: input.period,
+      period: logPeriod,
       kind: 'fines',
       grpId: null,
       studentId: null,

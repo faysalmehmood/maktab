@@ -266,7 +266,7 @@ describe('fees on D1', () => {
     expect(await consistency()).toEqual([]);
   });
 
-  it('cron never sticks on D1: a failing group is logged, the rest bill and fine, retried next tick', async () => {
+  it('cron never sticks on D1: a failing group is logged, the rest bill and fine, retried after its backoff', async () => {
     await proxy.env.DB.batch(
       [
         `INSERT INTO grp (id, programme_id, session_id, name) VALUES ('G0', 'P', 'SES', 'Z'), ('G2', 'P', 'SES', 'Y')`,
@@ -287,8 +287,14 @@ describe('fees on D1', () => {
     expect(
       await one(sql`SELECT grp_id, status, error_code FROM billing_chunk WHERE status = 'failed'`),
     ).toEqual({ grp_id: 'G0', status: 'failed', error_code: 'constraint' });
+    // Backoff computed in SQL (1 << streak, strftime) on D1: first failure waits 2 ticks.
+    expect(
+      await one(sql`SELECT fail_streak, retry_after FROM billing_chunk WHERE status = 'failed'`),
+    ).toEqual({ fail_streak: 1, retry_after: new Date(now + 3_600_000).toISOString() });
     await proxy.env.DB.prepare('DROP TRIGGER test_boom').run();
-    const r2 = await runScheduled(db, { now: now + 1_800_000 });
+    const r1b = await runScheduled(db, { now: now + 1_800_000 });
+    expect([r1b.failed, r1b.generated]).toEqual([[], []]);
+    const r2 = await runScheduled(db, { now: now + 3_600_000 });
     expect([r2.failed, r2.generated.map((g) => g.grp_id)]).toEqual([[], ['G0']]);
     expect(
       await one(

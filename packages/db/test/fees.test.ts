@@ -782,7 +782,8 @@ describe('cron', () => {
     expect(r1.generated.map((g) => g.grp_id)).toEqual(['G5A', 'G5B']);
     const r2 = await runScheduled(db, { now: oct1 + 1_800_000, maxChunks: 2 });
     expect(r2.generated.map((g) => g.grp_id)).toEqual(['G6']);
-    expect(r2.fines).toEqual([]);
+    // Fines are checked every tick (any period); nothing is overdue before the due day.
+    expect(r2.fines).toEqual([{ applied: 0, done: true }]);
     const r3 = await runScheduled(db, { now: Date.UTC(2026, 9, 11, 3) });
     expect(r3.generated).toEqual([]);
     expect(r3.fines).toEqual([{ applied: 4, done: true }]);

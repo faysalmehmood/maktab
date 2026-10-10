@@ -5,6 +5,7 @@ import {
   defaulters,
   endConcession,
   type FeeSettings,
+  failingGroups,
   feeRegister,
   feeSettings,
   generateCharges,
@@ -630,18 +631,17 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id WHERE r.period_key = ${q.period}
       ORDER BY k.created_at, k.id`);
       const cursor = await generationCursor(db, q.period);
-      // Groups whose latest chunk failed: still to be billed (the cron retries them every tick).
-      const latest = new Map<string, (typeof chunks)[number]>();
-      for (const k of chunks) if (k.grp_id) latest.set(k.grp_id, k);
-      const failing = [...latest.values()]
-        .filter((k) => k.status === 'failed')
-        .map((k) => ({
-          grp_id: k.grp_id,
-          error_code: k.error_code,
-          error_message: k.error_message,
-          at: k.created_at,
-        }));
-      return c.json({ period: q.period, complete: cursor === null, cursor, failing, chunks });
+      // Groups whose latest chunk failed: still to be billed (the cron retries them with backoff);
+      // `attention_required` after three failures in a row (the M3b banner).
+      const failing = await failingGroups(db, q.period);
+      return c.json({
+        period: q.period,
+        complete: cursor === null,
+        cursor,
+        failing,
+        attention_required: failing.filter((f) => f.attention_required).length,
+        chunks,
+      });
     },
   );
 

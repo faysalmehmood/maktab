@@ -9,6 +9,8 @@ Thanks for helping. Maktab is small on purpose; please keep it that way.
 - `cp apps/api/.dev.vars.example apps/api/.dev.vars`
 - `npm run db:migrate:local`
 - `npm run db:seed` (optional sample data; one transaction, so a failure leaves nothing behind).
+  Running it again is a no-op ("… already has a school; not seeding again"): it never reuses or
+  tops up an existing database — start from a fresh file to re-seed.
   `SEED_OWNER_EMAIL=you@gmail.com` makes you the owner; an address that is already a user (you signed
   in first) or is the demo teacher's is reused, not an error. `SEED_DB=<path to a .sqlite file>`
   seeds another file: the seed does **not** read `D1_PERSIST_TO`, so with `--persist-to <dir>` point
@@ -112,8 +114,18 @@ that have **no finished chunk** for the month: a student enrolled in a group aft
 completed is not billed by the cron (or by "Generate", which skips finished groups) — bill them with
 `POST /api/fees/regenerate {student_id, period}` (admission does this itself unless
 `fees.charge` is false). A group whose chunk fails is logged (`billing_chunk.status = 'failed'`,
-`error_code`), skipped for that tick and retried on the next; `GET /api/fees/runs?period=YYYY-MM`
-lists it under `failing`. Fines still run for everyone else.
+`error_code`) and skipped for that tick. Healthy groups always go first and failing groups last, and
+a failure does not use the tick's chunk budget (failed attempts are capped separately). A failing
+group backs off: after its n-th failure in a row it waits 2^n ticks (1 h, 2 h, 4 h, … at most 24 h,
+`billing_chunk.fail_streak` / `retry_after`); "Generate" ignores the backoff. `GET
+/api/fees/runs?period=YYYY-MM` lists it under `failing`; after three failures in a row it is
+`attention_required` and counted in the dashboard's `billing_alerts`.
+
+Fines run every tick for everyone else: each overdue tuition root of **any** period (its due date —
+the fine rule's grace day — has passed, money still due), oldest first, 200 per chunk, one fine per
+root (`charge_fine_once`), filed under the root's own period. A month the cron missed is still
+fined. `POST /api/fees/fines/apply` without `period` does the same; with `period` it fines that
+month only.
 
 By contributing you agree your work is licensed under AGPL-3.0. This project follows the
 [Code of Conduct](CODE_OF_CONDUCT.md).

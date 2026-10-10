@@ -142,7 +142,8 @@ export const generateInputSchema = z.object({
   pro_rata: z.boolean().default(false),
 });
 export const finesApplyInputSchema = z.object({
-  period: periodSchema,
+  /** Omit for every overdue tuition root of any period up to as_of's month (what the cron does). */
+  period: periodSchema.optional(),
   as_of: isoDateSchema.optional(),
   dry_run: z.boolean().default(false),
 });

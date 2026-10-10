@@ -170,6 +170,13 @@ export const billingChunk = sqliteTable(
     status: text('status').notNull().default('ok'),
     errorCode: text('error_code'),
     errorMessage: text('error_message'),
+    /**
+     * Cron backoff (M3a closing pass), on failed rows only: consecutive failures of this group for
+     * the period, including this one, and the earliest instant (ISO, UTC) the cron retries it. Three
+     * in a row = `attention_required` (GET /api/fees/runs, dashboard `billing_alerts`).
+     */
+    failStreak: integer('fail_streak').notNull().default(0),
+    retryAfter: text('retry_after'),
     ...stamps(),
   },
   (t) => [
