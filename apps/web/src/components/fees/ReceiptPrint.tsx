@@ -51,7 +51,12 @@ export function ReceiptPrint({
     style.dataset.lang = lang;
     const measure = () => {
       const mm = Math.ceil((el.offsetHeight * 25.4) / 96) + 6;
-      style.textContent = `@page receipt-thermal { size: 58mm ${Math.max(mm, 60)}mm; margin: 2mm; }`;
+      // The whole document prints on the thermal page while this receipt is shown: anything outside
+      // the receipt left on the default page (the app shell, the toaster's empty <section> after
+      // #root) forced a page-type switch and so a blank Letter/A4 second page (M4 fix pass, C2;
+      // checked with scripts/print-pages.mjs).
+      style.textContent = `@page receipt-thermal { size: 58mm ${Math.max(mm, 60)}mm; margin: 2mm; }
+@media print { html, body { page: receipt-thermal; } }`;
     };
     measure();
     document.head.appendChild(style);

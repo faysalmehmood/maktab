@@ -202,7 +202,9 @@ describe('refused registers', () => {
     const before = api.calls.length;
     fireEvent.click(screen.getAllByRole('button', { name: 'Retry' })[0] as HTMLElement);
     await waitFor(async () => expect((await ob.failed()).length).toBe(1));
-    expect(api.calls.length).toBeGreaterThan(before);
+    // The retried entry leaves the failed list before its sync request goes out: wait for the call
+    // (was a flaky immediate assertion, seen in the M4 fix pass).
+    await waitFor(() => expect(api.calls.length).toBeGreaterThan(before));
     expect((await ob.failed())[0]?.label).toBe('Class 5 B');
 
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(1));

@@ -18,6 +18,8 @@ import {
   nextGroup,
   recordOpeningBalance,
   regenerateForStudent,
+  reopenableGroups,
+  reopenGroupPeriod,
   school,
   sponsorStatement,
   voidCharge,
@@ -41,6 +43,7 @@ import {
   finesApplyInputSchema,
   type GenerateResultDto,
   generateInputSchema,
+  idSchema,
   newId,
   openingBalanceInputSchema,
   periodSchema,
@@ -660,9 +663,24 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         complete: cursor === null,
         cursor,
         failing,
+        // Finished with no fees billed (rates were missing): "Re-open period" offers these.
+        reopenable: await reopenableGroups(db, q.period),
         attention_required: failing.filter((f) => f.attention_required).length,
         chunks,
       });
+    },
+  );
+
+  /** C4: re-open a group's month that finished with no fees (owner/admin; append-only log). */
+  defineRoute(
+    app,
+    table,
+    { method: 'POST', path: '/api/fees/runs/reopen', access: generate },
+    async (c) => {
+      const input = await jsonBody(c, z.object({ period: periodSchema, grp_id: idSchema }));
+      const db = c.get('db');
+      await reopenGroupPeriod(db, { period: input.period, grpId: input.grp_id, by: userId(c) });
+      return c.json({ ok: true, cursor: await generationCursor(db, input.period) });
     },
   );
 

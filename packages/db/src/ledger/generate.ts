@@ -6,9 +6,11 @@ import type { AllocationInput } from './index';
 import {
   addDays,
   assertPeriod,
+  auditStatement,
   dayOf,
   daysInclusive,
   daysInPeriod,
+  FeeError,
   type FeeSettings,
   feeSettings,
   inJson,
@@ -958,4 +960,54 @@ export function failedChunkStatements(o: {
                 WHERE r.period_key = ${o.period} AND k.kind = 'fees' AND k.grp_id = ${o.grpId}
                 ORDER BY k.created_at DESC, k.id DESC LIMIT 1), 0) AS streak) n`,
   ];
+}
+
+/**
+ * Groups whose generation for the period finished (latest fees chunk done, ok) without billing a
+ * single fee — typically because no rate existed yet. Only these can be re-opened.
+ */
+export async function reopenableGroups(db: AppDb, period: string): Promise<string[]> {
+  const rows = await db.all<{ grp_id: string }>(sql`
+    WITH k AS (
+      SELECT k.grp_id, k.done, k.status, k.fees, k.sponsored,
+             row_number() OVER (PARTITION BY k.grp_id ORDER BY k.created_at DESC, k.id DESC) AS rn
+      FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id
+      WHERE r.period_key = ${period} AND k.kind = 'fees' AND k.grp_id IS NOT NULL)
+    SELECT grp_id FROM k GROUP BY grp_id
+    HAVING max(CASE WHEN rn = 1 AND done = 1 AND status = 'ok' THEN 1 ELSE 0 END) = 1
+       AND sum(CASE WHEN status = 'ok' THEN fees + sponsored ELSE 0 END) = 0
+    ORDER BY grp_id`);
+  return rows.map((r) => r.grp_id);
+}
+
+/**
+ * "Re-open period" for one group (M4 fix pass, C4; owner/admin): a group whose chunk completed with 0
+ * fees (rates were missing) gets a new `reopened` log row — not done, no cursor — so Generate (and
+ * the cron) bills it again from its first student. The log stays append-only; generation is
+ * idempotent, so nothing already billed is billed twice. 409 `not_reopenable` otherwise.
+ */
+export async function reopenGroupPeriod(
+  db: AppDb,
+  input: { period: string; grpId: string; by: string },
+): Promise<void> {
+  assertPeriod(input.period);
+  const ok = await reopenableGroups(db, input.period);
+  if (!ok.includes(input.grpId))
+    throw new FeeError(
+      'not_reopenable',
+      'Only a group whose month finished with no fees billed can be re-opened',
+    );
+  await runBatch(db, [
+    sql`INSERT INTO billing_chunk (id, run_id, kind, grp_id, student_id, next_student_id, done, status, created_by)
+        VALUES (${newId()}, (SELECT id FROM billing_run WHERE period_key = ${input.period}), 'fees',
+                ${input.grpId}, NULL, NULL, 0, 'reopened', ${input.by})`,
+    auditStatement({
+      id: newId(),
+      userId: input.by,
+      entity: 'billing_run',
+      entityId: input.period,
+      action: 'reopen',
+      diff: { before: null, after: { period: input.period, grp_id: input.grpId } },
+    }),
+  ]);
 }

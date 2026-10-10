@@ -67,6 +67,10 @@ describe('receipt view', () => {
     expect(style?.textContent).toMatch(
       /@page receipt-thermal \{ size: 58mm \d+mm; margin: 2mm; \}/,
     );
+    // C2 (M4 fix pass): the whole document prints on the thermal page; anything left on the
+    // default page (shell, toaster) forced a blank Letter/A4 second page in Chrome
+    // (scripts/print-pages.mjs: 2 pages before, 1 after).
+    expect(style?.textContent).toContain('@media print { html, body { page: receipt-thermal; } }');
   });
 
   it('58 mm: the child name / admission no. row is a td row that print does not hide', async () => {

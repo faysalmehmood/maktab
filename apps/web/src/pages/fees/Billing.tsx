@@ -48,6 +48,28 @@ const add = (a: Counts, b: Counts): Counts => ({
 });
 
 /**
+ * A dry run plans each group from ALL of its students' enrolments (primary first), so a student in a
+ * class and a batch is planned in both groups' previews — while the commit bills them once (the
+ * second group finds the rows already there). The preview therefore counts each (student, head,
+ * period) once — per payer for sponsor lines — and credits it to the first group that planned it,
+ * so preview == commit (M4 fix pass, C3).
+ */
+export function dedupedCounts(planned: GenerateResultDto['planned'], seen: Set<string>): Counts {
+  const c = zero();
+  for (const p of planned) {
+    const key = `${p.kind}|${p.student_id}|${p.fee_head_id}|${p.period_key}|${p.payer_type}|${
+      p.payer_type === 'sponsor' ? p.payer_id : ''
+    }`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (p.kind === 'concession') c.concessions++;
+    else if (p.payer_type === 'sponsor') c.sponsored++;
+    else c.fees++;
+  }
+  return c;
+}
+
+/**
  * The client loop over POST /api/fees/generate (one ≤ 200-row chunk per request, PLAN §15): send
  * `next` back until it is null; a `failed` group is collected and skipped (the server's `next`
  * already moves past it). A guard stops a server that never finishes.
@@ -62,6 +84,7 @@ export async function runGenerate(
   },
 ): Promise<GenerateSummary> {
   const s: GenerateSummary = { byGroup: new Map(), totals: zero(), failed: [], requests: 0 };
+  const seen = new Set<string>();
   let next: GenerateResultDto['next'] = null;
   do {
     const r: GenerateResultDto = await post({
@@ -71,8 +94,9 @@ export async function runGenerate(
       ...(next ? { grp_id: next.grp_id, after_student_id: next.after_student_id } : {}),
     });
     s.requests++;
-    if (r.grp_id) s.byGroup.set(r.grp_id, add(s.byGroup.get(r.grp_id) ?? zero(), r.counts));
-    s.totals = add(s.totals, r.counts);
+    const counts = o.dryRun && r.planned.length ? dedupedCounts(r.planned, seen) : r.counts;
+    if (r.grp_id) s.byGroup.set(r.grp_id, add(s.byGroup.get(r.grp_id) ?? zero(), counts));
+    s.totals = add(s.totals, counts);
     if (r.failed) s.failed.push(r.failed);
     o.onProgress?.({ ...s, byGroup: new Map(s.byGroup) });
     next = r.next;
@@ -91,6 +115,8 @@ type Runs = {
     attention_required: boolean;
   }[];
   attention_required: number;
+  /** Groups finished with no fees (rates were missing): "Re-open period" (C4). */
+  reopenable?: string[];
   chunks: {
     id: string;
     grp_id: string | null;
@@ -195,8 +221,19 @@ export function BillingPage() {
     mutationFn: (dryRun: boolean) =>
       sendJson<Fines>('POST', '/api/fees/fines/apply', { dry_run: dryRun }),
   });
+  // C4: a group that finished the month with no fees (rates added late) can be re-opened.
+  const reopen = useMutation({
+    mutationFn: (grpId: string) =>
+      sendJson('POST', '/api/fees/runs/reopen', { period, grp_id: grpId }),
+    onSuccess: async () => {
+      toast.success(t('fee.billing.reopened'));
+      setPreviewed(null);
+      await qc.invalidateQueries({ queryKey: ['fee-runs'] });
+    },
+  });
   const s = gen.data ?? progress;
   const failing = runs.data?.failing ?? [];
+  const reopenable = runs.data?.reopenable ?? [];
   return (
     <section className="flex max-w-3xl flex-col gap-4">
       <PageTitle>{t('fee.billing.title')}</PageTitle>
@@ -418,6 +455,30 @@ export function BillingPage() {
               {runs.data.complete ? t('fee.billing.complete') : t('fee.billing.incomplete')}
             </p>
           )}
+          {reopenable.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-md border p-3" id="billing-reopenable">
+              <p className="text-sm font-medium">{t('fee.billing.reopenTitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('fee.billing.reopenHint')}</p>
+              <ul className="flex flex-col gap-1 text-sm">
+                {reopenable.map((g) => (
+                  <li key={g} className="flex flex-wrap items-center gap-2">
+                    <bdi>{name(g)}</bdi>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ms-auto min-h-11"
+                      id={`billing-reopen-${g}`}
+                      disabled={reopen.isPending}
+                      onClick={() => reopen.mutate(g)}
+                    >
+                      {t('fee.billing.reopen')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <ErrorNote error={reopen.error} />
+            </div>
+          )}
           {failing.length > 0 && (
             <ul className="flex flex-col gap-1 text-sm text-destructive" id="billing-failing">
               {failing.map((f) => (
@@ -462,7 +523,7 @@ export function BillingPage() {
                     </TableCell>
                     <TableCell className="whitespace-normal break-words">
                       <span title={c.error_code ?? undefined}>
-                        {c.status === 'ok' || c.status === 'failed'
+                        {c.status === 'ok' || c.status === 'failed' || c.status === 'reopened'
                           ? t(`fee.billing.statuses.${c.status}`)
                           : c.status}
                       </span>

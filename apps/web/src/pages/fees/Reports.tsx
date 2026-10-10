@@ -183,7 +183,11 @@ export function ConcessionRegisterPage() {
                 return (
                   <TableRow key={c.id}>
                     <TableCell>
-                      <Link to={`/students/${c.student_id}`} className="hover:underline">
+                      <Link
+                        to={`/students/${c.student_id}`}
+                        className="inline-flex min-h-11 min-w-11 items-center hover:underline"
+                        data-concession-student={c.student_id}
+                      >
                         <bdi>{c.student_name}</bdi>
                       </Link>{' '}
                       <Num>{c.admission_no}</Num>

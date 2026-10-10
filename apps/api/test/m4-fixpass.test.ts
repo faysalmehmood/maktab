@@ -17,7 +17,7 @@ import { fakeR2, signedInAs, testApp } from './helpers';
 
 // M4 fix pass over HTTP: owner-pay privacy on every money read an accountant can open (F1), the
 // per-request query budget of "my payslips" (F2), own-drawer cash out (F3), account set-up (holder
-// freeze, opening balance) and the bill photo rules (F5).
+// freeze, opening balance), bill photo rules (F5) and "Re-open period" (C4).
 
 type Res<T> = { status: number; body: T; text: string };
 function client(request: ReturnType<typeof testApp>['request'], cookie: string) {
@@ -42,6 +42,7 @@ const RS = (n: number) => n * 100;
 // Request bodies take ULIDs.
 const ACC2 = newId();
 const ACC = newId();
+const G5 = newId();
 const today = todayPk();
 const period = today.slice(0, 7);
 
@@ -384,5 +385,51 @@ describe('F5: expense bill photo', () => {
     for (const k of keys) expect(await s.r2.bucket.get(k.key)).not.toBeNull();
     await s.as.admin('POST', `/api/expenses/${id}/void`, { reason: 'dup' });
     expect(await upload(s.users.admin.cookie)).toBe(409);
+  });
+});
+
+describe('C4: re-open period over HTTP', () => {
+  it('lists the group, owner/admin re-open it, Generate bills it', async () => {
+    const s = await setup();
+    await s.db.run(sql`INSERT INTO session (id, name, start_date, end_date, is_current)
+      VALUES ('SS', '2026-27', '2026-04-01', '2027-03-31', 1)`);
+    await s.db.run(
+      sql`INSERT INTO programme (id, name, kind, seq) VALUES ('P5', 'Class 5', 'grade', 5)`,
+    );
+    await s.db.run(sql`INSERT INTO grp (id, programme_id, session_id, name, is_primary, status)
+      VALUES (${G5}, 'P5', 'SS', 'A', 1, 'running')`);
+    await s.db.run(sql`INSERT INTO family (id, name) VALUES ('F1', 'Khan')`);
+    await s.db.run(sql`INSERT INTO student (id, family_id, admission_no, name, admission_date)
+      VALUES ('S1', 'F1', '1', 'Ali', '2026-04-01')`);
+    await s.db.run(sql`INSERT INTO enrolment (id, student_id, grp_id, is_primary, start_date, status)
+      VALUES ('E1', 'S1', ${G5}, 1, '2026-04-01', 'active')`);
+    await s.db.run(
+      sql`INSERT INTO fee_head (id, name, kind, cadence) VALUES ('TUI', 'Tuition', 'tuition', 'monthly')`,
+    );
+    const p = '2026-10';
+    const gen = () =>
+      s.as.admin<{ counts: { fees: number } }>('POST', '/api/fees/generate', { period: p });
+    expect((await gen()).body.counts.fees).toBe(0);
+    const runs = await s.as.admin<{ reopenable: string[]; complete: boolean }>(
+      'GET',
+      `/api/fees/runs?period=${p}`,
+    );
+    expect([runs.body.complete, runs.body.reopenable]).toEqual([true, [G5]]);
+    await s.db.run(sql`INSERT INTO fee_rate (id, fee_head_id, programme_id, amount, effective_from)
+      VALUES ('R5', 'TUI', 'P5', ${RS(3000)}, '2026-04-01')`);
+    expect(
+      (await s.as.acct('POST', '/api/fees/runs/reopen', { period: p, grp_id: G5 })).status,
+    ).toBe(403);
+    const re = await s.as.admin<{ cursor: { grp_id: string } }>('POST', '/api/fees/runs/reopen', {
+      period: p,
+      grp_id: G5,
+    });
+    expect([re.status, re.body.cursor.grp_id]).toEqual([200, G5]);
+    expect((await gen()).body.counts.fees).toBe(1);
+    const no = await s.as.admin<{ error: { code: string } }>('POST', '/api/fees/runs/reopen', {
+      period: p,
+      grp_id: G5,
+    });
+    expect([no.status, no.body.error.code]).toEqual([409, 'not_reopenable']);
   });
 });

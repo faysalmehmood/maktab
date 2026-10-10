@@ -46,6 +46,7 @@ export const feeErrorsEn = {
   fine_value_pct: 'A percentage fine must be 1–100',
   fine_value_required: 'Enter the fine amount',
   invalid_transition: 'Not allowed in its current state.',
+  not_reopenable: 'Only a group whose month finished with no fees billed can be re-opened.',
 } as const;
 
 export const feeErrorsUr: Shape<typeof feeErrorsEn> = {
@@ -86,6 +87,7 @@ export const feeErrorsUr: Shape<typeof feeErrorsEn> = {
   fine_value_pct: 'فیصد جرمانہ 1 سے 100 کے درمیان ہو',
   fine_value_required: 'جرمانے کی رقم لکھیں',
   invalid_transition: 'موجودہ حالت میں اس کی اجازت نہیں۔',
+  not_reopenable: 'صرف وہ گروپ دوبارہ کھولا جا سکتا ہے جس کا مہینہ بغیر کسی فیس کے مکمل ہوا ہو۔',
 };
 
 export const feeEn = {
@@ -334,7 +336,12 @@ export const feeEn = {
     confirmBody:
       'For {{period}}: {{fees}} fees, {{concessions}} concessions, {{sponsored}} sponsored lines (from the preview).',
     finesNone: 'Nobody would be fined.',
-    statuses: { ok: 'Done', failed: 'Failed' },
+    statuses: { ok: 'Done', failed: 'Failed', reopened: 'Re-opened' },
+    reopenTitle: 'Finished with no fees',
+    reopenHint:
+      'These groups finished this month without a single fee, usually because a rate was missing. Add the rate, re-open, then Generate again.',
+    reopen: 'Re-open period',
+    reopened: 'Re-opened: Generate will bill this group again.',
     codes: {
       duplicate_charge: 'A fee was already billed (duplicate)',
       conflict: 'Clashed with another change',
@@ -811,7 +818,12 @@ export const feeUr: Shape<typeof feeEn> = {
     confirmBody:
       '{{period}} کے لیے: {{fees}} فیس، {{concessions}} رعایتیں، {{sponsored}} کفالت کی سطریں (جائزے کے مطابق)۔',
     finesNone: 'کسی پر جرمانہ نہیں بنتا۔',
-    statuses: { ok: 'مکمل', failed: 'ناکام' },
+    statuses: { ok: 'مکمل', failed: 'ناکام', reopened: 'دوبارہ کھولا گیا' },
+    reopenTitle: 'بغیر فیس کے مکمل',
+    reopenHint:
+      'ان گروپوں کا یہ مہینہ ایک بھی فیس کے بغیر مکمل ہوا، عموماً اس لیے کہ شرح موجود نہیں تھی۔ شرح شامل کریں، دوبارہ کھولیں، پھر دوبارہ “بنائیں”۔',
+    reopen: 'مہینہ دوبارہ کھولیں',
+    reopened: 'دوبارہ کھول دیا: “بنائیں” اس گروپ کی فیس دوبارہ بنائے گا۔',
     codes: {
       duplicate_charge: 'فیس پہلے ہی بن چکی تھی (دہری)',
       conflict: 'کسی اور تبدیلی سے ٹکراؤ',

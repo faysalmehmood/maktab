@@ -65,6 +65,13 @@
         "30_ledger.sql": "5d951daabd26405ab50ed73edbda7b6f653441c86ea0df5acc4234fb797692a1",
         "60_money_out.sql": "2baf0dda57604c77ea246ddef8c160f1ab151d416bce93f2ddadf9576efbb67c"
       }
+    },
+    {
+      "migration": "0018_c4_reopen_period",
+      "sha256": "48e02336b101d617550107fc95452d873125d3b3f70fa3d549cd8e79b00c20ff",
+      "files": {
+        "50_fees.sql": "a71e45483426e16a048d022dcf24ef4e9d9c6b7deb2a3f94934e4989a6febe7c"
+      }
     }
   ]
 }

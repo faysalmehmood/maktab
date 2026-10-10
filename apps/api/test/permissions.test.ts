@@ -186,6 +186,7 @@ GET    /api/fees/sponsors/:id/statement          D A A A D D
 POST   /api/fees/opening-balances                D A A D D D
 POST   /api/fees/generate                        D A A D D D
 GET    /api/fees/runs                            D A A D D D
+POST   /api/fees/runs/reopen                     D A A D D D
 POST   /api/fees/fines/apply                     D A A D D D
 POST   /api/fees/fines/:id/waive                 D A A D D D
 POST   /api/fees/regenerate                      D A A D D D

@@ -174,7 +174,7 @@ export function AppShell() {
   };
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex min-h-dvh print:min-h-0">
       <aside className="hidden w-60 shrink-0 flex-col border-e md:flex print:hidden">
         <div className="px-5 py-4 text-lg font-semibold">{t('app.name')}</div>
         <NavList />

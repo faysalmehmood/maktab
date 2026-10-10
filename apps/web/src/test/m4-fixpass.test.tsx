@@ -1,4 +1,10 @@
-import type { AuditListDto, IncomeExpenseDto, MonthDashboardDto, PayslipDto } from '@maktab/shared';
+import type {
+  AuditListDto,
+  GenerateResultDto,
+  IncomeExpenseDto,
+  MonthDashboardDto,
+  PayslipDto,
+} from '@maktab/shared';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FeeSetup } from '@/components/fees/setup';
@@ -6,6 +12,8 @@ import { PayslipStatusBadge, payOutAccounts } from '@/components/money/common';
 import { MonthTiles } from '@/components/money/MonthTiles';
 import { initI18n, setLanguage } from '@/i18n';
 import { karachiToday } from '@/lib/fees';
+import { BillingPage, dedupedCounts, runGenerate } from '@/pages/fees/Billing';
+import { ConcessionRegisterPage } from '@/pages/fees/Reports';
 import { AuditPage } from '@/pages/money/Audit';
 import { ExpensesPage } from '@/pages/money/Expenses';
 import { IncomeExpensePage } from '@/pages/money/Reports';
@@ -13,7 +21,8 @@ import { mockApi, renderAt } from './api-mock';
 import { feeSettings } from './fee-fixtures';
 
 // M4 fix pass on the web: owner-pay labels (F1, F8), "Partly paid", own-drawer pickers (F3), the
-// opening balance form, translated audit labels and the expenses checkbox's 44 px target.
+// opening balance form, translated audit labels, 44 px targets (C1, expenses checkbox), the billing
+// preview counted once per student (C3) and "Re-open period" (C4).
 
 const RS = (n: number) => n * 100;
 const today = karachiToday();
@@ -237,6 +246,41 @@ describe('audit labels (en/ur)', () => {
 });
 
 describe('44 px targets', () => {
+  it('C1: the concession register’s student link', async () => {
+    mockApi({
+      'GET /api/fees/concessions/register': {
+        concessions: [
+          {
+            id: 'K1',
+            student_id: 'S1',
+            student_name: 'Ali',
+            admission_no: 'A-1',
+            head_name: null,
+            type: 'pct',
+            value: 50,
+            reason: 'topper',
+            note: null,
+            approved_by_name: 'O',
+            valid_from: '2026-04-01',
+            valid_to: null,
+            ended_at: null,
+            end_reason: null,
+            amount_given: RS(1500),
+          },
+        ],
+        total_given: RS(1500),
+      },
+    });
+    renderAt('/fees/concessions', '/fees/concessions', <ConcessionRegisterPage />);
+    const link = await waitFor(() => {
+      const el = document.querySelector('[data-concession-student="S1"]');
+      if (!el) throw new Error('no link');
+      return el;
+    });
+    expect(link.className).toMatch(/\bmin-h-11\b/);
+    expect(link.className).toMatch(/\bmin-w-11\b/);
+  });
+
   it('the expenses "show voided" checkbox sits in a 44 px row label', async () => {
     mockApi({
       'GET /api/accounts': { accounts: [], my_drawer: null },
@@ -248,5 +292,105 @@ describe('44 px targets', () => {
     const label = box.closest('label');
     expect(label?.className).toMatch(/\bmin-h-11\b/);
     expect(label?.textContent).toContain('Show voided');
+  });
+});
+
+describe('C3: the billing preview counts a dual-enrolled student once', () => {
+  const row = (o: Partial<GenerateResultDto['planned'][number]>) => ({
+    id: `P${Math.random()}`,
+    student_id: 'S1',
+    enrolment_id: 'E',
+    fee_head_id: 'TUI',
+    head_name: 'Tuition',
+    period_key: '2026-10',
+    payer_type: 'family' as const,
+    payer_id: 'F1',
+    kind: 'fee' as const,
+    amount: RS(3000),
+    due_date: '2026-10-10',
+    parent_charge_id: null,
+    reason: null,
+    ...o,
+  });
+
+  it('dedupes by (student, head, period) across group chunks; the first group gets it', async () => {
+    // S1 is in class G1 and batch G2; each group's dry run plans both of S1's heads.
+    const g1 = [
+      row({}),
+      row({ fee_head_id: 'BATCH' }),
+      row({ kind: 'concession', amount: -RS(500) }),
+      row({ student_id: 'S2' }),
+    ];
+    const g2 = [
+      row({}),
+      row({ fee_head_id: 'BATCH' }),
+      row({ kind: 'concession', amount: -RS(500) }),
+      row({ student_id: 'S3', fee_head_id: 'BATCH' }),
+      row({ student_id: 'S3', fee_head_id: 'BATCH', payer_type: 'sponsor', payer_id: 'SP' }),
+    ];
+    const responses: GenerateResultDto[] = [
+      {
+        period: '2026-10',
+        grp_id: 'G1',
+        dry_run: true,
+        planned: g1,
+        counts: { fees: 3, concessions: 1, sponsored: 0, allocations: 0 },
+        group_done: true,
+        next: { grp_id: 'G2', after_student_id: null },
+        done: false,
+        failed: null,
+      },
+      {
+        period: '2026-10',
+        grp_id: 'G2',
+        dry_run: true,
+        planned: g2,
+        counts: { fees: 3, concessions: 1, sponsored: 1, allocations: 0 },
+        group_done: true,
+        next: null,
+        done: true,
+        failed: null,
+      },
+    ];
+    let i = 0;
+    const s = await runGenerate(async () => responses[i++] as GenerateResultDto, {
+      period: '2026-10',
+      dryRun: true,
+    });
+    // Commit would insert: S1 TUI + S1 BATCH + S2 TUI + S3 BATCH = 4 family fees, 1 concession,
+    // 1 sponsor line — not 6 / 2 / 1.
+    expect(s.totals).toEqual({ fees: 4, concessions: 1, sponsored: 1, allocations: 0 });
+    expect(s.byGroup.get('G1')).toEqual({ fees: 3, concessions: 1, sponsored: 0, allocations: 0 });
+    expect(s.byGroup.get('G2')).toEqual({ fees: 1, concessions: 0, sponsored: 1, allocations: 0 });
+    expect(dedupedCounts(g1, new Set()).fees).toBe(3);
+  });
+});
+
+describe('C4: re-open period', () => {
+  it('lists groups finished with no fees; Re-open posts the group and the month', async () => {
+    const { calls } = mockApi({
+      'GET /api/groups': {
+        items: [{ id: 'G5', name: 'A', programme_name: 'Class 5', programme_id: 'P5' }],
+      },
+      'GET /api/fees/runs': {
+        period,
+        complete: true,
+        cursor: null,
+        failing: [],
+        attention_required: 0,
+        reopenable: ['G5'],
+        chunks: [],
+      },
+      'GET /api/fees/unbilled': { period, items: [], more: false },
+      'POST /api/fees/runs/reopen': { ok: true, cursor: { grp_id: 'G5', after_student_id: null } },
+    });
+    renderAt('/fees/billing', '/fees/billing', <BillingPage />, ['admin']);
+    fireEvent.click(await byId('billing-reopen-G5'));
+    await waitFor(() =>
+      expect(calls.filter((c) => c.method === 'POST').map((c) => [c.path, c.body])).toEqual([
+        ['/api/fees/runs/reopen', { period, grp_id: 'G5' }],
+      ]),
+    );
+    expect((await byId('billing-reopenable')).textContent).toContain('Class 5 A');
   });
 });

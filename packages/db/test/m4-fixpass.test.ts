@@ -9,9 +9,13 @@ import {
   collect,
   defaultLines,
   expensePhotoVersions,
+  generateCharges,
+  generationCursor,
   incomeExpense,
   openSession,
   recordExpense,
+  reopenableGroups,
+  reopenGroupPeriod,
   sessionFor,
   setAccountOpening,
   setExpensePhoto,
@@ -23,7 +27,7 @@ import { createTestDb } from '../src/node';
 
 // M4 fix pass on better-sqlite3: drawer accounts stored on receipts and frozen holders (F4), account
 // opening balances, the bill-photo rules (F5), voids after a close, already-open drawers, ≥ 5-digit
-// numbers (F10) and the recovery suggestion.
+// numbers (F10), the recovery suggestion, and "Re-open period" (C4).
 
 const RS = (n: number) => n * 100;
 const T = '2026-10-05';
@@ -333,5 +337,46 @@ describe('advance recovery suggestion (verify pass)', () => {
       ['deduction', RS(10000)],
       ['advance_recovery', RS(5000)],
     ]);
+  });
+});
+
+describe('C4: re-open a period for a group that finished with no fees', () => {
+  it('a missing rate → 0 fees → re-open → Generate bills it; the log only grows', async () => {
+    await run(
+      `INSERT INTO session (id, name, start_date, end_date, is_current) VALUES ('SS','2026-27','2026-04-01','2027-03-31',1)`,
+      `INSERT INTO programme (id, name, kind, seq) VALUES ('P5','Class 5','grade',5)`,
+      `INSERT INTO grp (id, programme_id, session_id, name, is_primary, status) VALUES ('G5','P5','SS','A',1,'running')`,
+      `INSERT INTO student (id, family_id, admission_no, name, admission_date) VALUES ('S1','F1','1','Ali','2026-04-01')`,
+      `INSERT INTO enrolment (id, student_id, grp_id, is_primary, start_date, status) VALUES ('E1','S1','G5',1,'2026-04-01','active')`,
+      `INSERT INTO fee_head (id, name, kind, cadence) VALUES ('TUI','Tuition','tuition','monthly')`,
+    );
+    const r1 = await generateCharges(db, { period: '2026-10', scope: { grpId: 'G5' }, by: 'A' });
+    expect([r1.counts.fees, r1.group_done]).toEqual([0, true]);
+    expect(await generationCursor(db, '2026-10')).toBeNull();
+    expect(await reopenableGroups(db, '2026-10')).toEqual(['G5']);
+    await run(
+      `INSERT INTO fee_rate (id, fee_head_id, programme_id, amount, effective_from) VALUES ('R5','TUI','P5',${RS(3000)},'2026-04-01')`,
+    );
+    await reopenGroupPeriod(db, { period: '2026-10', grpId: 'G5', by: 'A' });
+    expect(await generationCursor(db, '2026-10')).toEqual({ grp_id: 'G5', after_student_id: null });
+    const r2 = await generateCharges(db, { period: '2026-10', scope: { grpId: 'G5' }, by: 'A' });
+    expect(r2.counts.fees).toBe(1);
+    expect(await reopenableGroups(db, '2026-10')).toEqual([]);
+    await refused(
+      () => reopenGroupPeriod(db, { period: '2026-10', grpId: 'G5', by: 'A' }),
+      /not_reopenable/,
+    );
+    expect(
+      (
+        await all<{ status: string }>(sql`SELECT status FROM billing_chunk ORDER BY created_at, id`)
+      ).map((k) => k.status),
+    ).toEqual(['ok', 'reopened', 'ok']);
+    await refused(
+      () =>
+        run(
+          `INSERT INTO billing_chunk (id, run_id, kind, grp_id, done, status) SELECT 'x', id, 'fees', 'G5', 1, 'reopened' FROM billing_run`,
+        ),
+      /reopened group/,
+    );
   });
 });

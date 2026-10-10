@@ -15,10 +15,13 @@ BEGIN SELECT RAISE(ABORT, 'period_key must be YYYY-MM'); END;
 --> statement-breakpoint
 
 -- The generation log is history: one row per request, never changed. A failed chunk (status
--- 'failed') carries the error code; it wrote nothing else and the cron retries it next tick.
+-- 'failed') carries the error code; it wrote nothing else and the cron retries it next tick. A
+-- 'reopened' row (M4 fix pass, owner/admin "Re-open period" for a group finished with no fees, e.g.
+-- rates added late) is a fresh cursor: not done, no next student, nothing written.
 CREATE TRIGGER billing_chunk_status BEFORE INSERT ON billing_chunk
-WHEN NEW.status NOT IN ('ok', 'failed') OR (NEW.status = 'failed') <> (NEW.error_code IS NOT NULL)
-BEGIN SELECT RAISE(ABORT, 'billing_chunk status is ok, or failed with an error code'); END;
+WHEN NEW.status NOT IN ('ok', 'failed', 'reopened') OR (NEW.status = 'failed') <> (NEW.error_code IS NOT NULL)
+  OR (NEW.status = 'reopened' AND (NEW.done <> 0 OR NEW.next_student_id IS NOT NULL OR NEW.grp_id IS NULL))
+BEGIN SELECT RAISE(ABORT, 'billing_chunk status is ok, failed with an error code, or a reopened group'); END;
 --> statement-breakpoint
 CREATE TRIGGER billing_chunk_no_update BEFORE UPDATE ON billing_chunk BEGIN SELECT RAISE(ABORT, 'billing_chunk is append-only'); END;
 --> statement-breakpoint
