@@ -186,7 +186,31 @@ export type FamilyStatement = {
     overdue: number;
     due_before_credit: number;
   };
+  /** Fines on the listed family roots, with what has been waived (for the "Waive" action). */
+  fines: FineLine[];
 };
+
+export type FineLine = {
+  id: string;
+  root_id: string;
+  student_id: string;
+  period_key: string;
+  amount: number;
+  waived: number;
+  left: number;
+};
+
+/** Fines (and what is left after waivers/reversals) on the given roots. Read-only. */
+export async function finesOf(db: AppDb, rootIds: readonly string[]): Promise<FineLine[]> {
+  if (!rootIds.length) return [];
+  return db.all<FineLine>(sql`SELECT f.id, f.parent_charge_id AS root_id, f.student_id, f.period_key,
+      f.amount,
+      -coalesce((SELECT sum(w.amount) FROM charge w WHERE w.parent_charge_id = f.id), 0) AS waived,
+      f.amount + coalesce((SELECT sum(w.amount) FROM charge w WHERE w.parent_charge_id = f.id), 0) AS "left"
+    FROM charge f
+    WHERE f.kind = 'fine' AND ${inJson(sql`f.parent_charge_id`, rootIds)}
+    ORDER BY f.period_key, f.id`);
+}
 
 /**
  * Dues net of a payer's unallocated credit, floor 0 (M3 fix pass). Credit and dues can coexist for a
@@ -261,6 +285,12 @@ export async function familyStatement(
     credit,
     dues_hash: duesHash(charges),
     totals,
+    // Any root with a fine column ≠ 0 or a fully waived one (fine 0 but a fine row exists): ask for
+    // every listed root; the query is one statement over a JSON list.
+    fines: await finesOf(
+      db,
+      charges.map((c) => c.id),
+    ),
   };
 }
 
@@ -273,8 +303,8 @@ export type FamilyHit = {
 };
 
 /**
- * Fee-counter search (PLAN §14.4): student name, admission number, or guardian phone (digits; a
- * leading 0 / +92 is normalised) → families with their dues. At most 20 families.
+ * Fee-counter search (PLAN §14.4): student, family or guardian name, admission number, or guardian
+ * phone (digits; a leading 0 / +92 is normalised) → families with their dues. At most 20 families.
  */
 export async function searchFamilies(db: AppDb, q: string): Promise<FamilyHit[]> {
   const text = q.trim();
@@ -286,6 +316,10 @@ export async function searchFamilies(db: AppDb, q: string): Promise<FamilyHit[]>
   const fams = await db.all<{ id: string; name: string }>(sql`SELECT f.id, f.name FROM family f
     WHERE f.id IN (
       SELECT s.family_id FROM student s WHERE s.name LIKE ${like} ESCAPE '\\' OR s.admission_no = ${text}
+      UNION
+      SELECT f2.id FROM family f2 WHERE f2.name LIKE ${like} ESCAPE '\\'
+      UNION
+      SELECT g.family_id FROM guardian g WHERE g.name LIKE ${like} ESCAPE '\\'
       UNION
       SELECT g.family_id FROM guardian g WHERE ${phone ?? ''} <> ''
         AND (g.phone LIKE ${`%${phone ?? '-'}%`} OR g.whatsapp LIKE ${`%${phone ?? '-'}%`}))

@@ -1,8 +1,8 @@
 /**
  * Milestone 3b smoke: drives the fee counter over HTTP exactly as the web screen does, against
  * `wrangler dev --local`:
- * search → family view (dues_hash) → local oldest-first preview → POST /api/receipts with
- * expected_due_hash and one idempotency key → the allocation equals the preview → a retry with the
+ * search → family view (dues_hash) → the shared oldest-first preview (@maktab/shared) →
+ * POST /api/receipts with expected_due_hash and one idempotency key → the allocation equals the preview → a retry with the
  * same key replays → a collection against the old hash is 409 stale_dues → reload → print JSON
  * (Urdu labels, lines) → payment-received queued → student fees tab and dashboard tiles agree →
  * reverse with reason → the print shows reversed.
@@ -29,7 +29,7 @@ import type {
   SessionDto,
   StudentFeesDto,
 } from '@maktab/shared';
-import { newId } from '@maktab/shared';
+import { newId, previewOldestFirst } from '@maktab/shared';
 import { mintDevSession } from './dev-session';
 import { always, EMAIL, expectOk, finish, makeApi, runId as run, step } from './smoke-lib';
 
@@ -44,22 +44,13 @@ const today = new Intl.DateTimeFormat('en-CA', {
 }).format(new Date());
 const period = today.slice(0, 7);
 
-/** The counter's preview (apps/web/src/lib/fees.ts previewOldestFirst), same order as the server. */
+/** The counter's preview, the very function the web screen uses (@maktab/shared alloc.ts). */
 function preview(lines: readonly FeeLineDto[], amount: number) {
-  const key = (l: FeeLineDto) =>
-    [l.due_date, l.period_key, l.student_name, l.student_id, l.head_name, l.id].join('\u0000');
-  const open = lines
-    .filter((l) => l.due > 0)
-    .sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
-  const rows: { charge_id: string; amount: number }[] = [];
-  let left = amount;
-  for (const l of open) {
-    if (left <= 0) break;
-    const take = Math.min(left, l.due);
-    rows.push({ charge_id: l.id, amount: take });
-    left -= take;
-  }
-  return { rows, credit: left };
+  const p = previewOldestFirst(lines, amount);
+  return {
+    rows: p.rows.map((r) => ({ charge_id: r.line.id, amount: r.amount })),
+    credit: p.credit,
+  };
 }
 
 async function main() {

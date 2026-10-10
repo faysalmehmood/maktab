@@ -224,9 +224,12 @@ export const refundInputSchema = z.object({
   payer_id: idSchema,
   amount: positivePaisa,
   method: z.enum(PAYMENT_METHODS),
+  /** The bank/wallet account the money leaves from (non-cash); default: the method's account. */
+  account_id: idSchema.nullable().optional(),
   reason: reqText(200),
   reference: optText(60),
 });
+export type RefundInput = z.input<typeof refundInputSchema>;
 
 export const sessionOpenSchema = z.object({
   business_date: isoDateSchema.optional(),
@@ -437,6 +440,35 @@ export type FamilyStatementDto = {
     /** Σ root dues before credit. */
     due_before_credit: number;
   };
+  /** Late fines on this family's roots (open or settled ones listed in `charges`), for "Waive". */
+  fines: FineDto[];
+};
+
+/** A late fine (child of a root); `left` = amount − waived, what a waiver can still take off. */
+export type FineDto = {
+  id: string;
+  root_id: string;
+  student_id: string;
+  period_key: string;
+  amount: number;
+  waived: number;
+  left: number;
+};
+
+/** GET /api/fees/unbilled?period= — live enrolments with no monthly fee billed for the period. */
+export type UnbilledDto = {
+  period: string;
+  items: {
+    student_id: string;
+    student_name: string;
+    admission_no: string;
+    enrolment_id: string;
+    grp_id: string;
+    group_name: string;
+    start_date: string;
+  }[];
+  /** More rows exist than were returned (the list is capped). */
+  more: boolean;
 };
 
 export type CashSessionDto = {

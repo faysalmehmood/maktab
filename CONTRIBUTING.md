@@ -97,6 +97,21 @@ Driving the API by hand:
   with `backdate_reason` (audited); anything else is 400 `bad_business_date`. Cash always lands in
   today's drawer session; non-cash (`bank`, `jazzcash`, `easypaisa`, `cheque`, `other`) needs an
   account (named, or the first matching one; else 400 `account_required`) and opens no session.
+- Counter search (`GET /api/fees/search?q=`) matches student, family and guardian names (substring),
+  an exact admission number, or 6+ digits of a guardian phone/WhatsApp (a leading 0 or +92 is
+  normalised); at most 20 families.
+- A closed drawer: once a collector's session for today is closed, a cash receipt is 409
+  `session_closed` (the counter explains it; nothing is written and the attempt is not retried).
+  An owner/admin reopens it with a reason (`POST /api/cash/sessions/:id/reopen`); non-cash is not
+  affected.
+- The counter's idempotency key is minted once per attempt and kept, with the exact request body,
+  until success, `stale_dues`, `idempotency_conflict`, a definite 4xx refusal or "Start over"
+  (session storage, so a reload keeps it). On reconnect the pending attempt is replayed first.
+- Concessions take effect from the first month that starts on or after `valid_from` (a mid-month
+  date starts next month). Months already billed are not changed until regenerated: the dialog
+  offers "Regenerate billed months from …" (one `POST /api/fees/regenerate` per month).
+- `GET /api/fees/unbilled?period=` lists active enrolments with no monthly fee root that month (in
+  groups with a monthly rate); the billing screen bills each with `POST /api/fees/regenerate`.
 
 ## The fee cron locally
 

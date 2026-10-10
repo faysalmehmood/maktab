@@ -253,7 +253,7 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const db = c.get('db');
       await payerExists(c, input.payer_type, input.payer_id);
       const id = newId();
-      const accountId = await accountFor(db, input.method, null);
+      const accountId = await accountFor(db, input.method, input.account_id);
       const r = await withD1Retry(() =>
         refund(db, {
           id,

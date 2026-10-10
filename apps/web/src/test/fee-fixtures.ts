@@ -149,6 +149,17 @@ export function familyStatement(o: Partial<FamilyStatementDto> = {}): FamilyStat
       overdue: RS(5350),
       due_before_credit: dueBefore,
     },
+    fines: [
+      {
+        id: 'F-ALI-09',
+        root_id: 'C-ALI-09',
+        student_id: ali,
+        period_key: '2026-09',
+        amount: RS(200),
+        waived: 0,
+        left: RS(200),
+      },
+    ],
     ...o,
   };
 }

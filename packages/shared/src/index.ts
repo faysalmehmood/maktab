@@ -1,6 +1,7 @@
 import { ulid } from 'ulid';
 
 export * from './academic';
+export * from './alloc';
 export * from './attendance';
 export * from './csv';
 export * from './dto';

@@ -54,6 +54,7 @@ import {
   sponsorshipEndSchema,
   sponsorshipInputSchema,
   toCsvLine,
+  type UnbilledDto,
   voidChargeSchema,
   waiveInputSchema,
 } from '@maktab/shared';
@@ -569,6 +570,7 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         return c.json(body);
       }
       const g = grpId;
+      let committed: Awaited<ReturnType<typeof generateCharges>> | null = null;
       if (!input.dry_run) {
         // A group that cannot be billed is logged (GET /api/fees/runs) and skipped, never a wall.
         const out = await withD1Retry(() =>
@@ -595,16 +597,21 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           };
           return c.json(body);
         }
+        committed = out.result;
       }
-      const r = await withD1Retry(() =>
-        generateCharges(db, {
-          period: input.period,
-          scope: { grpId: g, afterStudentId: after },
-          by: userId(c),
-          dryRun: input.dry_run,
-          proRata: input.pro_rata,
-        }),
-      );
+      // Commit: report what that chunk inserted (a second generateCharges call would insert nothing
+      // and report zeros — the "Done: 0 fees" bug). Dry run: plan only.
+      const r =
+        committed ??
+        (await withD1Retry(() =>
+          generateCharges(db, {
+            period: input.period,
+            scope: { grpId: g, afterStudentId: after },
+            by: userId(c),
+            dryRun: true,
+            proRata: input.pro_rata,
+          }),
+        ));
       const next = !r.group_done
         ? { grp_id: g, after_student_id: r.next_student_id }
         : r.next_grp_id
@@ -665,15 +672,33 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     { method: 'POST', path: '/api/fees/fines/apply', access: generate },
     async (c) => {
       const input = await jsonBody(c, finesApplyInputSchema);
+      const db = c.get('db');
       const r = await withD1Retry(() =>
-        applyLateFines(c.get('db'), {
+        applyLateFines(db, {
           period: input.period,
           asOf: input.as_of ?? todayPk(),
           by: userId(c),
           dryRun: input.dry_run,
         }),
       );
-      return c.json(r);
+      // The preview lists who would be fined (student, period, amount), so names come along.
+      const ids = [...new Set(r.planned.map((f) => f.student_id))];
+      const names = new Map(
+        (ids.length
+          ? await db.all<{ id: string; name: string; admission_no: string }>(
+              sql`SELECT id, name, admission_no FROM student WHERE id IN (SELECT value FROM json_each(${JSON.stringify(ids)}))`,
+            )
+          : []
+        ).map((s) => [s.id, s]),
+      );
+      return c.json({
+        ...r,
+        planned: r.planned.map((f) => ({
+          ...f,
+          student_name: names.get(f.student_id)?.name ?? null,
+          admission_no: names.get(f.student_id)?.admission_no ?? null,
+        })),
+      });
     },
   );
 
@@ -730,6 +755,46 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         }),
       );
       return c.json({ ...r, planned: r.planned.map(toPlannedDto) });
+    },
+  );
+
+  /**
+   * "Unbilled enrolments this period" (billing screen, "Bill now"): active enrolments live in the
+   * period whose student has no monthly fee root for it, in groups that have a monthly rate. A thin
+   * read; billing itself is POST /api/fees/regenerate per student. Capped at 200 rows.
+   */
+  defineRoute(
+    app,
+    table,
+    { method: 'GET', path: '/api/fees/unbilled', access: generate },
+    async (c) => {
+      const q = queryParams(c, z.object({ period: periodSchema }));
+      const start = `${q.period}-01`;
+      const rows = await c.get('db').all<UnbilledDto['items'][number]>(sql`
+        SELECT s.id AS student_id, s.name AS student_name, s.admission_no, e.id AS enrolment_id,
+               g.id AS grp_id, p.name || ' ' || g.name AS group_name, e.start_date
+        FROM enrolment e
+        JOIN student s ON s.id = e.student_id
+        JOIN grp g ON g.id = e.grp_id
+        JOIN programme p ON p.id = g.programme_id
+        WHERE e.status = 'active' AND e.start_date <= date(${start}, '+1 month', '-1 day')
+          AND EXISTS (
+            SELECT 1 FROM fee_rate r JOIN fee_head h ON h.id = r.fee_head_id
+            WHERE h.cadence = 'monthly' AND h.archived_at IS NULL
+              AND r.effective_from <= date(${start}, '+1 month', '-1 day')
+              AND (r.grp_id = g.id OR (r.grp_id IS NULL AND (r.programme_id = g.programme_id OR r.programme_id IS NULL))))
+          AND NOT EXISTS (
+            SELECT 1 FROM charge ch JOIN fee_head h ON h.id = ch.fee_head_id
+            WHERE ch.student_id = e.student_id AND ch.period_key = ${q.period}
+              AND ch.kind = 'fee' AND ch.parent_charge_id IS NULL AND h.cadence = 'monthly')
+        ORDER BY group_name, s.name, s.id
+        LIMIT 201`);
+      const body: UnbilledDto = {
+        period: q.period,
+        items: rows.slice(0, 200),
+        more: rows.length > 200,
+      };
+      return c.json(body);
     },
   );
 
@@ -804,10 +869,15 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const today = todayPk();
       const settings = await feeSettings(db);
       const scope = await scopeToGroups(db, uid, c.get('grant'));
-      const cooled = sql`st.family_id NOT IN (SELECT family_id FROM reminder_state
-        WHERE template_key = ${input.template} AND last_sent_on > date(${today}, ${`-${settings.cooldownDays} days`}))`;
-      const scoped = studentFilter(sql`st.id`, scope);
-      const studentScope = scoped ? sql`${scoped} AND ${cooled}` : cooled;
+      // Families reminded within the cooldown are skipped; they are counted (not filtered in SQL)
+      // so the screen can say how many were skipped on a re-run.
+      const cooledIds = new Set(
+        (
+          await db.all<{ family_id: string }>(sql`SELECT family_id FROM reminder_state
+            WHERE template_key = ${input.template} AND last_sent_on > date(${today}, ${`-${settings.cooldownDays} days`})`)
+        ).map((r) => r.family_id),
+      );
+      const studentScope = studentFilter(sql`st.id`, scope) ?? sql`1 = 1`;
       let rows: {
         student_id: string;
         student_name: string;
@@ -854,6 +924,10 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           })
           .filter((r) => r.due > 0);
       }
+      const skipped = new Set(
+        rows.filter((r) => cooledIds.has(r.family_id)).map((r) => r.family_id),
+      );
+      rows = rows.filter((r) => !cooledIds.has(r.family_id));
       const byFamily = new Map<string, typeof rows>();
       for (const r of rows) byFamily.set(r.family_id, [...(byFamily.get(r.family_id) ?? []), r]);
       const families = [...byFamily.entries()].slice(0, 200);
@@ -883,7 +957,11 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
             sql`SELECT count(*) AS n FROM message WHERE id IN (SELECT value FROM json_each(${JSON.stringify(ids)}))`,
           )
         : [{ n: 0 }];
-      return c.json({ queued: n?.n ?? 0, more: byFamily.size > families.length });
+      return c.json({
+        queued: n?.n ?? 0,
+        more: byFamily.size > families.length,
+        skipped: skipped.size,
+      });
     },
   );
 
