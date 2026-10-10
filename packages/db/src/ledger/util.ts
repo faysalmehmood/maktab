@@ -13,7 +13,7 @@ export class FeeError extends Error {
   constructor(
     readonly code: string,
     message: string,
-    readonly status: 400 | 404 | 409 = 409,
+    readonly status: 400 | 403 | 404 | 409 = 409,
   ) {
     super(message);
     this.name = 'FeeError';

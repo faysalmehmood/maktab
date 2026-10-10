@@ -7,7 +7,8 @@ import { auditStatement, FeeError, karachiToday, normaliseReason, runBatch } fro
  * Cash sessions (PLAN §14.6): one per collector per business day, opened automatically by the first
  * receipt, closed with a count. Expected cash is derived at close time, inside the closing
  * statement:  opening + Σ cash receipts (payments, reversals, refunds, signed) − Σ non-void
- * expenses paid from the drawer (M4) − Σ handovers/deposits out of the session (transfers).
+ * expenses, salary payments and advances paid from the drawer (M4) − Σ handovers/deposits out of the
+ * session (transfers).
  * A closed session takes no rows (triggers); only an owner/admin reopen with a new reason.
  */
 
@@ -67,11 +68,16 @@ export async function assertSessionOpen(
     );
 }
 
-/** expected = opening + cash in − drawer expenses − handovers, all in this session. */
+/**
+ * expected = opening + cash in − drawer expenses − salary paid − advances paid − handovers, all in
+ * this session (M4 added salary payments and advances paid out of the drawer).
+ */
 export const expectedSql = (sessionId: string): SQL => sql`(
   (SELECT opening FROM cash_session WHERE id = ${sessionId})
   + (SELECT coalesce(sum(amount), 0) FROM receipt WHERE cash_session_id = ${sessionId} AND method = 'cash')
   - (SELECT coalesce(sum(amount), 0) FROM expense WHERE cash_session_id = ${sessionId} AND voided_by IS NULL)
+  - (SELECT coalesce(sum(amount), 0) FROM salary_payment WHERE cash_session_id = ${sessionId})
+  - (SELECT coalesce(sum(amount), 0) FROM staff_advance WHERE cash_session_id = ${sessionId})
   - (SELECT coalesce(sum(amount), 0) FROM transfer WHERE cash_session_id = ${sessionId}))`;
 
 export async function openSession(
