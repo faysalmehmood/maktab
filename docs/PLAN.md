@@ -309,6 +309,7 @@ Edge cases: mid-month joiner → prompt full / pro-rata / backfill; re-admission
 3. Saved offline if no network (outbox), banner "will sync"; sync retries until acknowledged; the register's `client_id` makes re-submits harmless.
 4. After save: "Send absence alerts (n)" → opens the Send queue filtered to today's absentees (15.9). Guardian without WhatsApp consent is listed as "call".
 Rules: a register per group per day (per subject if the school enables it); office can edit a register with reason (audit); monthly attendance % computed, never stored.
+Limits (M2 fix pass): ≤ 200 marks per register and per sync request, ≤ 3 registers per request (the outbox packs greedily); a phone clock more than 5 min ahead is refused (`clock_skew`, "fix your phone's clock"), within that window `taken_at` is clamped to server time (raw value kept in the audit row). A subject teacher who is not the class teacher submits only their own subject's register. Offline reload: the service worker keeps `/api/me`, `/api/school`, today's list and opened rosters in a NetworkFirst cache (`apps/web/src/offline/api-cache.ts`), cleared on sign-out.
 
 ### 14.4 Fee counter (collector, phone or laptop)
 1. Search by student name, admission no., or guardian phone → **family view**: each child with open charges (month, head, gross, concession, fine, net, paid, due), total family due, unallocated credit.
@@ -348,6 +349,7 @@ Rules: a closed session takes no more rows; a late-found error is corrected in a
 3. Bulk notice to a group: compose once (Urdu/English), queue per family, or copy text for the class announcement group.
 4. Counters: pending / sent today / skipped; cooldown prevents re-queuing the same fee reminder within N days.
 Rules: one message per family; staff without consent flag see "call instead"; everything logged in `message`.
+**Absence rows (from M2) are prompts, not texts.** The register sync queues one `absence` row per family per day (`reminder_state` cooldown): `channel='wa_manual'` to the first guardian with WhatsApp consent and a number, else `channel='call'` (no consent, or consent but no number) so the office phones. Its payload records only the register that queued it. **M5 must rebuild each queued absence message from the current registers at send time**: skip it (status `skipped`) if none of the family's children is still absent — a later register or an office correction may have marked them present — and merge siblings absent in other groups the same day into one message. When marks + absentees in one sync request exceed 200 rows, the queue rows go in a second batch of the same request (never more than two); that batch is best-effort, the rebuild-at-send rule and the dashboard absentee list (computed from registers) cover a lost row. See `absenceStatements` in `apps/api/src/lib/attendance.ts`.
 
 ### 14.10 Parent page (guardian, phone, no login)
 - Link format `https://<school>.conceptlix.com/p/<token>`; shows children of this guardian: today's attendance, month attendance %, dues (net) with "how it's calculated", receipts (open/print), results (v2), notices. Urdu/English toggle, "listen" button.

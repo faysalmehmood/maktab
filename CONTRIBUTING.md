@@ -68,7 +68,19 @@ Ports: `PORT` (web, default 5173) and `API_PORT` (API, default 8787) move the Vi
 `/api` proxy, the Worker's `APP_ORIGIN` and the smoke script together, e.g.
 `PORT=5180 API_PORT=8790 npm run dev`, then `PORT=5180 API_PORT=8790 npm run smoke:m1 -w @maktab/api`. The cookie is named `maktab_sid`
 on `http://localhost` (`__Host-maktab_sid` needs an https origin). If wrangler runs with
-`--persist-to <dir>`, pass the same dir as `D1_PERSIST_TO=<dir>` to both scripts.
+`--persist-to <dir>`, pass the same dir as `D1_PERSIST_TO=<dir>` to both scripts, and to the
+migration: `D1_PERSIST_TO=<dir> npm run db:migrate:local`. (A flag does not work there:
+`npm run db:migrate:local -- --persist-to <dir>` loses it in the root script's second npm layer.)
+
+Driving the API by hand:
+
+- Every id is a ULID (26 Crockford base-32 characters, e.g. `01JABCDEFGHJKMNPQRSTVWXYZ0`) and
+  bodies are validated against it, so made-up ids such as `G1` are refused with 400 `invalid`.
+  Clients mint ids for anything they create offline (`client_id` of a register).
+- A sibling's admission (`POST /api/admissions`) sends `family_id` of the existing family instead
+  of a `family` object and `guardians` (see `setup()` in `apps/api/test/attendance.test.ts`).
+- `POST /api/attendance/sync` takes at most 3 registers and 200 marks per request, and refuses a
+  `taken_at` more than 5 minutes ahead of the server (`clock_skew`).
 
 By contributing you agree your work is licensed under AGPL-3.0. This project follows the
 [Code of Conduct](CODE_OF_CONDUCT.md).
