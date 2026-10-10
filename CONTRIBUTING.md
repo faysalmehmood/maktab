@@ -24,6 +24,7 @@ the local D1 (dev only; it refuses when `NODE_ENV=production`, and unless `SESSI
 `apps/api/.dev.vars` is the example value or `ALLOW_DEV_SESSION=1`):
 
 ```sh
+cp apps/api/.dev.vars.example apps/api/.dev.vars              # once; the example secret enables dev sessions
 npm run db:migrate:local
 npm run dev -w @maktab/api                                    # wrangler dev --local on :8787
 npm run -s dev:session -w @maktab/api -- owner@example.com    # prints maktab_sid=…
@@ -31,8 +32,20 @@ curl -H "Cookie: $(npm run -s dev:session -w @maktab/api -- owner@example.com)" 
 npm run smoke:m1 -w @maktab/api                               # milestone 1 end-to-end, PASS/FAIL per step
 ```
 
+wrangler reads `.dev.vars` only at start: restart `npm run dev` after editing it.
+
 On an empty database the email is bootstrapped as the owner (what `OWNER_EMAIL` + a first Google
-sign-in would do); otherwise it must be an existing active user. The cookie is named `maktab_sid`
+sign-in would do); otherwise it must be an existing **active** user. Someone invited from the
+wizard or Settings stays `invited` until their first Google sign-in; to drive the API as them
+locally, add `--activate` (dev only, same guards; disabled users are never re-enabled):
+
+```sh
+npm run -s dev:session -w @maktab/api -- teacher@example.com --activate
+```
+
+Ports: `PORT` (web, default 5173) and `API_PORT` (API, default 8787) move the Vite server, its
+`/api` proxy, the Worker's `APP_ORIGIN` and the smoke script together, e.g.
+`PORT=5180 API_PORT=8790 npm run dev`, then `PORT=5180 API_PORT=8790 npm run smoke:m1 -w @maktab/api`. The cookie is named `maktab_sid`
 on `http://localhost` (`__Host-maktab_sid` needs an https origin). If wrangler runs with
 `--persist-to <dir>`, pass the same dir as `D1_PERSIST_TO=<dir>` to both scripts.
 

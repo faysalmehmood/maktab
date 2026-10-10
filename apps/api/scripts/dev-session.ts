@@ -7,7 +7,12 @@
  *   curl -H "Cookie: $(npm run -s dev:session -w @maktab/api -- owner@example.com)" localhost:8787/api/me
  *
  * On an empty database the email is bootstrapped as the active owner (what OWNER_EMAIL + a first
- * Google sign-in would do). D1_PERSIST_TO=<dir> matches `wrangler dev --persist-to <dir>`.
+ * Google sign-in would do). An invited user (e.g. a teacher added in the wizard) is `invited` until
+ * their first Google sign-in; `--activate` does that step locally:
+ *
+ *   npm run -s dev:session -w @maktab/api -- teacher@example.com --activate
+ *
+ * D1_PERSIST_TO=<dir> matches `wrangler dev --persist-to <dir>`.
  * Refuses when NODE_ENV=production, and unless SESSION_SECRET in
  * apps/api/.dev.vars is the example value or ALLOW_DEV_SESSION=1 is set — a real secret means a
  * real deployment's cookies could be forged with this script.
@@ -56,7 +61,11 @@ export function localD1File(): string {
 
 export type DevSession = { cookie: string; userId: string; bootstrapped: boolean };
 
-export async function mintDevSession(email: string, dbPath = localD1File()): Promise<DevSession> {
+export async function mintDevSession(
+  email: string,
+  opts: { activate?: boolean; dbPath?: string } = {},
+): Promise<DevSession> {
+  const dbPath = opts.dbPath ?? localD1File();
   if (process.env.NODE_ENV === 'production') throw new Error('dev-session is dev-only');
   const vars = readVars();
   const secret = vars.SESSION_SECRET ?? '';
@@ -80,8 +89,17 @@ export async function mintDevSession(email: string, dbPath = localD1File()): Pro
     [u] = await db.select().from(user).where(eq(user.email, addr));
   }
   if (!u) throw new Error('user lookup failed');
-  if (u.status !== 'active')
-    throw new Error(`${addr} is ${u.status}; only active users can sign in`);
+  // What the first Google sign-in of an invited user does (auth/signin.ts), minus the Google sub.
+  // Disabled users stay disabled: an owner chose that.
+  if (u.status === 'invited' && opts.activate) {
+    await db.update(user).set({ status: 'active' }).where(eq(user.id, u.id));
+    u = { ...u, status: 'active' };
+    console.error(`(activated invited user ${addr})`);
+  }
+  if (u.status !== 'active') {
+    const hint = u.status === 'invited' ? '; pass --activate to activate them locally' : '';
+    throw new Error(`${addr} is ${u.status}; only active users can sign in${hint}`);
+  }
   const sid = newId();
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SEC;
   await db.insert(userSession).values({
@@ -97,12 +115,13 @@ export async function mintDevSession(email: string, dbPath = localD1File()): Pro
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const email = process.argv[2];
+  const args = process.argv.slice(2);
+  const email = args.find((a) => !a.startsWith('--'));
   if (!email) {
-    console.error('usage: dev-session.ts <email>');
+    console.error('usage: dev-session.ts <email> [--activate]');
     process.exit(2);
   }
-  mintDevSession(email)
+  mintDevSession(email, { activate: args.includes('--activate') })
     .then((s) => {
       if (s.bootstrapped) console.error(`(bootstrapped ${email} as owner on an empty database)`);
       console.log(s.cookie);

@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --local --port 8787",
+    "dev": "tsx scripts/dev.ts",
     "build": "wrangler deploy --dry-run --outdir dist --env=\"\"",
     "migrate:local": "wrangler d1 migrations apply DB --local",
     "typecheck": "tsc -p tsconfig.json",
