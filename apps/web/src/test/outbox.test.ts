@@ -4,6 +4,8 @@ import {
   type AttendanceSubmission,
   type AttendanceSyncResult,
   attendanceSubmissionSchema,
+  countMarks,
+  MAX_MARKS_PER_SYNC,
   MAX_SUBMISSIONS_PER_SYNC,
   newId,
 } from '@maktab/shared';
@@ -37,6 +39,8 @@ function fakeServer() {
     /** error.code sent with a forced status. */
     forceCode: 'x',
     retryAfter: null as string | null,
+    /** Marks per register, per request received (to check how the outbox packs). */
+    sizes: [] as number[][],
   };
 
   const keyOf = (s: AttendanceSubmission) => `${s.grp_id}|${s.date}|${s.grp_subject_id ?? ''}`;
@@ -95,6 +99,9 @@ function fakeServer() {
           400,
         );
       }
+      state.sizes.push(body.map((b) => countMarks([b])));
+      if (countMarks(body) > MAX_MARKS_PER_SYNC)
+        return json({ error: { code: 'too_many_marks', message: 'too many marks' } }, 400);
       return json({ results: body.map((s) => apply(s, takenBy)) });
     };
 
@@ -117,7 +124,7 @@ function mulberry32(seed: number) {
   };
 }
 
-const students = Array.from({ length: 60 }, () => newId());
+const students = Array.from({ length: 200 }, () => newId());
 const groups = Array.from({ length: 10 }, () => newId());
 let clock = Date.parse('2026-10-01T08:00:00Z');
 const sub = (
@@ -153,6 +160,7 @@ beforeEach(() => {
     url: '/api/attendance/sync',
     now: () => Date.now(),
     chunk: MAX_SUBMISSIONS_PER_SYNC,
+    maxMarks: MAX_MARKS_PER_SYNC,
   });
   server = fakeServer();
 });
@@ -357,6 +365,38 @@ describe('outbox (experiment 6 scenarios)', () => {
     server.state.retryAfter = null;
     ob.configure({ now: () => t + 120_000 });
     expect((await ob.sync(server.fetch)).acked).toBe(1);
+  });
+});
+
+describe('outbox packing (≤ 3 registers and ≤ 200 marks per request)', () => {
+  it('packs in order and greedily: a 150-mark register goes with what still fits, never past 200', async () => {
+    const g = groups[0] ?? '';
+    const sizes = [150, 30, 30, 100, 10, 5, 5, 5, 200];
+    for (const [i, n] of sizes.entries()) await ob.enqueue(sub(g, `2026-12-${10 + i}`, n));
+    const r = await ob.sync(server.fetch);
+    expect(r).toMatchObject({ acked: sizes.length, failed: 0 });
+    expect(server.state.sizes).toEqual([[150, 30], [30, 100, 10], [5, 5, 5], [200]]);
+    for (const req of server.state.sizes) {
+      expect(req.length).toBeLessThanOrEqual(MAX_SUBMISSIONS_PER_SYNC);
+      expect(req.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(MAX_MARKS_PER_SYNC);
+    }
+  });
+
+  it('keeps per-key order across requests', async () => {
+    const g = groups[1] ?? '';
+    const subs = [sub(g, '2026-12-01', 150), sub(g, '2026-12-01', 120), sub(g, '2026-12-01', 3)];
+    for (const s of subs) await ob.enqueue(s);
+    await ob.sync(server.fetch);
+    expect(server.state.sizes).toEqual([[150], [120, 3]]);
+    expect(server.currentFor(g, '2026-12-01')?.clientId).toBe(subs[2]?.client_id);
+  });
+
+  it('a refused request records the error code for the failed list', async () => {
+    await ob.enqueue(sub(groups[2] ?? '', '2026-12-01'));
+    server.state.forceStatus = 400;
+    server.state.forceCode = 'too_many_marks';
+    await ob.sync(server.fetch);
+    expect((await ob.failed())[0]).toMatchObject({ error_code: 'too_many_marks' });
   });
 });
 

@@ -32,8 +32,12 @@ export function useMe() {
   return useQuery({
     queryKey: ['me'],
     queryFn: fetchMe,
-    // 401 is an answer, not a transient failure.
-    retry: (count, err) => !(err instanceof ApiError && err.status === 401) && count < 2,
+    // 401 is an answer, not a transient failure. Offline, fail at once (the error screen shows
+    // what is waiting on the phone) instead of a retry paused until the connection returns.
+    retry: (count, err) =>
+      !(err instanceof ApiError && err.status === 401) &&
+      !(typeof navigator !== 'undefined' && navigator.onLine === false) &&
+      count < 2,
   });
 }
 

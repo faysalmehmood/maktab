@@ -10,7 +10,21 @@ import {
   type TodayResponse,
 } from '@maktab/shared';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { getJson } from './api';
+
+/**
+ * A refused register's reason as a sentence (SyncRejectCode or HTTP error code); the date makes
+ * "future date" concrete. Unknown codes fall back to the generic sentence.
+ */
+export function useRejectionText() {
+  const { t, i18n } = useTranslation();
+  return (code: string | null | undefined, date?: string): string => {
+    if (code === 'future_date' && date) return t('errors.future_date_on', { date });
+    const key = `errors.${code ?? 'generic'}`;
+    return i18n.exists(key) ? String(t(key as 'errors.generic')) : t('errors.generic');
+  };
+}
 
 /** Tap order on the register: present → absent → late → leave → present. */
 export const STATUS_CYCLE: MarkStatus[] = ['P', 'A', 'L', 'E'];

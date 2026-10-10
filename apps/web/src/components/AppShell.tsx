@@ -27,6 +27,7 @@ import {
 import { logout } from '@/lib/api';
 import { isTeacherOnly, useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
+import { API_CACHE } from '@/offline/api-cache';
 import { resumeAfterSignIn, startAutoSync, useOutboxStatus } from '@/offline/sync';
 import { SyncBanner } from './attendance/common';
 import { LanguageToggle } from './LanguageToggle';
@@ -116,6 +117,8 @@ export function AppShell() {
   const signOut = async () => {
     await logout().catch(() => undefined);
     queryClient.clear();
+    // The offline API copy (who I am, rosters) must not outlive the session on a shared phone.
+    if (typeof caches !== 'undefined') await caches.delete(API_CACHE).catch(() => false);
     navigate('/login', { replace: true });
   };
 

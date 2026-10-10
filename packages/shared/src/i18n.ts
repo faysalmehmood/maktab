@@ -64,6 +64,10 @@ export const en = {
     holiday: 'This date is a school holiday',
     weekly_off: 'The school is closed on this weekday',
     future_date: 'You cannot take attendance for a future date',
+    future_date_on: 'You cannot take attendance for {{date}}: that date has not come yet',
+    clock_skew:
+      "Your phone's clock is ahead of the school's. Fix your phone's clock (Settings → Date & time → automatic), then save again.",
+    too_many_marks: 'Too many students in one save (at most 200)',
     not_enrolled: 'A student in this list is not enrolled in this group on that date',
     before_enrolment: 'A student in this list had not joined the group yet on that date',
     unknown_group: 'Group not found',
@@ -395,8 +399,18 @@ export const en = {
     savedOffline: 'Saved on this phone. It will be sent when the internet is back.',
     pending: '{{n}} waiting to sync',
     failed: '{{n}} not accepted',
-    failedHint: 'The school did not accept a saved register. Open it again to see why.',
+    failedHint: 'The school did not accept these saved registers.',
     dismiss: 'Dismiss',
+    retry: 'Retry',
+    failedItem: '{{group}} · {{date}}',
+    dismissTitle: 'Dismiss this saved register?',
+    dismissBody:
+      'It will be deleted from this phone and never sent. Take the register again if it is still needed.',
+    waitingHere: '{{n}} saved registers waiting on this phone',
+    safeOnPhone:
+      '{{n}} saved registers are safe on this phone and will be sent once the app reaches the school.',
+    rosterTooBig:
+      'This group has {{n}} students; one register holds at most {{max}}. Ask the office to split it into sections.',
     offline: 'You are offline',
     signInAgain: 'Sign in again to send saved attendance',
     signIn: 'Sign in',
@@ -535,6 +549,10 @@ export const ur: Messages = {
     holiday: 'یہ تاریخ اسکول کی چھٹی ہے',
     weekly_off: 'اس دن اسکول بند ہوتا ہے',
     future_date: 'آنے والی تاریخ کی حاضری نہیں لی جا سکتی',
+    future_date_on: '{{date}} کی حاضری نہیں لی جا سکتی: یہ تاریخ ابھی آئی نہیں',
+    clock_skew:
+      'آپ کے فون کی گھڑی اسکول کے وقت سے آگے ہے۔ فون کی گھڑی درست کریں (سیٹنگز ← تاریخ اور وقت ← خودکار)، پھر دوبارہ محفوظ کریں۔',
+    too_many_marks: 'ایک بار میں بہت زیادہ طلبہ (زیادہ سے زیادہ 200)',
     not_enrolled: 'اس فہرست کا ایک طالب علم اس تاریخ کو اس گروپ میں داخل نہیں تھا',
     before_enrolment: 'اس فہرست کا ایک طالب علم اس تاریخ تک گروپ میں شامل نہیں ہوا تھا',
     unknown_group: 'گروپ نہیں ملا',
@@ -868,8 +886,18 @@ export const ur: Messages = {
     savedOffline: 'اس فون پر محفوظ ہے۔ انٹرنیٹ آنے پر بھیج دیا جائے گا۔',
     pending: '{{n}} بھیجنے کے منتظر',
     failed: '{{n}} قبول نہیں ہوئے',
-    failedHint: 'اسکول نے ایک محفوظ رجسٹر قبول نہیں کیا۔ وجہ دیکھنے کے لیے اسے دوبارہ کھولیں۔',
+    failedHint: 'اسکول نے یہ محفوظ رجسٹر قبول نہیں کیے۔',
     dismiss: 'ہٹائیں',
+    retry: 'دوبارہ بھیجیں',
+    failedItem: '{{group}} · {{date}}',
+    dismissTitle: 'یہ محفوظ رجسٹر ہٹا دیں؟',
+    dismissBody:
+      'یہ اس فون سے مٹ جائے گا اور کبھی نہیں بھیجا جائے گا۔ ضرورت ہو تو حاضری دوبارہ لیں۔',
+    waitingHere: '{{n}} محفوظ رجسٹر اس فون پر بھیجنے کے منتظر',
+    safeOnPhone:
+      '{{n}} محفوظ رجسٹر اس فون پر محفوظ ہیں؛ ایپ کے اسکول سے رابطے پر بھیج دیے جائیں گے۔',
+    rosterTooBig:
+      'اس گروپ میں {{n}} طلبہ ہیں؛ ایک رجسٹر میں زیادہ سے زیادہ {{max}}۔ دفتر سے کہیں کہ اسے سیکشنز میں بانٹ دیں۔',
     offline: 'آپ آف لائن ہیں',
     signInAgain: 'محفوظ حاضری بھیجنے کے لیے دوبارہ سائن ان کریں',
     signIn: 'سائن ان',

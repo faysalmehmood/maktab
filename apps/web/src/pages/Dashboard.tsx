@@ -77,7 +77,10 @@ function OfficeToday() {
                   key={a.student_id}
                   className="flex min-h-11 flex-wrap items-center gap-x-2 py-1"
                 >
-                  <Link to={`/students/${a.student_id}`} className="font-medium hover:underline">
+                  <Link
+                    to={`/students/${a.student_id}`}
+                    className="flex min-h-11 items-center font-medium hover:underline"
+                  >
                     <bdi>{a.name}</bdi>
                   </Link>
                   <span className="text-sm text-muted-foreground">
@@ -88,7 +91,7 @@ function OfficeToday() {
                     {a.guardian_phone && (
                       <a
                         href={`tel:+${a.guardian_phone}`}
-                        className="inline-flex min-h-11 items-center underline"
+                        className="flex min-h-11 min-w-11 shrink-0 items-center px-1 underline"
                       >
                         <bdi className="num">{formatPkPhone(a.guardian_phone)}</bdi>
                       </a>

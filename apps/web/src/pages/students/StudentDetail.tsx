@@ -519,7 +519,7 @@ export function StudentDetail() {
                     {g.phone && (
                       <a
                         href={`tel:+${g.phone}`}
-                        className="text-primary underline-offset-4 hover:underline"
+                        className="inline-flex min-h-11 min-w-11 items-center text-primary underline-offset-4 hover:underline"
                       >
                         <Num>{formatPkPhone(g.phone)}</Num>
                       </a>

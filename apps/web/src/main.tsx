@@ -1,16 +1,14 @@
 import './styles.css';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 import { App } from './App';
 import { Toaster } from './components/ui/sonner';
 import { initI18n } from './i18n';
+import { createQueryClient } from './lib/query-client';
 
-const queryClient = new QueryClient({
-  // No background polling: D1 reads are a daily quota (PLAN §8).
-  defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 60_000 } },
-});
+const queryClient = createQueryClient();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root missing from index.html');

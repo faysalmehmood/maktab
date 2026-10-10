@@ -3,9 +3,12 @@
  * shows, and what "Save" means on the register screen.
  *
  * Save always goes through the outbox (enqueue, then an immediate sync), so online and offline
- * saves take the same path and a dropped connection mid-request is just a retry. The server's
- * per-register answer is captured from the response so the screen can say "saved, 2 absence
- * messages queued" or why it was refused.
+ * saves take the same path and a dropped connection mid-request is just a retry. It is a plain async
+ * call, deliberately outside react-query: a mutation with the default networkMode 'online' pauses
+ * while the browser says it is offline, and then nothing would reach the outbox. The outbox is the
+ * source of truth; the network attempt is its job. The server's per-register answer is captured
+ * from the response (and broadcast to subscribers) so the screen can say "saved, 2 absence messages
+ * queued" or why it was refused — also for a register that was saved offline and synced later.
  *
  * Triggers (PLAN §12 exp6; Background Sync is not relied on): `online`, the tab becoming visible,
  * and a timer that runs only while something is waiting.
@@ -49,6 +52,13 @@ export function useOutboxStatus(): OutboxStatus {
 
 /** Answers seen in sync responses, by client_id; the register screen waits on its own. */
 const answers = new Map<string, AttendanceSyncResult>();
+const answerListeners = new Set<(r: AttendanceSyncResult) => void>();
+
+/** Called with every per-register answer the server sends (background syncs included). */
+export function onAnswer(fn: (r: AttendanceSyncResult) => void): () => void {
+  answerListeners.add(fn);
+  return () => answerListeners.delete(fn);
+}
 
 const capturingFetch = async (url: string, init: RequestInit): Promise<Response> => {
   const resp = await globalThis.fetch(url, { credentials: 'same-origin', ...init });
@@ -57,7 +67,11 @@ const capturingFetch = async (url: string, init: RequestInit): Promise<Response>
       .clone()
       .json()
       .catch(() => null)) as { results?: AttendanceSyncResult[] } | null;
-    for (const r of body?.results ?? []) if (r.client_id) answers.set(r.client_id, r);
+    for (const r of body?.results ?? []) {
+      if (!r.client_id) continue;
+      answers.set(r.client_id, r);
+      for (const l of answerListeners) l(r);
+    }
   }
   return resp;
 };
@@ -102,8 +116,29 @@ export type SaveOutcome =
   /** Kept on the phone; sync waits until the user signs in again. */
   | { kind: 'paused' };
 
-export async function saveRegister(sub: AttendanceSubmission): Promise<SaveOutcome> {
-  await outbox.enqueue(sub);
+export async function saveRegister(
+  sub: AttendanceSubmission,
+  meta: { label?: string | null } = {},
+): Promise<SaveOutcome> {
+  // No IndexedDB (private window, old WebView): online-only, straight to the server.
+  if (!hasIdb()) {
+    const resp = await capturingFetch('/api/attendance/sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify([sub]),
+    });
+    const result = answers.get(sub.client_id);
+    answers.delete(sub.client_id);
+    if (result) return { kind: 'answered', result };
+    throw new Error(resp.status === 401 ? 'unauthenticated' : 'db_error');
+  }
+  await outbox.enqueue(sub, meta);
+  // The browser says offline: keep it on the phone; the `online` trigger sends it.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    set({ offline: true });
+    await refreshStatus();
+    return { kind: 'queued' };
+  }
   // force: a fresh save must not wait behind the backoff of an older failed attempt. A second
   // pass covers a save that landed while a background pass (which could not see it) was running.
   let s = status;
@@ -125,10 +160,24 @@ export async function resumeAfterSignIn(): Promise<void> {
   } else await refreshStatus();
 }
 
-export async function discardFailed(): Promise<void> {
-  await outbox.discardFailed();
+/** Registers the server refused (or a request it refused), for the failed list. */
+export const failedEntries = (): Promise<outbox.OutboxEntry[]> =>
+  hasIdb() ? outbox.failed() : Promise.resolve([]);
+
+/** Puts refused registers back in the queue and tries now (e.g. after the office fixed the cause). */
+export async function retryFailed(ids?: readonly string[]): Promise<void> {
+  await outbox.retryFailed(ids);
+  await syncNow({ force: true });
+}
+
+export async function discardFailed(ids?: readonly string[]): Promise<void> {
+  await outbox.discardFailed(ids);
   await refreshStatus();
 }
+
+/** Is this register still waiting (or refused) on this phone? */
+export const isOnPhone = (clientId: string): Promise<boolean> =>
+  hasIdb() ? outbox.has(clientId) : Promise.resolve(false);
 
 let started = false;
 
@@ -163,6 +212,7 @@ export function startAutoSync(): () => void {
 export function _reset(): void {
   status = { pending: 0, failed: 0, paused: false, offline: false };
   answers.clear();
+  answerListeners.clear();
   if (timer) clearTimeout(timer);
   timer = null;
 }

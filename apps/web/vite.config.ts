@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { type ManifestOptions, VitePWA } from 'vite-plugin-pwa';
+import { API_CACHE, isOfflineApi } from './src/offline/api-cache';
 
 // `translations` is the W3C manifest-localization proposal; browsers without it ignore the key.
 const manifest: Partial<ManifestOptions> & {
@@ -43,6 +44,17 @@ export default defineConfig({
         // API responses must never come from the precache.
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
+          {
+            // Offline reload: /api/me, school, today's list and rosters (see src/offline/api-cache.ts).
+            urlPattern: isOfflineApi,
+            handler: 'NetworkFirst',
+            method: 'GET',
+            options: {
+              cacheName: API_CACHE,
+              expiration: { maxEntries: 40, maxAgeSeconds: 24 * 60 * 60 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
           {
             urlPattern: ({ url }) =>
               url.pathname.startsWith('/fonts/') && url.pathname.endsWith('.woff2'),

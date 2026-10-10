@@ -1,6 +1,7 @@
 import {
   type AttendanceSubmission,
   type AttendanceSyncResult,
+  MAX_MARKS_PER_REGISTER,
   type MarkCounts,
   type MarkStatus,
   newId,
@@ -8,7 +9,7 @@ import {
 } from '@maktab/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { CloudOff, History, MessageSquareText, StickyNote } from 'lucide-react';
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { Counts, DayOffNote, StatusChip, todayPk } from '@/components/attendance/common';
@@ -42,10 +43,11 @@ import {
   nextStatus,
   timeOf,
   useRegister,
+  useRejectionText,
 } from '@/lib/attendance';
 import { useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
-import { saveRegister } from '@/offline/sync';
+import { onAnswer, type SaveOutcome, saveRegister, useOutboxStatus } from '@/offline/sync';
 
 type Draft = Record<string, { status: MarkStatus; note: string }>;
 
@@ -222,8 +224,8 @@ function NoteSheet({
 
 type Saved =
   | { kind: 'answered'; result: AttendanceSyncResult }
-  | { kind: 'offline' }
-  | { kind: 'paused' };
+  | { kind: 'offline'; clientId: string }
+  | { kind: 'paused'; clientId: string };
 
 export function RegisterPage() {
   const { t } = useTranslation();
@@ -240,6 +242,18 @@ export function RegisterPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const [saved, setSaved] = useState<Saved | null>(null);
+  const [saving, setSaving] = useState(false);
+  const outbox = useOutboxStatus();
+  const rejection = useRejectionText();
+  // One submission (one client_id, one taken_at) per draft: a double tap, or Save pressed again
+  // after "saved on this phone", re-sends the same register instead of creating a second one.
+  // Any edit to the draft starts a new one.
+  const pending = useRef<AttendanceSubmission | null>(null);
+  const busy = useRef(false);
+  const edit = (fn: (d: Draft | null) => Draft | null) => {
+    pending.current = null;
+    setDraft(fn);
+  };
 
   // A different register (or a refetch after saving) starts a fresh draft.
   const loadedFor = reg.data
@@ -247,6 +261,7 @@ export function RegisterPage() {
     : '';
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the register changes
   useEffect(() => {
+    pending.current = null;
     if (reg.data) setDraft(draftFrom(reg.data));
   }, [loadedFor]);
 
@@ -270,35 +285,58 @@ export function RegisterPage() {
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['attendance'] });
 
-  const save = useMutation({
-    mutationFn: async () => {
-      const sub = submission();
-      if (!sub) throw new Error('not loaded');
-      return saveRegister(sub);
-    },
-    onSuccess: async (out) => {
-      if (out.kind === 'queued') {
-        setSaved({ kind: 'offline' });
-        toast.info(t('attendance.savedOffline'));
-        return;
-      }
-      if (out.kind === 'paused') {
-        setSaved({ kind: 'paused' });
-        toast.warning(t('attendance.signInAgain'));
-        return;
-      }
-      const r = out.result;
-      setSaved(out);
-      if (r.status === 'rejected') {
-        toast.error(errorText(Object.assign(new Error(r.error ?? 'invalid'))));
-        return;
-      }
-      if (r.status === 'stale') toast.warning(t('attendance.stale'));
-      else
-        toast.success(t(r.status === 'replaced' ? 'attendance.savedReplaced' : 'attendance.saved'));
-      await refresh();
-    },
-  });
+  const answered = async (r: AttendanceSyncResult) => {
+    setSaved({ kind: 'answered', result: r });
+    if (r.status === 'rejected') {
+      toast.error(rejection(r.error, date));
+      return;
+    }
+    if (r.status === 'stale') toast.warning(t('attendance.stale'));
+    else
+      toast.success(t(r.status === 'replaced' ? 'attendance.savedReplaced' : 'attendance.saved'));
+    await refresh();
+  };
+
+  const handle = async (out: SaveOutcome, clientId: string) => {
+    if (out.kind === 'queued') {
+      setSaved({ kind: 'offline', clientId });
+      toast.info(t('attendance.savedOffline'));
+    } else if (out.kind === 'paused') {
+      setSaved({ kind: 'paused', clientId });
+      toast.warning(t('attendance.signInAgain'));
+    } else await answered(out.result);
+  };
+
+  // Saved on this phone: when a later sync (online event, timer, another screen) gets the
+  // server's answer for this register, the "will be sent" note gives way to that answer.
+  const waitingFor = saved && saved.kind !== 'answered' ? saved.clientId : null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `answered` is recreated every render
+  useEffect(() => {
+    if (!waitingFor) return;
+    return onAnswer((r) => {
+      if (r.client_id === waitingFor) void answered(r);
+    });
+  }, [waitingFor]);
+
+  // A plain async call, not a react-query mutation: mutations pause while the browser reports
+  // offline (networkMode 'online'), and an offline save must still reach the outbox.
+  const save = async () => {
+    if (busy.current) return;
+    const sub = pending.current ?? submission();
+    if (!sub || !reg.data) return;
+    pending.current = sub;
+    busy.current = true;
+    setSaving(true);
+    try {
+      const label = `${reg.data.programme_name} ${reg.data.grp_name}`.trim();
+      await handle(await saveRegister(sub, { label }), sub.client_id);
+    } catch (err) {
+      toast.error(errorText(err));
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  };
 
   const correct = useMutation({
     mutationFn: (reason: string) => {
@@ -322,10 +360,12 @@ export function RegisterPage() {
   // Office users editing a register that already exists make a correction (with reason).
   const isCorrection = office && !!r.current;
   const closed = !!r.day_off;
+  // One register holds at most 200 marks (the per-request budget); bigger groups must be split.
+  const tooBig = r.rows.length > MAX_MARKS_PER_REGISTER;
   const queued = saved?.kind === 'answered' ? (saved.result.queued_messages ?? 0) : 0;
 
   const cycle = (id: string) =>
-    setDraft((d) => {
+    edit((d) => {
       const cur = d?.[id];
       return d && cur ? { ...d, [id]: { ...cur, status: nextStatus(cur.status) } } : d;
     });
@@ -379,7 +419,20 @@ export function RegisterPage() {
         </p>
       )}
       {saved?.kind === 'answered' && saved.result.status === 'rejected' && (
-        <ErrorNote error={Object.assign(new Error(saved.result.error ?? 'invalid'))} />
+        <p role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          {rejection(saved.result.error, date)}
+        </p>
+      )}
+      {outbox.pending > 0 && (
+        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+          <CloudOff className="size-4 shrink-0" aria-hidden />
+          {t('attendance.waitingHere', { n: outbox.pending })}
+        </p>
+      )}
+      {tooBig && (
+        <p role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          {t('attendance.rosterTooBig', { n: r.rows.length, max: MAX_MARKS_PER_REGISTER })}
+        </p>
       )}
       {queued > 0 && (
         <p
@@ -445,10 +498,10 @@ export function RegisterPage() {
           <Button
             size="lg"
             className="ms-auto min-w-40"
-            disabled={closed || save.isPending || correct.isPending || r.rows.length === 0}
-            onClick={() => (isCorrection ? setCorrecting(true) : save.mutate())}
+            disabled={closed || tooBig || saving || correct.isPending || r.rows.length === 0}
+            onClick={() => (isCorrection ? setCorrecting(true) : void save())}
           >
-            {save.isPending
+            {saving
               ? t('common.saving')
               : isCorrection
                 ? t('attendance.correct')
@@ -463,7 +516,7 @@ export function RegisterPage() {
           note={draft[noteStudent.student_id]?.note ?? ''}
           onClose={() => setNoteFor(null)}
           onSave={(note) => {
-            setDraft((d) => {
+            edit((d) => {
               const cur = d?.[noteStudent.student_id];
               return d && cur ? { ...d, [noteStudent.student_id]: { ...cur, note } } : d;
             });

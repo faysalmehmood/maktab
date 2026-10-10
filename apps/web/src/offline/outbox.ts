@@ -4,7 +4,8 @@
  *
  * Protocol: entries keyed by the register's ULID `client_id` (re-enqueue is a no-op); per
  * (group, date, subject) ordering so a newer register never overtakes an older one that is backing
- * off; exponential backoff 1 s → 60 s (a longer Retry-After wins).
+ * off; exponential backoff 1 s → 60 s (a longer Retry-After wins). Requests are packed in order,
+ * greedily, up to 3 registers and 200 marks (the server's budget): a 150-mark register goes alone.
  * Response classes:
  *   2xx                       per-entry results (applied | replaced | duplicate | stale = done; rejected = failed)
  *   401; 403 whose error.code is disabled | not_invited | unauthenticated
@@ -19,6 +20,7 @@
 import {
   type AttendanceSubmission,
   type AttendanceSyncResult,
+  MAX_MARKS_PER_SYNC,
   MAX_SUBMISSIONS_PER_SYNC,
 } from '@maktab/shared';
 
@@ -31,6 +33,10 @@ export type OutboxEntry = {
   attempts: number;
   next_at: number;
   error: string | null;
+  /** Machine-readable reason once failed: a SyncRejectCode, or the HTTP error code / status. */
+  error_code?: string | null;
+  /** What the failed list shows for this register (e.g. "Class 5 A"); optional, display only. */
+  label?: string | null;
   seq: number;
   created_at: number;
 };
@@ -57,6 +63,7 @@ const BASE_MS = 1_000;
 const cfg = {
   // The server refuses larger requests (per-request budget); a backlog goes out as several requests.
   chunk: MAX_SUBMISSIONS_PER_SYNC,
+  maxMarks: MAX_MARKS_PER_SYNC,
   dbName: 'attendance-outbox',
   url: '/api/attendance/sync',
   now: (): number => Date.now(),
@@ -158,7 +165,10 @@ const keyOf = (s: AttendanceSubmission): string =>
   `${s.grp_id}|${s.date}|${s.grp_subject_id ?? ''}`;
 
 /** Idempotent on client_id (double-tap safe). */
-export async function enqueue(submission: AttendanceSubmission): Promise<{ queued: boolean }> {
+export async function enqueue(
+  submission: AttendanceSubmission,
+  info: { label?: string | null } = {},
+): Promise<{ queued: boolean }> {
   if (!submission.client_id) throw new TypeError('client_id required');
   if (!Array.isArray(submission.marks)) throw new TypeError('marks required');
   const d = await db();
@@ -178,6 +188,7 @@ export async function enqueue(submission: AttendanceSubmission): Promise<{ queue
       attempts: 0,
       next_at: 0,
       error: null,
+      label: info.label ?? null,
       seq,
       created_at: cfg.now(),
     };
@@ -203,26 +214,56 @@ export async function failed(): Promise<OutboxEntry[]> {
   return (await all()).filter((e) => e.state === 'failed');
 }
 
-export async function retryFailed(): Promise<void> {
+/** Failed entries (all, or only `ids`) go back to pending with a fresh backoff. */
+export async function retryFailed(ids?: readonly string[]): Promise<void> {
   const d = await db();
   const tx = d.transaction('outbox', 'readwrite');
   const s = tx.objectStore('outbox');
   for (const e of (await req(s.getAll())) as OutboxEntry[]) {
-    if (e.state === 'failed')
-      s.put({ ...e, state: 'pending', attempts: 0, next_at: 0, error: null });
+    if (e.state === 'failed' && (!ids || ids.includes(e.client_id)))
+      s.put({ ...e, state: 'pending', attempts: 0, next_at: 0, error: null, error_code: null });
   }
   await done(tx);
 }
 
-/** Drops entries the server refused (the teacher has seen why and will save a corrected copy). */
-export async function discardFailed(): Promise<void> {
+/** Drops entries the server refused (all, or only `ids`): the teacher has seen why. */
+export async function discardFailed(ids?: readonly string[]): Promise<void> {
   const d = await db();
   const tx = d.transaction('outbox', 'readwrite');
   const s = tx.objectStore('outbox');
   for (const e of (await req(s.getAll())) as OutboxEntry[]) {
-    if (e.state === 'failed') s.delete(e.client_id);
+    if (e.state === 'failed' && (!ids || ids.includes(e.client_id))) s.delete(e.client_id);
   }
   await done(tx);
+}
+
+/** Is this register still on the phone (pending or failed)? */
+export async function has(clientId: string): Promise<boolean> {
+  const d = await db();
+  return !!(await req(d.transaction('outbox').objectStore('outbox').get(clientId)));
+}
+
+/**
+ * Packs due entries into requests in order: a request closes when the next entry would take it
+ * past `chunk` registers or `maxMarks` marks. In-order packing keeps per-key order (an older
+ * register is never in a later request than a newer one of the same key).
+ */
+export function pack(entries: OutboxEntry[]): OutboxEntry[][] {
+  const out: OutboxEntry[][] = [];
+  let cur: OutboxEntry[] = [];
+  let marks = 0;
+  for (const e of entries) {
+    const n = Array.isArray(e.submission.marks) ? e.submission.marks.length : 0;
+    if (cur.length && (cur.length >= cfg.chunk || marks + n > cfg.maxMarks)) {
+      out.push(cur);
+      cur = [];
+      marks = 0;
+    }
+    cur.push(e);
+    marks += n;
+  }
+  if (cur.length) out.push(cur);
+  return out;
 }
 
 /** Read-modify-write in one transaction; `fn` returns the new entry, or null to delete it. */
@@ -274,8 +315,7 @@ async function runOnce(fetchImpl: FetchLike, force: boolean): Promise<SyncOutcom
     else blocked.add(k);
   }
 
-  for (let i = 0; i < due.length; i += cfg.chunk) {
-    const chunk = due.slice(i, i + cfg.chunk);
+  for (const chunk of pack(due)) {
     out.sent += chunk.length;
     let resp: Response;
     let body: SyncBody;
@@ -315,8 +355,9 @@ async function runOnce(fetchImpl: FetchLike, force: boolean): Promise<SyncOutcom
     }
     if (resp.status >= 400 || !body || !Array.isArray(body.results)) {
       const msg = `HTTP ${resp.status}: ${body?.error?.message ?? 'bad response'}`;
+      const code = body?.error?.code ?? `http_${resp.status}`;
       for (const e of chunk) {
-        await update(e.client_id, (c) => ({ ...c, state: 'failed', error: msg }));
+        await update(e.client_id, (c) => ({ ...c, state: 'failed', error: msg, error_code: code }));
         out.failed++;
       }
       continue;
@@ -325,7 +366,12 @@ async function runOnce(fetchImpl: FetchLike, force: boolean): Promise<SyncOutcom
     for (const e of chunk) {
       const r = byId.get(e.client_id);
       if (r?.status === 'rejected') {
-        await update(e.client_id, (c) => ({ ...c, state: 'failed', error: r.error ?? 'rejected' }));
+        await update(e.client_id, (c) => ({
+          ...c,
+          state: 'failed',
+          error: r.message ? `${r.error}: ${r.message}` : (r.error ?? 'rejected'),
+          error_code: r.error ?? 'invalid',
+        }));
         out.failed++;
       } else if (r) {
         await update(e.client_id, () => null); // acknowledged => delete

@@ -1,13 +1,23 @@
 import type { DayOff, MarkCounts, MarkStatus, TodayItem } from '@maktab/shared';
 import { CalendarOff, ChevronRight, CloudOff, LogIn, TriangleAlert } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Num } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { registerPath, STATUS_CLASS, timeOf } from '@/lib/attendance';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { registerPath, STATUS_CLASS, timeOf, useRejectionText } from '@/lib/attendance';
 import { cn, isolate } from '@/lib/utils';
-import { discardFailed, useOutboxStatus } from '@/offline/sync';
+import type { OutboxEntry } from '@/offline/outbox';
+import { discardFailed, failedEntries, retryFailed, useOutboxStatus } from '@/offline/sync';
 
 /** The coloured letter; the full word is the accessible name. */
 export function StatusChip({ status, className }: { status: MarkStatus; className?: string }) {
@@ -145,16 +155,84 @@ export function SyncBanner() {
           </Button>
         </p>
       )}
-      {s.failed > 0 && (
-        <p className="flex min-h-11 flex-wrap items-center gap-2" role="alert">
-          <TriangleAlert className="size-4 shrink-0" aria-hidden />
-          <span className="flex-1">
-            {t('attendance.failed', { n: s.failed })} — {t('attendance.failedHint')}
-          </span>
-          <Button size="sm" variant="outline" onClick={() => void discardFailed()}>
-            {t('attendance.dismiss')}
-          </Button>
-        </p>
+      {s.failed > 0 && <FailedList count={s.failed} />}
+    </div>
+  );
+}
+
+/**
+ * Registers the school refused, one row each: group, date, the reason in the user's language,
+ * Retry (back to the queue, sent now) and Dismiss (after a confirm: it is deleted from the phone).
+ */
+export function FailedList({ count }: { count: number }) {
+  const { t } = useTranslation();
+  const reason = useRejectionText();
+  const [items, setItems] = useState<OutboxEntry[]>([]);
+  const [confirm, setConfirm] = useState<OutboxEntry | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read whenever the failed count moves
+  useEffect(() => {
+    let live = true;
+    failedEntries()
+      .then((e) => live && setItems(e))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [count]);
+  return (
+    <div role="alert" className="flex flex-col gap-1">
+      <p className="flex min-h-11 items-center gap-2">
+        <TriangleAlert className="size-4 shrink-0" aria-hidden />
+        <span>
+          {t('attendance.failed', { n: count })} — {t('attendance.failedHint')}
+        </span>
+      </p>
+      <ul className="flex flex-col gap-1">
+        {items.map((e) => (
+          <li key={e.client_id} className="flex flex-wrap items-center gap-2 ps-6">
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="font-medium">
+                <bdi>{e.label ?? t('attendance.group')}</bdi> · <Num>{e.submission.date}</Num>
+              </span>
+              <span>{reason(e.error_code ?? e.error, e.submission.date)}</span>
+            </span>
+            <Button size="sm" variant="outline" onClick={() => void retryFailed([e.client_id])}>
+              {t('attendance.retry')}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirm(e)}>
+              {t('attendance.dismiss')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {confirm && (
+        <Dialog open onOpenChange={(o) => !o && setConfirm(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t('attendance.dismissTitle')}</DialogTitle>
+              <DialogDescription>{t('attendance.dismissBody')}</DialogDescription>
+            </DialogHeader>
+            <p className="text-sm">
+              <bdi>{confirm.label ?? t('attendance.group')}</bdi> ·{' '}
+              <Num>{confirm.submission.date}</Num>
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirm(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const id = confirm.client_id;
+                  setConfirm(null);
+                  void discardFailed([id]);
+                }}
+              >
+                {t('attendance.dismiss')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

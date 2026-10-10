@@ -51,7 +51,9 @@ export function TodayPage() {
       ) : today.data ? (
         <>
           <DayOffNote dayOff={today.data.day_off} />
-          <TodayList items={today.data.items} date={today.data.date} />
+          {/* The asked-for date, not the response's: offline, the cached list may be yesterday's,
+              and its links must still open today's register. */}
+          <TodayList items={today.data.items} date={date} />
         </>
       ) : (
         <ErrorNote error={today.error} />
