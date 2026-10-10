@@ -9,6 +9,7 @@ CREATE TABLE `att_mark` (
 	CONSTRAINT "att_mark_status" CHECK("status" IN ('P','A','L','E'))
 );
 --> statement-breakpoint
+CREATE INDEX `att_mark_student` ON `att_mark` (`student_id`);--> statement-breakpoint
 CREATE TABLE `att_register` (
 	`id` text PRIMARY KEY NOT NULL,
 	`client_id` text NOT NULL,
@@ -80,6 +81,7 @@ CREATE TABLE `enrolment` (
 );
 --> statement-breakpoint
 CREATE INDEX `enrolment_grp` ON `enrolment` (`grp_id`,`status`);--> statement-breakpoint
+CREATE INDEX `enrolment_student` ON `enrolment` (`student_id`);--> statement-breakpoint
 CREATE TABLE `exam` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
@@ -158,6 +160,7 @@ CREATE TABLE `grp` (
 	CONSTRAINT "grp_status" CHECK("status" IN ('open','running','closed'))
 );
 --> statement-breakpoint
+CREATE INDEX `grp_class_teacher` ON `grp` (`class_teacher_id`);--> statement-breakpoint
 CREATE TABLE `grp_subject` (
 	`id` text PRIMARY KEY NOT NULL,
 	`grp_id` text NOT NULL,
@@ -170,6 +173,7 @@ CREATE TABLE `grp_subject` (
 	FOREIGN KEY (`teacher_id`) REFERENCES `staff`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
+CREATE INDEX `grp_subject_teacher` ON `grp_subject` (`teacher_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `grp_subject_once` ON `grp_subject` (`grp_id`,`subject_id`);--> statement-breakpoint
 CREATE TABLE `guardian` (
 	`id` text PRIMARY KEY NOT NULL,
@@ -369,7 +373,7 @@ CREATE TABLE `message` (
 	`template_key` text NOT NULL,
 	`lang` text NOT NULL,
 	`payload` text,
-	`link_token` text,
+	`link_token_hash` text,
 	`status` text DEFAULT 'queued' NOT NULL,
 	`provider_ref` text,
 	`raw_response` text,
@@ -382,7 +386,9 @@ CREATE TABLE `message` (
 	FOREIGN KEY (`family_id`) REFERENCES `family`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`guardian_id`) REFERENCES `guardian`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "message_channel" CHECK("channel" IN ('wa_manual','wa_api','sms','push','email')),
-	CONSTRAINT "message_status" CHECK("status" IN ('queued','sent','delivered','read','failed','skipped'))
+	CONSTRAINT "message_status" CHECK("status" IN ('queued','sent','delivered','read','failed','skipped')),
+	CONSTRAINT "message_cost_estimate_int" CHECK("cost_estimate" IS NULL OR typeof("cost_estimate") = 'integer'),
+	CONSTRAINT "message_cost_actual_int" CHECK("cost_actual" IS NULL OR typeof("cost_actual") = 'integer')
 );
 --> statement-breakpoint
 CREATE INDEX `message_queue` ON `message` (`status`,`template_key`);--> statement-breakpoint
@@ -437,13 +443,21 @@ CREATE TABLE `cash_session` (
 	`opening` integer DEFAULT 0 NOT NULL,
 	`expected` integer,
 	`counted` integer,
-	`variance` integer,
+	`variance` integer GENERATED ALWAYS AS ("counted" - "expected") VIRTUAL,
 	`closed_at` text,
 	`closed_by` text,
+	`reopened_by` text,
+	`reopened_at` text,
+	`reopen_reason` text,
 	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL,
 	`created_by` text,
 	FOREIGN KEY (`collector_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`closed_by`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE no action
+	FOREIGN KEY (`closed_by`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`reopened_by`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "cash_session_opening_int" CHECK(typeof("opening") = 'integer'),
+	CONSTRAINT "cash_session_expected_int" CHECK("expected" IS NULL OR typeof("expected") = 'integer'),
+	CONSTRAINT "cash_session_counted_int" CHECK("counted" IS NULL OR typeof("counted") = 'integer'),
+	CONSTRAINT "cash_session_closed_shape" CHECK("closed_at" IS NULL OR ("closed_by" IS NOT NULL AND "counted" IS NOT NULL AND "expected" IS NOT NULL))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `cash_session_once` ON `cash_session` (`collector_id`,`business_date`);--> statement-breakpoint
@@ -470,12 +484,17 @@ CREATE TABLE `charge` (
 	FOREIGN KEY (`run_id`) REFERENCES `billing_run`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "charge_kind" CHECK("kind" IN ('fee','concession','fine','fine_waiver','reversal')),
 	CONSTRAINT "charge_payer_type" CHECK("payer_type" IN ('family','sponsor')),
-	CONSTRAINT "charge_root_kind" CHECK("parent_charge_id" IS NOT NULL OR "kind" IN ('fee','fine'))
+	CONSTRAINT "charge_root_kind" CHECK(("kind" = 'fee') = ("parent_charge_id" IS NULL)),
+	CONSTRAINT "charge_kind_sign" CHECK(("kind" IN ('fee','fine') AND "amount" > 0) OR ("kind" IN ('concession','fine_waiver','reversal') AND "amount" < 0)),
+	CONSTRAINT "charge_reason" CHECK("kind" NOT IN ('reversal','fine_waiver') OR length(trim(coalesce("reason", ''))) > 0),
+	CONSTRAINT "charge_amount_int" CHECK(typeof("amount") = 'integer')
 );
 --> statement-breakpoint
-CREATE INDEX `charge_payer` ON `charge` (`payer_id`);--> statement-breakpoint
+CREATE INDEX `charge_payer` ON `charge` (`payer_type`,`payer_id`);--> statement-breakpoint
 CREATE INDEX `charge_parent` ON `charge` (`parent_charge_id`);--> statement-breakpoint
 CREATE INDEX `charge_student` ON `charge` (`student_id`);--> statement-breakpoint
+CREATE INDEX `charge_enrolment` ON `charge` (`enrolment_id`);--> statement-breakpoint
+CREATE INDEX `charge_due_date` ON `charge` (`due_date`);--> statement-breakpoint
 CREATE TABLE `concession` (
 	`id` text PRIMARY KEY NOT NULL,
 	`student_id` text NOT NULL,
@@ -498,7 +517,8 @@ CREATE TABLE `concession` (
 	FOREIGN KEY (`ended_by`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "concession_type" CHECK("type" IN ('pct','fixed')),
 	CONSTRAINT "concession_reason" CHECK("reason" IN ('sibling','orphan','staff_child','scholarship','topper','needy','other')),
-	CONSTRAINT "concession_value" CHECK("value" > 0 AND ("type" <> 'pct' OR "value" <= 100))
+	CONSTRAINT "concession_value" CHECK("value" > 0 AND ("type" <> 'pct' OR "value" <= 100)),
+	CONSTRAINT "concession_value_int" CHECK(typeof("value") = 'integer')
 );
 --> statement-breakpoint
 CREATE TABLE `expense` (
@@ -519,7 +539,9 @@ CREATE TABLE `expense` (
 	FOREIGN KEY (`account_id`) REFERENCES `account`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`cash_session_id`) REFERENCES `cash_session`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`voided_by`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "expense_amount" CHECK("amount" > 0)
+	CONSTRAINT "expense_amount" CHECK("amount" > 0),
+	CONSTRAINT "expense_amount_int" CHECK(typeof("amount") = 'integer'),
+	CONSTRAINT "expense_void_reason" CHECK(("voided_by" IS NULL) = (length(trim(coalesce("void_reason", ''))) = 0))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `expense_expense_no_unique` ON `expense` (`expense_no`);--> statement-breakpoint
@@ -556,7 +578,8 @@ CREATE TABLE `fee_rate` (
 	FOREIGN KEY (`programme_id`) REFERENCES `programme`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`grp_id`) REFERENCES `grp`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "fee_rate_target" CHECK(("programme_id" IS NULL) <> ("grp_id" IS NULL)),
-	CONSTRAINT "fee_rate_amount" CHECK("amount" >= 0)
+	CONSTRAINT "fee_rate_amount" CHECK("amount" >= 0),
+	CONSTRAINT "fee_rate_amount_int" CHECK(typeof("amount") = 'integer')
 );
 --> statement-breakpoint
 CREATE TABLE `opening_balance` (
@@ -566,7 +589,8 @@ CREATE TABLE `opening_balance` (
 	`note` text,
 	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL,
 	`created_by` text,
-	FOREIGN KEY (`student_id`) REFERENCES `student`(`id`) ON UPDATE no action ON DELETE no action
+	FOREIGN KEY (`student_id`) REFERENCES `student`(`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "opening_balance_amount_int" CHECK(typeof("amount") = 'integer')
 );
 --> statement-breakpoint
 CREATE TABLE `payslip` (
@@ -579,7 +603,8 @@ CREATE TABLE `payslip` (
 	`created_by` text,
 	FOREIGN KEY (`staff_id`) REFERENCES `staff`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`approved_by`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "payslip_status" CHECK("status" IN ('draft','approved','paid'))
+	CONSTRAINT "payslip_status" CHECK("status" IN ('draft','approved','paid')),
+	CONSTRAINT "payslip_approved_by" CHECK("status" = 'draft' OR "approved_by" IS NOT NULL)
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `payslip_once` ON `payslip` (`staff_id`,`period_key`);--> statement-breakpoint
@@ -592,7 +617,8 @@ CREATE TABLE `payslip_line` (
 	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL,
 	`created_by` text,
 	FOREIGN KEY (`payslip_id`) REFERENCES `payslip`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "payslip_line_kind" CHECK("kind" IN ('basic','allowance','deduction','advance_recovery'))
+	CONSTRAINT "payslip_line_kind" CHECK("kind" IN ('basic','allowance','deduction','advance_recovery')),
+	CONSTRAINT "payslip_line_amount_int" CHECK(typeof("amount") = 'integer')
 );
 --> statement-breakpoint
 CREATE TABLE `receipt` (
@@ -620,29 +646,33 @@ CREATE TABLE `receipt` (
 	CONSTRAINT "receipt_kind" CHECK("kind" IN ('payment','reversal','refund')),
 	CONSTRAINT "receipt_method" CHECK("method" IN ('cash','bank','jazzcash','easypaisa')),
 	CONSTRAINT "receipt_payer_type" CHECK("payer_type" IN ('family','sponsor')),
-	CONSTRAINT "receipt_reversal_shape" CHECK(("kind" = 'reversal') = ("reverses_id" IS NOT NULL AND "amount" < 0)),
-	CONSTRAINT "receipt_positive" CHECK("kind" = 'reversal' OR "amount" > 0)
+	CONSTRAINT "receipt_kind_shape" CHECK(CASE "kind" WHEN 'payment' THEN "amount" > 0 AND "reverses_id" IS NULL WHEN 'reversal' THEN "amount" < 0 AND "reverses_id" IS NOT NULL WHEN 'refund' THEN "amount" < 0 AND "reverses_id" IS NULL ELSE 0 END),
+	CONSTRAINT "receipt_amount_int" CHECK(typeof("amount") = 'integer')
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `receipt_receipt_no_unique` ON `receipt` (`receipt_no`);--> statement-breakpoint
 CREATE UNIQUE INDEX `receipt_reverses_id_unique` ON `receipt` (`reverses_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `receipt_idempotency_key_unique` ON `receipt` (`idempotency_key`);--> statement-breakpoint
-CREATE INDEX `receipt_payer` ON `receipt` (`payer_id`);--> statement-breakpoint
+CREATE INDEX `receipt_payer` ON `receipt` (`payer_type`,`payer_id`);--> statement-breakpoint
+CREATE INDEX `receipt_day_collector` ON `receipt` (`business_date`,`collector_id`);--> statement-breakpoint
 CREATE TABLE `receipt_allocation` (
 	`receipt_id` text NOT NULL,
 	`charge_id` text NOT NULL,
 	`amount` integer NOT NULL,
-	PRIMARY KEY(`receipt_id`, `charge_id`),
 	FOREIGN KEY (`receipt_id`) REFERENCES `receipt`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`charge_id`) REFERENCES `charge`(`id`) ON UPDATE no action ON DELETE no action
+	FOREIGN KEY (`charge_id`) REFERENCES `charge`(`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "receipt_allocation_nonzero" CHECK("amount" <> 0),
+	CONSTRAINT "receipt_allocation_amount_int" CHECK(typeof("amount") = 'integer')
 );
 --> statement-breakpoint
+CREATE INDEX `receipt_allocation_pair` ON `receipt_allocation` (`receipt_id`,`charge_id`);--> statement-breakpoint
 CREATE INDEX `receipt_allocation_charge` ON `receipt_allocation` (`charge_id`);--> statement-breakpoint
 CREATE TABLE `receipt_series` (
 	`series` text NOT NULL,
 	`year` integer NOT NULL,
 	`next_no` integer DEFAULT 1 NOT NULL,
-	PRIMARY KEY(`series`, `year`)
+	PRIMARY KEY(`series`, `year`),
+	CONSTRAINT "receipt_series_next_no" CHECK(typeof("next_no") = 'integer' AND "next_no" >= 1)
 );
 --> statement-breakpoint
 CREATE TABLE `salary_payment` (
@@ -655,7 +685,8 @@ CREATE TABLE `salary_payment` (
 	`created_by` text,
 	FOREIGN KEY (`payslip_id`) REFERENCES `payslip`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`account_id`) REFERENCES `account`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "salary_payment_amount" CHECK("amount" > 0)
+	CONSTRAINT "salary_payment_amount" CHECK("amount" > 0),
+	CONSTRAINT "salary_payment_amount_int" CHECK(typeof("amount") = 'integer')
 );
 --> statement-breakpoint
 CREATE TABLE `sponsor` (
@@ -693,13 +724,15 @@ CREATE TABLE `staff_advance` (
 	`created_by` text,
 	FOREIGN KEY (`staff_id`) REFERENCES `staff`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`account_id`) REFERENCES `account`(`id`) ON UPDATE no action ON DELETE no action,
-	CONSTRAINT "staff_advance_amount" CHECK("amount" > 0)
+	CONSTRAINT "staff_advance_amount" CHECK("amount" > 0),
+	CONSTRAINT "staff_advance_amount_int" CHECK(typeof("amount") = 'integer')
 );
 --> statement-breakpoint
 CREATE TABLE `transfer` (
 	`id` text PRIMARY KEY NOT NULL,
 	`from_account` text NOT NULL,
 	`to_account` text NOT NULL,
+	`cash_session_id` text,
 	`amount` integer NOT NULL,
 	`date` text NOT NULL,
 	`note` text,
@@ -707,6 +740,8 @@ CREATE TABLE `transfer` (
 	`created_by` text,
 	FOREIGN KEY (`from_account`) REFERENCES `account`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`to_account`) REFERENCES `account`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`cash_session_id`) REFERENCES `cash_session`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "transfer_amount" CHECK("amount" > 0),
-	CONSTRAINT "transfer_distinct" CHECK("from_account" <> "to_account")
+	CONSTRAINT "transfer_distinct" CHECK("from_account" <> "to_account"),
+	CONSTRAINT "transfer_amount_int" CHECK(typeof("amount") = 'integer')
 );

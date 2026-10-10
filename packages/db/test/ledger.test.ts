@@ -1,8 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { eq, sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { buildCustomSql, CUSTOM_MIGRATION } from '../scripts/sync-custom-sql';
+import { checkCustomSql } from '../scripts/sync-custom-sql';
 import { type AppDb, atomic, rawStatement } from '../src/client';
 import { createTestDb } from '../src/node';
 import * as t from '../src/schema';
@@ -126,27 +124,29 @@ describe('ledger (experiment 1 scenario)', () => {
     ]);
   });
 
-  it('refuses allocations to child lines and grandchild lines', async () => {
+  it('refuses allocations to child lines; only fine_waiver/reversal may hang off a fine', async () => {
     await expectAbort(
       () => receipt(db, { id: 'rc', idem: 'i-c', amount: 50000, allocs: [['c1f', 50000]] }),
       /allocation must target a root charge/,
     );
+    const line = {
+      studentId: 'S1',
+      feeHeadId: 'H1',
+      periodKey: '2026-03',
+      payerType: 'family',
+      payerId: 'F1',
+      dueDate: '2026-03-10',
+      parentChargeId: 'c1f',
+      amount: -50000,
+    } as const;
     await expectAbort(
-      () =>
-        db.insert(t.charge).values({
-          id: 'c1fw',
-          studentId: 'S1',
-          feeHeadId: 'H1',
-          periodKey: '2026-03',
-          payerType: 'family',
-          payerId: 'F1',
-          dueDate: '2026-03-10',
-          kind: 'fine_waiver',
-          parentChargeId: 'c1f',
-          amount: -50000,
-        }),
-      /parent charge must be a root charge/,
+      () => db.insert(t.charge).values({ ...line, id: 'c1fc', kind: 'concession' }),
+      /invalid parent charge for this kind/,
     );
+    await db
+      .insert(t.charge)
+      .values({ ...line, id: 'c1fw', kind: 'fine_waiver', reason: 'first offence' });
+    expect((await status(db))[0]).toMatchObject({ id: 'c1', net: 800000 });
   });
 
   it('issues a numbered receipt and allocates in one batch', async () => {
@@ -323,8 +323,7 @@ describe('other hand-written rules', () => {
     );
   });
 
-  it('the custom migration matches sql/*.sql', () => {
-    const path = fileURLToPath(new URL(`../${CUSTOM_MIGRATION}`, import.meta.url));
-    expect(readFileSync(path, 'utf8')).toBe(buildCustomSql());
+  it('every sql/*.sql change is recorded in a migration, and no migration was edited', () => {
+    expect(checkCustomSql()).toEqual([]);
   });
 });

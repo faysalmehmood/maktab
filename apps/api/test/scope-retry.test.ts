@@ -1,20 +1,13 @@
 import { grp, grpSubject, programme, staff, subject } from '@maktab/db';
 import { createTestDb } from '@maktab/db/node';
-import type { StaffRole } from '@maktab/shared';
+import type { Grant } from '@maktab/shared';
 import { describe, expect, it } from 'vitest';
-import type { Principal } from '../src/auth/principal';
 import { isTransientD1Error, withD1Retry } from '../src/lib/retry';
 import { groupFilter, scopeToGroups } from '../src/perm/scope';
 import { signedInAs } from './helpers';
 
-const principal = (id: string, roles: StaffRole[]): Principal => ({
-  kind: 'staff',
-  user: { id, email: `${id}@x.pk`, name: id, status: 'active' },
-  roles,
-});
-
 describe('scopeToGroups', () => {
-  it('limits teachers to groups they teach; office roles see all', async () => {
+  it('derives scope from the resolved grant, not from roles', async () => {
     const db = createTestDb();
     const a = await signedInAs(db, ['teacher']);
     const b = await signedInAs(db, ['teacher']);
@@ -33,30 +26,27 @@ describe('scopeToGroups', () => {
       .insert(grpSubject)
       .values({ id: 'GS', grpId: 'G3', subjectId: 'MATH', teacherId: 'T-A' });
 
-    expect(await scopeToGroups(db, principal(a.userId, ['teacher']))).toEqual({
-      kind: 'groups',
-      ids: ['G1', 'G3'],
-    });
-    expect(await scopeToGroups(db, principal(b.userId, ['teacher']))).toEqual({
-      kind: 'groups',
-      ids: ['G2', 'G3'],
-    });
-    expect(await scopeToGroups(db, principal('nobody', ['teacher']))).toEqual({
-      kind: 'groups',
-      ids: [],
-    });
-    expect(await scopeToGroups(db, principal(a.userId, ['accountant']))).toEqual({ kind: 'all' });
+    const scope = (userId: string, grant: Grant) => scopeToGroups(db, userId, grant);
+    expect(await scope(a.userId, 'own_groups')).toEqual({ kind: 'groups', ids: ['G1', 'G3'] });
+    expect(await scope(b.userId, 'own_groups')).toEqual({ kind: 'groups', ids: ['G2', 'G3'] });
+    expect(await scope(a.userId, 'own_subjects')).toEqual({ kind: 'groups', ids: ['G3'] });
+    expect(await scope('nobody', 'own_groups')).toEqual({ kind: 'groups', ids: [] });
+    expect(await scope(a.userId, 'all')).toEqual({ kind: 'all' });
+    // A teacher whose route grants `all` (e.g. a future school-wide notice) sees all groups;
+    // a deny or a non-group scope sees none, whatever roles the user holds.
+    expect(await scope(a.userId, false)).toEqual({ kind: 'groups', ids: [] });
+    expect(await scope(a.userId, 'own_only')).toEqual({ kind: 'groups', ids: [] });
 
-    const visible = async (p: Principal) =>
+    const visible = async (userId: string, grant: Grant) =>
       (
         await db
           .select({ id: grp.id })
           .from(grp)
-          .where(groupFilter(grp.id, await scopeToGroups(db, p)))
+          .where(groupFilter(grp.id, await scopeToGroups(db, userId, grant)))
       ).map((r) => r.id);
-    expect(await visible(principal(a.userId, ['teacher']))).toEqual(['G1', 'G3']);
-    expect(await visible(principal('nobody', ['teacher']))).toEqual([]);
-    expect((await visible(principal(a.userId, ['admin']))).length).toBe(3);
+    expect(await visible(a.userId, 'own_groups')).toEqual(['G1', 'G3']);
+    expect(await visible('nobody', 'own_groups')).toEqual([]);
+    expect((await visible(a.userId, 'all')).length).toBe(3);
   });
 });
 

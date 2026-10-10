@@ -9,6 +9,9 @@ compatibility_date = "2026-09-01"
 # Smaller bundle = faster cold starts on the free plan.
 minify = true
 
+# The SPA's security headers (CSP, frame-ancestors, nosniff, referrer policy) come from
+# apps/web/public/_headers, which Vite copies to dist/ and Workers Static Assets applies to every
+# asset response (the file itself is never served). /api/* responses get theirs from secureHeaders().
 [assets]
 directory = "../web/dist"
 binding = "ASSETS"
@@ -30,6 +33,9 @@ bucket_name = "maktab-files"
 
 [vars]
 APP_ORIGIN = "http://localhost:5173"
+# The only Google account that may claim an empty installation as owner (case-insensitive).
+# Empty = nobody can bootstrap. Override locally in .dev.vars.
+OWNER_EMAIL = ""
 
 [observability]
 enabled = true
@@ -52,6 +58,8 @@ routes = [{ pattern = "school.conceptlix.com", custom_domain = true }]
 
 [env.production.vars]
 APP_ORIGIN = "https://school.conceptlix.com"
+# Set before the first sign-in; after the owner exists it no longer matters.
+OWNER_EMAIL = ""
 
 [[env.production.d1_databases]]
 binding = "DB"

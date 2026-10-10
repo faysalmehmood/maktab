@@ -19,6 +19,7 @@ self.read                own_only     own_only     own_only          own_only   
 student.read             all          all          all               own_groups    own_children
 student.write            all          all          all               -             -
 attendance.mark          all          all          -                 own_groups    -
+attendance.correct       all          all          -                 -             -
 attendance.read          all          all          -                 own_groups    own_children
 fee.generate             all          all          -                 -             -
 fee.concession           all          all          -                 -             -
@@ -26,7 +27,8 @@ receipt.create           all          all          all               -          
 receipt.reverse          all          all          -                 -             -
 cash_session.close_own   own_only     own_only     own_only          -             -
 cash_session.reopen_any  all          all          -                 -             -
-expense.manage           all          all          all               -             -
+expense.create           all          all          all               -             -
+expense.void             all          all          -                 -             -
 payslip.read             all          all          all_except_owner  own_only      -
 payslip.approve          all          all          -                 -             -
 payslip.pay              all          all          all               -             -
@@ -36,6 +38,7 @@ send_queue.use           all          all          all               own_groups 
 settings.manage          all          all          -                 -             -
 role.manage              all          -            -                 -             -
 backup.manage            all          -            -                 -             -
+audit.read               all          -            -                 -             -
 `;
 
 const expected = new Map<string, Grant[]>(

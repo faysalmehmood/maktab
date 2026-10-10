@@ -97,6 +97,63 @@ describe('JWKS cache', () => {
     expect(jwks.fetchCount()).toBe(2);
   });
 
+  it('single-flights concurrent fetches when the cache is cold or expired', async () => {
+    let t = 0;
+    const server = fakeJwksServer([k1], 'public, max-age=100');
+    let release = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const slow = async () => {
+      await gate;
+      return server.fetch();
+    };
+    const jwks = createJwksClient({ fetch: slow, now: () => t });
+    const many = Promise.all(Array.from({ length: 20 }, () => jwks.getKey('kid-1')));
+    release();
+    await many;
+    expect(jwks.fetchCount()).toBe(1);
+    t = 200_000;
+    await Promise.all(Array.from({ length: 20 }, () => jwks.getKey('kid-1')));
+    expect(jwks.fetchCount()).toBe(2);
+  });
+
+  it('backs off 30 s after a failed fetch, serving stale keys meanwhile', async () => {
+    let t = 0;
+    let up = true;
+    const server = fakeJwksServer([k1], 'public, max-age=100');
+    const flaky = async () => (up ? server.fetch() : new Response('down', { status: 503 }));
+    const jwks = createJwksClient({ fetch: flaky, now: () => t });
+    await jwks.getKey('kid-1');
+    up = false;
+    t = 100_000; // expired; Google is down
+    await expect(jwks.getKey('kid-1')).resolves.toBeDefined(); // stale key still served
+    expect(jwks.fetchCount()).toBe(2);
+    t = 110_000;
+    await jwks.getKey('kid-1');
+    expect(jwks.fetchCount()).toBe(2); // inside the backoff: no new fetch
+    t = 130_000;
+    up = true;
+    await jwks.getKey('kid-1');
+    expect(jwks.fetchCount()).toBe(3);
+  });
+
+  it('fails fast during the backoff when there are no cached keys', async () => {
+    let t = 0;
+    let calls = 0;
+    const down = async () => {
+      calls++;
+      return new Response('down', { status: 503 });
+    };
+    const jwks = createJwksClient({ fetch: down, now: () => t });
+    await expect(jwks.getKey('kid-1')).rejects.toThrow(/JWKS fetch failed: HTTP 503/);
+    await expect(jwks.getKey('kid-1')).rejects.toThrow(/backing off/);
+    expect(calls).toBe(1);
+    t = 30_000;
+    await expect(jwks.getKey('kid-1')).rejects.toThrow(/HTTP 503/);
+    expect(calls).toBe(2);
+  });
+
   it('falls back to the default TTL without Cache-Control', async () => {
     let t = 0;
     const server = fakeJwksServer([k1], '');

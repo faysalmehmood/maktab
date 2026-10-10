@@ -1,3 +1,4 @@
+import { newId } from '@maktab/shared';
 import type { Context, Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import {
@@ -35,6 +36,10 @@ export function authRoutes(app: Hono<AppEnv>, table: RouteTable, deps: AuthDeps)
     table,
     { method: 'GET', path: '/api/auth/google/start', access: publicRoute },
     async (c) => {
+      // Without a client id Google shows a confusing error page; fail loudly here instead.
+      if (!c.env.GOOGLE_CLIENT_ID?.trim()) {
+        throw new ApiError(500, 'misconfigured', 'GOOGLE_CLIENT_ID is not set');
+      }
       const state = randomToken();
       const nonce = randomToken();
       const cookie = await sign(c.env.SESSION_SECRET, {
@@ -98,9 +103,14 @@ export function authRoutes(app: Hono<AppEnv>, table: RouteTable, deps: AuthDeps)
           nowSec: nowSec(),
         });
         const db = c.get('db');
-        const u = await withD1Retry(() => resolveGoogleUser(db, claims));
+        // Ids are minted outside the retry so a retried write is the same write (lib/retry.ts).
+        const newUserId = newId();
+        const sessionId = newId();
+        const u = await withD1Retry(() =>
+          resolveGoogleUser(db, claims, { ownerEmail: c.env.OWNER_EMAIL, newUserId }),
+        );
         const s = await withD1Retry(() =>
-          createSession(db, u.id, {
+          createSession(db, sessionId, u.id, {
             ua: c.req.header('user-agent') ?? null,
             ip: c.req.header('cf-connecting-ip') ?? null,
             nowMs: Date.now(),

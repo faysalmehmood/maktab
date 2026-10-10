@@ -1,0 +1,8 @@
+# Applied by Workers Static Assets to every SPA response (see apps/api/wrangler.toml [assets]).
+# style-src needs 'unsafe-inline' for Radix/Sonner inline style attributes; scripts stay 'self' only.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(self), microphone=(), geolocation=()

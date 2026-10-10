@@ -36,10 +36,24 @@ export default defineConfig({
       injectRegister: 'auto',
       manifest,
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // No woff2 here: the Nastaliq subset is fetched only when Urdu text is actually rendered
+        // (unicode-range), so English-only users never pay for it. It is cached on first use below.
+        globPatterns: ['**/*.{js,css,html,svg,png}'],
         navigateFallback: '/index.html',
         // API responses must never come from the precache.
         navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith('/fonts/') && url.pathname.endsWith('.woff2'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'fonts',
+              expiration: { maxEntries: 4, maxAgeSeconds: 365 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+        ],
       },
     }),
   ],

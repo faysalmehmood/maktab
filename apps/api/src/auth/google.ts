@@ -26,6 +26,8 @@ export type JwksOptions = {
   defaultTtlMs?: number;
   /** Unknown-kid refreshes are rate limited so forged tokens cannot make us hammer Google. */
   minRefreshIntervalMs?: number;
+  /** After a failed fetch, no new fetch for this long (cached keys, if any, keep serving). */
+  failureBackoffMs?: number;
 };
 
 export type JwksClient = { getKey(kid: string): Promise<CryptoKey>; fetchCount(): number };
@@ -33,6 +35,9 @@ export type JwksClient = { getKey(kid: string): Promise<CryptoKey>; fetchCount()
 /**
  * Google rotates signing keys every few days and publishes the cache lifetime in Cache-Control.
  * Keys are cached until then; a token with an unknown kid triggers one early refresh (rotation).
+ * Fetches are single-flight (concurrent sign-ins share one request), and a failed fetch backs off
+ * for `failureBackoffMs`: during an outage we serve the last good keys if we have them, and fail
+ * fast otherwise, instead of every sign-in hitting Google again.
  */
 export function createJwksClient(opts: JwksOptions = {}): JwksClient {
   const url = opts.url ?? GOOGLE_JWKS_URL;
@@ -40,14 +45,38 @@ export function createJwksClient(opts: JwksOptions = {}): JwksClient {
   const now = opts.now ?? Date.now;
   const defaultTtl = opts.defaultTtlMs ?? 60 * 60 * 1000;
   const minRefresh = opts.minRefreshIntervalMs ?? 60 * 1000;
+  const failureBackoff = opts.failureBackoffMs ?? 30 * 1000;
 
   let jwks = new Map<string, JsonWebKey>();
   let imported = new Map<string, Promise<CryptoKey>>();
   let expiresAt = 0;
   let lastFetchAt = Number.NEGATIVE_INFINITY;
+  let failedAt = Number.NEGATIVE_INFINITY;
+  let lastError: unknown = null;
   let fetches = 0;
+  let inflight: Promise<void> | null = null;
 
-  async function refresh(): Promise<void> {
+  /** Single-flight; never fetches during the failure backoff window. */
+  function refresh(): Promise<void> {
+    if (inflight) return inflight;
+    if (now() - failedAt < failureBackoff) {
+      return Promise.reject(
+        new IdTokenError(`JWKS unavailable (backing off): ${String(lastError)}`),
+      );
+    }
+    inflight = fetchKeys()
+      .catch((err) => {
+        failedAt = now();
+        lastError = err instanceof Error ? err.message : err;
+        throw err instanceof IdTokenError ? err : new IdTokenError(`JWKS fetch failed: ${err}`);
+      })
+      .finally(() => {
+        inflight = null;
+      });
+    return inflight;
+  }
+
+  async function fetchKeys(): Promise<void> {
     lastFetchAt = now();
     fetches++;
     const res = await doFetch(url);
@@ -67,7 +96,14 @@ export function createJwksClient(opts: JwksOptions = {}): JwksClient {
   return {
     fetchCount: () => fetches,
     async getKey(kid) {
-      if (now() >= expiresAt) await refresh();
+      if (now() >= expiresAt) {
+        try {
+          await refresh();
+        } catch (err) {
+          // Stale keys beat no keys: Google's keys stay valid well past max-age.
+          if (!jwks.has(kid)) throw err;
+        }
+      }
       if (!jwks.has(kid) && now() - lastFetchAt >= minRefresh) await refresh();
       const jwk = jwks.get(kid);
       if (!jwk) throw new IdTokenError('unknown signing key');

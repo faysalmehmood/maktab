@@ -1,6 +1,6 @@
 {
-  "id": "fb6e75f8-d14d-4ca0-87ea-1eea2fb11a54",
-  "prevId": "add78743-b0ee-4dfa-bfdc-640853527503",
+  "id": "a7c7637f-d1f5-41bf-8e0b-c4b7c5052fa0",
+  "prevId": "76226ba4-441a-47c1-a071-a37ba87ccb02",
   "version": "6",
   "dialect": "sqlite",
   "tables": {
@@ -36,7 +36,15 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "att_mark_student": {
+          "name": "att_mark_student",
+          "columns": [
+            "student_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "att_mark_register_id_att_register_id_fk": {
           "name": "att_mark_register_id_att_register_id_fk",
@@ -529,6 +537,13 @@
           "columns": [
             "grp_id",
             "status"
+          ],
+          "isUnique": false
+        },
+        "enrolment_student": {
+          "name": "enrolment_student",
+          "columns": [
+            "student_id"
           ],
           "isUnique": false
         }
@@ -1063,7 +1078,15 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "grp_class_teacher": {
+          "name": "grp_class_teacher",
+          "columns": [
+            "class_teacher_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "grp_programme_id_programme_id_fk": {
           "name": "grp_programme_id_programme_id_fk",
@@ -1175,6 +1198,13 @@
         }
       },
       "indexes": {
+        "grp_subject_teacher": {
+          "name": "grp_subject_teacher",
+          "columns": [
+            "teacher_id"
+          ],
+          "isUnique": false
+        },
         "grp_subject_once": {
           "name": "grp_subject_once",
           "columns": [
@@ -2569,8 +2599,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "link_token": {
-          "name": "link_token",
+        "link_token_hash": {
+          "name": "link_token_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -2690,6 +2720,14 @@
         "message_status": {
           "name": "message_status",
           "value": "\"status\" IN ('queued','sent','delivered','read','failed','skipped')"
+        },
+        "message_cost_estimate_int": {
+          "name": "message_cost_estimate_int",
+          "value": "\"cost_estimate\" IS NULL OR typeof(\"cost_estimate\") = 'integer'"
+        },
+        "message_cost_actual_int": {
+          "name": "message_cost_actual_int",
+          "value": "\"cost_actual\" IS NULL OR typeof(\"cost_actual\") = 'integer'"
         }
       }
     },
@@ -3040,7 +3078,11 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "generated": {
+            "type": "virtual",
+            "as": "(\"counted\" - \"expected\")"
+          }
         },
         "closed_at": {
           "name": "closed_at",
@@ -3051,6 +3093,27 @@
         },
         "closed_by": {
           "name": "closed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reopened_by": {
+          "name": "reopened_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reopened_at": {
+          "name": "reopened_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reopen_reason": {
+          "name": "reopen_reason",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -3108,11 +3171,41 @@
           ],
           "onUpdate": "no action",
           "onDelete": "no action"
+        },
+        "cash_session_reopened_by_user_id_fk": {
+          "name": "cash_session_reopened_by_user_id_fk",
+          "tableFrom": "cash_session",
+          "columnsFrom": [
+            "reopened_by"
+          ],
+          "tableTo": "user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "cash_session_opening_int": {
+          "name": "cash_session_opening_int",
+          "value": "typeof(\"opening\") = 'integer'"
+        },
+        "cash_session_expected_int": {
+          "name": "cash_session_expected_int",
+          "value": "\"expected\" IS NULL OR typeof(\"expected\") = 'integer'"
+        },
+        "cash_session_counted_int": {
+          "name": "cash_session_counted_int",
+          "value": "\"counted\" IS NULL OR typeof(\"counted\") = 'integer'"
+        },
+        "cash_session_closed_shape": {
+          "name": "cash_session_closed_shape",
+          "value": "\"closed_at\" IS NULL OR (\"closed_by\" IS NOT NULL AND \"counted\" IS NOT NULL AND \"expected\" IS NOT NULL)"
+        }
+      }
     },
     "charge": {
       "name": "charge",
@@ -3228,6 +3321,7 @@
         "charge_payer": {
           "name": "charge_payer",
           "columns": [
+            "payer_type",
             "payer_id"
           ],
           "isUnique": false
@@ -3243,6 +3337,20 @@
           "name": "charge_student",
           "columns": [
             "student_id"
+          ],
+          "isUnique": false
+        },
+        "charge_enrolment": {
+          "name": "charge_enrolment",
+          "columns": [
+            "enrolment_id"
+          ],
+          "isUnique": false
+        },
+        "charge_due_date": {
+          "name": "charge_due_date",
+          "columns": [
+            "due_date"
           ],
           "isUnique": false
         }
@@ -3327,7 +3435,19 @@
         },
         "charge_root_kind": {
           "name": "charge_root_kind",
-          "value": "\"parent_charge_id\" IS NOT NULL OR \"kind\" IN ('fee','fine')"
+          "value": "(\"kind\" = 'fee') = (\"parent_charge_id\" IS NULL)"
+        },
+        "charge_kind_sign": {
+          "name": "charge_kind_sign",
+          "value": "(\"kind\" IN ('fee','fine') AND \"amount\" > 0) OR (\"kind\" IN ('concession','fine_waiver','reversal') AND \"amount\" < 0)"
+        },
+        "charge_reason": {
+          "name": "charge_reason",
+          "value": "\"kind\" NOT IN ('reversal','fine_waiver') OR length(trim(coalesce(\"reason\", ''))) > 0"
+        },
+        "charge_amount_int": {
+          "name": "charge_amount_int",
+          "value": "typeof(\"amount\") = 'integer'"
         }
       }
     },
@@ -3510,6 +3630,10 @@
         "concession_value": {
           "name": "concession_value",
           "value": "\"value\" > 0 AND (\"type\" <> 'pct' OR \"value\" <= 100)"
+        },
+        "concession_value_int": {
+          "name": "concession_value_int",
+          "value": "typeof(\"value\") = 'integer'"
         }
       }
     },
@@ -3678,6 +3802,14 @@
         "expense_amount": {
           "name": "expense_amount",
           "value": "\"amount\" > 0"
+        },
+        "expense_amount_int": {
+          "name": "expense_amount_int",
+          "value": "typeof(\"amount\") = 'integer'"
+        },
+        "expense_void_reason": {
+          "name": "expense_void_reason",
+          "value": "(\"voided_by\" IS NULL) = (length(trim(coalesce(\"void_reason\", ''))) = 0)"
         }
       }
     },
@@ -3910,6 +4042,10 @@
         "fee_rate_amount": {
           "name": "fee_rate_amount",
           "value": "\"amount\" >= 0"
+        },
+        "fee_rate_amount_int": {
+          "name": "fee_rate_amount_int",
+          "value": "typeof(\"amount\") = 'integer'"
         }
       }
     },
@@ -3978,7 +4114,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "opening_balance_amount_int": {
+          "name": "opening_balance_amount_int",
+          "value": "typeof(\"amount\") = 'integer'"
+        }
+      }
     },
     "payslip": {
       "name": "payslip",
@@ -4079,6 +4220,10 @@
         "payslip_status": {
           "name": "payslip_status",
           "value": "\"status\" IN ('draft','approved','paid')"
+        },
+        "payslip_approved_by": {
+          "name": "payslip_approved_by",
+          "value": "\"status\" = 'draft' OR \"approved_by\" IS NOT NULL"
         }
       }
     },
@@ -4158,6 +4303,10 @@
         "payslip_line_kind": {
           "name": "payslip_line_kind",
           "value": "\"kind\" IN ('basic','allowance','deduction','advance_recovery')"
+        },
+        "payslip_line_amount_int": {
+          "name": "payslip_line_amount_int",
+          "value": "typeof(\"amount\") = 'integer'"
         }
       }
     },
@@ -4310,7 +4459,16 @@
         "receipt_payer": {
           "name": "receipt_payer",
           "columns": [
+            "payer_type",
             "payer_id"
+          ],
+          "isUnique": false
+        },
+        "receipt_day_collector": {
+          "name": "receipt_day_collector",
+          "columns": [
+            "business_date",
+            "collector_id"
           ],
           "isUnique": false
         }
@@ -4384,13 +4542,13 @@
           "name": "receipt_payer_type",
           "value": "\"payer_type\" IN ('family','sponsor')"
         },
-        "receipt_reversal_shape": {
-          "name": "receipt_reversal_shape",
-          "value": "(\"kind\" = 'reversal') = (\"reverses_id\" IS NOT NULL AND \"amount\" < 0)"
+        "receipt_kind_shape": {
+          "name": "receipt_kind_shape",
+          "value": "CASE \"kind\" WHEN 'payment' THEN \"amount\" > 0 AND \"reverses_id\" IS NULL WHEN 'reversal' THEN \"amount\" < 0 AND \"reverses_id\" IS NOT NULL WHEN 'refund' THEN \"amount\" < 0 AND \"reverses_id\" IS NULL ELSE 0 END"
         },
-        "receipt_positive": {
-          "name": "receipt_positive",
-          "value": "\"kind\" = 'reversal' OR \"amount\" > 0"
+        "receipt_amount_int": {
+          "name": "receipt_amount_int",
+          "value": "typeof(\"amount\") = 'integer'"
         }
       }
     },
@@ -4420,6 +4578,14 @@
         }
       },
       "indexes": {
+        "receipt_allocation_pair": {
+          "name": "receipt_allocation_pair",
+          "columns": [
+            "receipt_id",
+            "charge_id"
+          ],
+          "isUnique": false
+        },
         "receipt_allocation_charge": {
           "name": "receipt_allocation_charge",
           "columns": [
@@ -4456,17 +4622,18 @@
           "onDelete": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "receipt_allocation_receipt_id_charge_id_pk": {
-          "columns": [
-            "receipt_id",
-            "charge_id"
-          ],
-          "name": "receipt_allocation_receipt_id_charge_id_pk"
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "receipt_allocation_nonzero": {
+          "name": "receipt_allocation_nonzero",
+          "value": "\"amount\" <> 0"
+        },
+        "receipt_allocation_amount_int": {
+          "name": "receipt_allocation_amount_int",
+          "value": "typeof(\"amount\") = 'integer'"
+        }
+      }
     },
     "receipt_series": {
       "name": "receipt_series",
@@ -4506,7 +4673,12 @@
         }
       },
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "receipt_series_next_no": {
+          "name": "receipt_series_next_no",
+          "value": "typeof(\"next_no\") = 'integer' AND \"next_no\" >= 1"
+        }
+      }
     },
     "salary_payment": {
       "name": "salary_payment",
@@ -4597,6 +4769,10 @@
         "salary_payment_amount": {
           "name": "salary_payment_amount",
           "value": "\"amount\" > 0"
+        },
+        "salary_payment_amount_int": {
+          "name": "salary_payment_amount_int",
+          "value": "typeof(\"amount\") = 'integer'"
         }
       }
     },
@@ -4861,6 +5037,10 @@
         "staff_advance_amount": {
           "name": "staff_advance_amount",
           "value": "\"amount\" > 0"
+        },
+        "staff_advance_amount_int": {
+          "name": "staff_advance_amount_int",
+          "value": "typeof(\"amount\") = 'integer'"
         }
       }
     },
@@ -4886,6 +5066,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "cash_session_id": {
+          "name": "cash_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "amount": {
@@ -4952,6 +5139,19 @@
           ],
           "onUpdate": "no action",
           "onDelete": "no action"
+        },
+        "transfer_cash_session_id_cash_session_id_fk": {
+          "name": "transfer_cash_session_id_cash_session_id_fk",
+          "tableFrom": "transfer",
+          "columnsFrom": [
+            "cash_session_id"
+          ],
+          "tableTo": "cash_session",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -4964,6 +5164,10 @@
         "transfer_distinct": {
           "name": "transfer_distinct",
           "value": "\"from_account\" <> \"to_account\""
+        },
+        "transfer_amount_int": {
+          "name": "transfer_amount_int",
+          "value": "typeof(\"amount\") = 'integer'"
         }
       }
     }

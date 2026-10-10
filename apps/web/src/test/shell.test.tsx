@@ -39,4 +39,12 @@ describe('app shell', () => {
     expect(screen.getByRole('link', { name: fees })).toBeTruthy();
     expect(screen.getByText('home')).toBeTruthy();
   });
+
+  it('renders the "اردو" toggle label in the system font (no Nastaliq download)', async () => {
+    await act(() => setLanguage('en'));
+    renderShell();
+    const label = screen.getByText('اردو');
+    expect(label.getAttribute('lang')).toBe('ur');
+    expect(label.classList.contains('font-system')).toBe(true);
+  });
 });

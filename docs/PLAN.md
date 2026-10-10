@@ -169,17 +169,18 @@ Permission model (user-confirmed 2026-10-10: teachers must never see other staff
 |---|---|---|---|---|---|
 | Students / families: read | all | all | all | own groups | own children |
 | Students / families: write | ✓ | ✓ | ✓ | – | – |
-| Attendance: mark / correct | ✓ | ✓ | – | own groups / – | read own |
+| Attendance: mark / correct | ✓ / ✓ | ✓ / ✓ | – | own groups / – | read own |
 | Fees: generate, concessions | ✓ | ✓ | – | – | – |
 | Receipts: create | ✓ | ✓ | ✓ | – | – |
 | Receipts: reverse | ✓ | ✓ | – | – | – |
 | Cash session: close own / reopen any | ✓ / ✓ | ✓ / ✓ | ✓ / – | – | – |
-| Expenses | ✓ | ✓ | ✓ | – | – |
+| Expenses: create / void | ✓ / ✓ | ✓ / ✓ | ✓ / – | – | – |
 | Payslips: read | all | all | all except owner | **own only** | – |
 | Payslips: approve / pay | ✓ / ✓ | ✓ / ✓ | – / ✓ | – | – |
 | Exams: marks entry | ✓ | ✓ | – | own subjects | read own |
 | Send queue | ✓ | ✓ | ✓ | own groups | – |
 | Settings, roles, backups | ✓ | settings only | – | – | – |
+| Audit trail: read | ✓ | – | – | – | – |
 
 ## 6. Feature scope
 

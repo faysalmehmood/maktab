@@ -16,16 +16,21 @@ Requires Node ≥ 22 (`nvm use`). No Cloudflare account is needed for local deve
 
 ```sh
 npm install
-cp apps/api/.dev.vars.example apps/api/.dev.vars   # then fill GOOGLE_CLIENT_ID / SECRET
-npm run build                                       # the Worker serves apps/web/dist
+cp apps/api/.dev.vars.example apps/api/.dev.vars   # then fill GOOGLE_CLIENT_ID / SECRET and OWNER_EMAIL
 npm run db:migrate:local                            # local D1 (SQLite) via wrangler
 SEED_OWNER_EMAIL=you@gmail.com npm run db:seed      # optional demo data; you become owner
 npm run dev                                         # web on :5173, API on :8787 (proxied)
 ```
 
 Open http://localhost:5173. Sign-in needs a Google OAuth client (type "Web application") with the
-redirect URI `http://localhost:5173/api/auth/google/callback`. On an empty database the first
-person to sign in becomes the owner; after that, only invited emails can sign in.
+redirect URI `http://localhost:5173/api/auth/google/callback`; with the Google vars empty,
+`wrangler dev` prints a warning and sign-in answers `misconfigured`. On an empty database only the
+address in `OWNER_EMAIL` can sign in, and becomes the owner; after that, only invited emails can.
+
+`npm run build` is only needed before `wrangler deploy` (or the `--dry-run` it performs). In
+`npm run dev` the Vite server does not serve `/manifest.webmanifest` or the service worker (they
+exist only in the production build), so test PWA install against `wrangler dev` serving the built
+`apps/web/dist`.
 
 Checks: `npm run typecheck && npm run lint && npm test && npm run build`.
 
@@ -65,8 +70,13 @@ tier changes (PLAN §8).
 | `npm test` | Vitest in every workspace |
 | `npm run lint` / `format` | Biome check / fix |
 | `npm run typecheck` | `tsc` in every workspace |
-| `npm run db:generate` | Drizzle migration from schema changes + rebuilds the custom SQL migration from `packages/db/sql` |
+| `npm run db:generate` | Drizzle migration from schema changes + a new custom migration for any changed `packages/db/sql` file (ADR 0002) |
 | `npm run db:migrate:local` | Applies migrations to the local D1 database |
 | `npm run db:seed` | Dev-only demo data into the local D1 database |
+
+## Known limitations
+
+- The web bundle is ~170 KB gzipped (full zod, no code-splitting yet); trimming it is scheduled
+  for M7.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).

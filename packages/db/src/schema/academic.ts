@@ -119,7 +119,10 @@ export const grp = sqliteTable(
     status: text('status', { enum: GRP_STATUSES }).notNull().default('open'),
     ...stamps(),
   },
-  () => [check('grp_status', oneOf('status', GRP_STATUSES))],
+  (t) => [
+    check('grp_status', oneOf('status', GRP_STATUSES)),
+    index('grp_class_teacher').on(t.classTeacherId),
+  ],
 );
 
 export const grpSubject = sqliteTable(
@@ -135,7 +138,10 @@ export const grpSubject = sqliteTable(
     teacherId: text('teacher_id').references(() => staff.id),
     ...stamps(),
   },
-  (t) => [unique('grp_subject_once').on(t.grpId, t.subjectId)],
+  (t) => [
+    unique('grp_subject_once').on(t.grpId, t.subjectId),
+    index('grp_subject_teacher').on(t.teacherId),
+  ],
 );
 
 export const family = sqliteTable('family', {
@@ -230,6 +236,7 @@ export const enrolment = sqliteTable(
   (t) => [
     check('enrolment_status', oneOf('status', ENROLMENT_STATUSES)),
     index('enrolment_grp').on(t.grpId, t.status),
+    index('enrolment_student').on(t.studentId),
   ],
 );
 
@@ -275,6 +282,7 @@ export const attMark = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.registerId, t.studentId] }),
     check('att_mark_status', oneOf('status', MARK_STATUSES)),
+    index('att_mark_student').on(t.studentId),
   ],
 );
 

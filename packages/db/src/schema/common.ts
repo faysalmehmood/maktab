@@ -1,5 +1,5 @@
 import { type SQL, sql } from 'drizzle-orm';
-import { integer, text } from 'drizzle-orm/sqlite-core';
+import { check, integer, text } from 'drizzle-orm/sqlite-core';
 
 /** ISO-8601 UTC with milliseconds, matching what the client sends. */
 export const nowIso = sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`;
@@ -14,6 +14,20 @@ export const stamps = () => ({
 
 /** Money is INTEGER paisa; the name makes intent obvious at each call site. */
 export const paisa = (name: string) => integer(name);
+
+/**
+ * CHECK that a money column really holds an integer. SQLite's INTEGER affinity happily stores 12.5
+ * as REAL, so the column type alone does not keep fractional paisa out (ADR 0002).
+ */
+export const integerMoney = (table: string, column: string, nullable = false) =>
+  check(
+    `${table}_${column}_int`,
+    sql.raw(
+      nullable
+        ? `"${column}" IS NULL OR typeof("${column}") = 'integer'`
+        : `typeof("${column}") = 'integer'`,
+    ),
+  );
 
 export const bool = (name: string) => integer(name, { mode: 'boolean' });
 

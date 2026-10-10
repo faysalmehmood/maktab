@@ -1,36 +1,170 @@
 /**
- * Copies sql/*.sql (the hand-written source of truth) into the custom Drizzle migration, so that
- * both drizzle's migrator (tests, Node) and `wrangler d1 migrations apply` run the same statements.
- * Usage: tsx scripts/sync-custom-sql.ts [--check]
+ * sql/*.sql is the hand-written source of truth for triggers, partial indexes and views. Applied
+ * migrations are immutable, so a change to sql/ never rewrites an old migration: it becomes a NEW
+ * numbered custom migration (drizzle-kit `--custom`, so the journal and both migrators see it).
+ *
+ * migrations/meta/custom_sql.json records, per custom migration, the sha256 of the migration file
+ * and of each sql/ file it carries. A changed file is re-emitted whole, preceded by DROP … IF EXISTS
+ * for every object its previous version (and its new version) creates, so it re-runs cleanly; a
+ * deleted file emits only the drops.
+ *
+ * Usage: tsx scripts/sync-custom-sql.ts [--check] [--name <tag>]
+ *   (default) emit a new migration if sql/ differs from the manifest, else do nothing
+ *   --check   exit 1 if sql/ has unrecorded changes or a recorded migration was edited (CI)
  */
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-export const CUSTOM_MIGRATION = 'migrations/0001_ledger_rules.sql';
+const SQL_DIR = join(root, 'sql');
+const MIGRATIONS = join(root, 'migrations');
+export const MANIFEST = 'migrations/meta/custom_sql.json';
+const BREAK = '--> statement-breakpoint';
 
-export function buildCustomSql(): string {
-  const dir = join(root, 'sql');
-  const parts = readdirSync(dir)
+export type ManifestEntry = { migration: string; sha256: string; files: Record<string, string> };
+export type Manifest = { entries: ManifestEntry[] };
+
+const sha = (s: string) => createHash('sha256').update(s).digest('hex');
+
+export function readManifest(): Manifest {
+  const path = join(root, MANIFEST);
+  return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Manifest) : { entries: [] };
+}
+
+export function currentSqlFiles(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of readdirSync(SQL_DIR)
     .filter((f) => f.endsWith('.sql'))
-    .sort()
-    .map((f) => `-- source: sql/${f}\n${readFileSync(join(dir, f), 'utf8').trim()}`);
-  const body = parts.join('\n\n');
-  // drizzle's migrator runs every chunk; a trailing breakpoint would leave an empty one.
-  return `${body.replace(/\s*--> statement-breakpoint\s*$/, '')}\n`;
+    .sort())
+    out[f] = readFileSync(join(SQL_DIR, f), 'utf8').trim();
+  return out;
+}
+
+/** file -> {hash, migration} of the latest migration that emitted it (absent once deleted). */
+function latest(manifest: Manifest): Map<string, { hash: string; migration: string }> {
+  const m = new Map<string, { hash: string; migration: string }>();
+  for (const e of manifest.entries) {
+    for (const [f, h] of Object.entries(e.files)) {
+      if (h === 'deleted') m.delete(f);
+      else m.set(f, { hash: h, migration: e.migration });
+    }
+  }
+  return m;
+}
+
+export type Pending = { changed: string[]; deleted: string[] };
+
+export function pendingChanges(manifest = readManifest(), files = currentSqlFiles()): Pending {
+  const last = latest(manifest);
+  const changed = Object.keys(files).filter((f) => last.get(f)?.hash !== sha(files[f] ?? ''));
+  const deleted = [...last.keys()].filter((f) => !(f in files));
+  return { changed, deleted };
+}
+
+/** drizzle's migrator runs every chunk; a trailing breakpoint would leave an empty one. */
+const stripTrailingBreak = (s: string) => s.replace(/\s*--> statement-breakpoint\s*$/, '');
+
+const OBJECT_RE = /CREATE\s+(?:UNIQUE\s+)?(INDEX|TRIGGER|VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/gi;
+
+export function createdObjects(sqlText: string): { kind: string; name: string }[] {
+  return [...sqlText.matchAll(OBJECT_RE)].map((m) => ({
+    kind: (m[1] ?? '').toUpperCase(),
+    name: m[2] ?? '',
+  }));
+}
+
+/** The text a migration carried for one source file (between its `-- source:` markers). */
+function sectionOf(migration: string, file: string): string {
+  const text = readFileSync(join(MIGRATIONS, `${migration}.sql`), 'utf8');
+  const start = text.indexOf(`-- source: sql/${file}\n`);
+  if (start < 0) return '';
+  const rest = text.slice(start + 1);
+  const next = rest.indexOf('\n-- source: sql/');
+  return next < 0 ? rest : rest.slice(0, next);
+}
+
+export function buildMigration(
+  pending: Pending,
+  manifest = readManifest(),
+  files = currentSqlFiles(),
+): string {
+  const last = latest(manifest);
+  const parts: string[] = [];
+  for (const f of [...pending.deleted, ...pending.changed].sort()) {
+    const prev = last.get(f);
+    const old = prev ? createdObjects(sectionOf(prev.migration, f)) : [];
+    const now = f in files ? createdObjects(files[f] ?? '') : [];
+    const seen = new Set<string>();
+    const drops = [...old, ...now]
+      .reverse()
+      .filter((o) => !seen.has(o.name) && seen.add(o.name))
+      .map((o) => `DROP ${o.kind} IF EXISTS ${o.name};\n${BREAK}`);
+    const body = f in files ? stripTrailingBreak(files[f] ?? '') : '-- (file deleted)';
+    parts.push(
+      prev && drops.length
+        ? `-- source: sql/${f}\n${drops.join('\n')}\n${body}`
+        : `-- source: sql/${f}\n${body}`,
+    );
+  }
+  return `${stripTrailingBreak(parts.join(`\n${BREAK}\n\n`))}\n`;
+}
+
+/** Problems CI should fail on; empty means migrations and sql/ agree. */
+export function checkCustomSql(): string[] {
+  const manifest = readManifest();
+  const problems: string[] = [];
+  for (const e of manifest.entries) {
+    const path = join(MIGRATIONS, `${e.migration}.sql`);
+    if (!existsSync(path)) problems.push(`${e.migration}.sql is missing`);
+    else if (sha(readFileSync(path, 'utf8')) !== e.sha256)
+      problems.push(`${e.migration}.sql was edited after it was generated; add a new migration`);
+  }
+  const p = pendingChanges(manifest);
+  for (const f of p.changed) problems.push(`sql/${f} changed; run npm run db:generate`);
+  for (const f of p.deleted) problems.push(`sql/${f} was deleted; run npm run db:generate`);
+  return problems;
+}
+
+function lastJournalTag(): string {
+  const journal = JSON.parse(readFileSync(join(MIGRATIONS, 'meta/_journal.json'), 'utf8')) as {
+    entries: { tag: string }[];
+  };
+  const tag = journal.entries.at(-1)?.tag;
+  if (!tag) throw new Error('empty drizzle journal');
+  return tag;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const target = join(root, CUSTOM_MIGRATION);
-  const next = buildCustomSql();
   if (process.argv.includes('--check')) {
-    if (readFileSync(target, 'utf8') !== next) {
-      console.error(`${CUSTOM_MIGRATION} is out of date; run npm run db:generate`);
-      process.exit(1);
-    }
-  } else {
-    writeFileSync(target, next);
-    console.log(`wrote ${CUSTOM_MIGRATION}`);
+    const problems = checkCustomSql();
+    for (const p of problems) console.error(p);
+    process.exit(problems.length ? 1 : 0);
   }
+  const manifest = readManifest();
+  const files = currentSqlFiles();
+  const pending = pendingChanges(manifest, files);
+  if (!pending.changed.length && !pending.deleted.length) {
+    console.log('custom SQL up to date');
+    process.exit(0);
+  }
+  const nameIdx = process.argv.indexOf('--name');
+  const name = nameIdx > 0 ? (process.argv[nameIdx + 1] ?? 'custom_sql') : 'custom_sql';
+  const before = lastJournalTag();
+  execFileSync('npx', ['drizzle-kit', 'generate', '--custom', '--name', name], {
+    cwd: root,
+    stdio: 'inherit',
+  });
+  const tag = lastJournalTag();
+  if (tag === before) throw new Error('drizzle-kit did not create a custom migration');
+  const body = buildMigration(pending, manifest, files);
+  writeFileSync(join(MIGRATIONS, `${tag}.sql`), body);
+  const recorded: Record<string, string> = {};
+  for (const f of pending.changed) recorded[f] = sha(files[f] ?? '');
+  for (const f of pending.deleted) recorded[f] = 'deleted';
+  manifest.entries.push({ migration: tag, sha256: sha(body), files: recorded });
+  writeFileSync(join(root, MANIFEST), `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`wrote migrations/${tag}.sql (${Object.keys(recorded).join(', ')})`);
 }

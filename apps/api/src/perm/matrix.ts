@@ -37,6 +37,8 @@ export const MATRIX = {
   },
   attendance: {
     mark: g({ owner: all, admin: all, teacher: 'own_groups' }),
+    // Editing a submitted register (office correction with reason); teachers only mark.
+    correct: g({ owner: all, admin: all }),
     read: g({ owner: all, admin: all, teacher: 'own_groups', parent: 'own_children' }),
   },
   fee: {
@@ -52,7 +54,9 @@ export const MATRIX = {
     reopen_any: g({ owner: all, admin: all }),
   },
   expense: {
-    manage: g({ owner: all, admin: all, accountant: all }),
+    create: g({ owner: all, admin: all, accountant: all }),
+    // Separation of duties (PLAN §5.4): a void needs admin/owner.
+    void: g({ owner: all, admin: all }),
   },
   payslip: {
     read: g({ owner: all, admin: all, accountant: 'all_except_owner', teacher: 'own_only' }),
@@ -69,6 +73,7 @@ export const MATRIX = {
   settings: { manage: g({ owner: all, admin: all }) },
   role: { manage: g({ owner: all }) },
   backup: { manage: g({ owner: all }) },
+  audit: { read: g({ owner: all }) },
 } as const satisfies PermissionMatrix;
 
 /** Broadest wins when a user holds several roles (e.g. teacher + accountant). */

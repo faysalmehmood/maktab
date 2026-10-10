@@ -3,7 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { setLanguage } from '@/i18n';
 
-/** One tap switches between English and Urdu; each label is written in its own language. */
+/**
+ * One tap switches between English and Urdu; each label is written in its own language. The label
+ * uses the system font (`font-system`) so showing "اردو" on an English screen does not download
+ * the Nastaliq web font.
+ */
 export function LanguageToggle() {
   const { t, i18n } = useTranslation();
   const next = i18n.language === 'ur' ? 'en' : 'ur';
@@ -15,7 +19,9 @@ export function LanguageToggle() {
       onClick={() => void setLanguage(next)}
     >
       <Languages aria-hidden />
-      <span lang={next}>{next === 'ur' ? 'اردو' : 'English'}</span>
+      <span lang={next} className="font-system">
+        {next === 'ur' ? 'اردو' : 'English'}
+      </span>
     </Button>
   );
 }

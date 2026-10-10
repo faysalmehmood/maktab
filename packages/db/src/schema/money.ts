@@ -11,9 +11,10 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { enrolment, grp, programme, staff, student } from './academic';
 import { user } from './auth';
-import { id, oneOf, paisa, stamps } from './common';
+import { id, integerMoney, oneOf, paisa, stamps } from './common';
 
-// Append-only rules, allocation invariants and the charge views live in ../../sql (Drizzle cannot express them).
+// Append-only rules, allocation invariants and the charge views live in ../../sql (Drizzle cannot express
+// them). Row-local rules (kind signs, integer money, reversal shape) are CHECKs here. See ADR 0002.
 
 export const FEE_HEAD_KINDS = ['admission', 'tuition', 'exam', 'course', 'misc', 'fine'] as const;
 export const FEE_CADENCES = ['monthly', 'once', 'per_term'] as const;
@@ -50,6 +51,7 @@ export const feeRate = sqliteTable(
   () => [
     check('fee_rate_target', sql`("programme_id" IS NULL) <> ("grp_id" IS NULL)`),
     check('fee_rate_amount', sql`"amount" >= 0`),
+    integerMoney('fee_rate', 'amount'),
   ],
 );
 
@@ -91,6 +93,7 @@ export const concession = sqliteTable(
     check('concession_type', oneOf('type', CONCESSION_TYPES)),
     check('concession_reason', oneOf('reason', CONCESSION_REASONS)),
     check('concession_value', sql`"value" > 0 AND ("type" <> 'pct' OR "value" <= 100)`),
+    integerMoney('concession', 'value'),
   ],
 );
 
@@ -134,8 +137,9 @@ export const PAYER_TYPES = ['family', 'sponsor'] as const;
 export const CHARGE_KINDS = ['fee', 'concession', 'fine', 'fine_waiver', 'reversal'] as const;
 
 /**
- * Signed amount. Root charges have `parent_charge_id` NULL; concession/fine/waiver/reversal lines
- * point at their root and are folded into its net (see charge_net view). `payer_id` is polymorphic.
+ * Signed amount. Only `fee` rows are roots (`parent_charge_id` NULL). Concession, fine and reversal
+ * lines hang off a fee; a fine_waiver (or a reversal of a fine) hangs off the fine. The whole tree
+ * (depth <= 2) folds into the root's net (charge_net view). `payer_id` is polymorphic.
  */
 export const charge = sqliteTable(
   'charge',
@@ -162,22 +166,39 @@ export const charge = sqliteTable(
   (t) => [
     check('charge_kind', oneOf('kind', CHARGE_KINDS)),
     check('charge_payer_type', oneOf('payer_type', PAYER_TYPES)),
-    check('charge_root_kind', sql`"parent_charge_id" IS NOT NULL OR "kind" IN ('fee','fine')`),
-    index('charge_payer').on(t.payerId),
+    // Only fees are roots; fines always hang off the fee they penalise.
+    check('charge_root_kind', sql`("kind" = 'fee') = ("parent_charge_id" IS NULL)`),
+    // A credit can never hide as a fee, and a concession can never raise a net.
+    check(
+      'charge_kind_sign',
+      sql`("kind" IN ('fee','fine') AND "amount" > 0) OR ("kind" IN ('concession','fine_waiver','reversal') AND "amount" < 0)`,
+    ),
+    check(
+      'charge_reason',
+      sql`"kind" NOT IN ('reversal','fine_waiver') OR length(trim(coalesce("reason", ''))) > 0`,
+    ),
+    integerMoney('charge', 'amount'),
+    index('charge_payer').on(t.payerType, t.payerId),
     index('charge_parent').on(t.parentChargeId),
     index('charge_student').on(t.studentId),
+    index('charge_enrolment').on(t.enrolmentId),
+    index('charge_due_date').on(t.dueDate),
   ],
 );
 
-export const openingBalance = sqliteTable('opening_balance', {
-  studentId: text('student_id')
-    .primaryKey()
-    .references(() => student.id),
-  amount: paisa('amount').notNull(),
-  asOf: text('as_of').notNull(),
-  note: text('note'),
-  ...stamps(),
-});
+export const openingBalance = sqliteTable(
+  'opening_balance',
+  {
+    studentId: text('student_id')
+      .primaryKey()
+      .references(() => student.id),
+    amount: paisa('amount').notNull(),
+    asOf: text('as_of').notNull(),
+    note: text('note'),
+    ...stamps(),
+  },
+  () => [integerMoney('opening_balance', 'amount')],
+);
 
 export const receiptSeries = sqliteTable(
   'receipt_series',
@@ -186,7 +207,10 @@ export const receiptSeries = sqliteTable(
     year: integer('year').notNull(),
     nextNo: integer('next_no').notNull().default(1),
   },
-  (t) => [primaryKey({ columns: [t.series, t.year] })],
+  (t) => [
+    primaryKey({ columns: [t.series, t.year] }),
+    check('receipt_series_next_no', sql`typeof("next_no") = 'integer' AND "next_no" >= 1`),
+  ],
 );
 
 export const ACCOUNT_KINDS = ['cash', 'bank', 'wallet'] as const;
@@ -203,7 +227,10 @@ export const account = sqliteTable(
   () => [check('account_kind', oneOf('kind', ACCOUNT_KINDS))],
 );
 
-/** Opening/expected/counted/variance are paisa. Closing fills the nullable columns once. */
+/**
+ * Opening/expected/counted are paisa; variance is derived. Once closed the row is frozen except for
+ * an owner/admin reopen (closed_at back to NULL with reopened_by/at/reason) — sql/20_append_only.sql.
+ */
 export const cashSession = sqliteTable(
   'cash_session',
   {
@@ -215,12 +242,24 @@ export const cashSession = sqliteTable(
     opening: paisa('opening').notNull().default(0),
     expected: paisa('expected'),
     counted: paisa('counted'),
-    variance: paisa('variance'),
+    variance: paisa('variance').generatedAlwaysAs(sql`"counted" - "expected"`, { mode: 'virtual' }),
     closedAt: text('closed_at'),
     closedBy: text('closed_by').references(() => user.id),
+    reopenedBy: text('reopened_by').references(() => user.id),
+    reopenedAt: text('reopened_at'),
+    reopenReason: text('reopen_reason'),
     ...stamps(),
   },
-  (t) => [unique('cash_session_once').on(t.collectorId, t.businessDate)],
+  (t) => [
+    unique('cash_session_once').on(t.collectorId, t.businessDate),
+    integerMoney('cash_session', 'opening'),
+    integerMoney('cash_session', 'expected', true),
+    integerMoney('cash_session', 'counted', true),
+    check(
+      'cash_session_closed_shape',
+      sql`"closed_at" IS NULL OR ("closed_by" IS NOT NULL AND "counted" IS NOT NULL AND "expected" IS NOT NULL)`,
+    ),
+  ],
 );
 
 export const RECEIPT_KINDS = ['payment', 'reversal', 'refund'] as const;
@@ -254,15 +293,22 @@ export const receipt = sqliteTable(
     check('receipt_kind', oneOf('kind', RECEIPT_KINDS)),
     check('receipt_method', oneOf('method', PAYMENT_METHODS)),
     check('receipt_payer_type', oneOf('payer_type', PAYER_TYPES)),
+    // payment: money in. reversal: exact negative mirror of one payment. refund: money out of credit.
     check(
-      'receipt_reversal_shape',
-      sql`("kind" = 'reversal') = ("reverses_id" IS NOT NULL AND "amount" < 0)`,
+      'receipt_kind_shape',
+      sql`CASE "kind" WHEN 'payment' THEN "amount" > 0 AND "reverses_id" IS NULL WHEN 'reversal' THEN "amount" < 0 AND "reverses_id" IS NOT NULL WHEN 'refund' THEN "amount" < 0 AND "reverses_id" IS NULL ELSE 0 END`,
     ),
-    check('receipt_positive', sql`"kind" = 'reversal' OR "amount" > 0`),
-    index('receipt_payer').on(t.payerId),
+    integerMoney('receipt', 'amount'),
+    index('receipt_payer').on(t.payerType, t.payerId),
+    index('receipt_day_collector').on(t.businessDate, t.collectorId),
   ],
 );
 
+/**
+ * Append-only rows; several rows per (receipt, charge) pair are allowed so a later concession can
+ * *release* part of an allocation (negative row on the same pair). The pair's running sum is what
+ * counts: >= 0 for payments, within the original's pair sum for reversals (sql/30_ledger.sql).
+ */
 export const receiptAllocation = sqliteTable(
   'receipt_allocation',
   {
@@ -275,8 +321,10 @@ export const receiptAllocation = sqliteTable(
     amount: paisa('amount').notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.receiptId, t.chargeId] }),
+    index('receipt_allocation_pair').on(t.receiptId, t.chargeId),
     index('receipt_allocation_charge').on(t.chargeId),
+    check('receipt_allocation_nonzero', sql`"amount" <> 0`),
+    integerMoney('receipt_allocation', 'amount'),
   ],
 );
 
@@ -290,6 +338,8 @@ export const transfer = sqliteTable(
     toAccount: text('to_account')
       .notNull()
       .references(() => account.id),
+    /** The drawer session a handover came out of; a closed session takes no new rows. */
+    cashSessionId: text('cash_session_id').references(() => cashSession.id),
     amount: paisa('amount').notNull(),
     date: text('date').notNull(),
     note: text('note'),
@@ -298,6 +348,7 @@ export const transfer = sqliteTable(
   () => [
     check('transfer_amount', sql`"amount" > 0`),
     check('transfer_distinct', sql`"from_account" <> "to_account"`),
+    integerMoney('transfer', 'amount'),
   ],
 );
 
@@ -329,7 +380,15 @@ export const expense = sqliteTable(
     voidReason: text('void_reason'),
     ...stamps(),
   },
-  () => [check('expense_amount', sql`"amount" > 0`)],
+  () => [
+    check('expense_amount', sql`"amount" > 0`),
+    integerMoney('expense', 'amount'),
+    // A void always says why (PLAN §14.8); a reason without a voider is meaningless.
+    check(
+      'expense_void_reason',
+      sql`("voided_by" IS NULL) = (length(trim(coalesce("void_reason", ''))) = 0)`,
+    ),
+  ],
 );
 
 export const PAYSLIP_STATUSES = ['draft', 'approved', 'paid'] as const;
@@ -349,6 +408,7 @@ export const payslip = sqliteTable(
   (t) => [
     unique('payslip_once').on(t.staffId, t.periodKey),
     check('payslip_status', oneOf('status', PAYSLIP_STATUSES)),
+    check('payslip_approved_by', sql`"status" = 'draft' OR "approved_by" IS NOT NULL`),
   ],
 );
 
@@ -366,7 +426,10 @@ export const payslipLine = sqliteTable(
     note: text('note'),
     ...stamps(),
   },
-  () => [check('payslip_line_kind', oneOf('kind', PAYSLIP_LINE_KINDS))],
+  () => [
+    check('payslip_line_kind', oneOf('kind', PAYSLIP_LINE_KINDS)),
+    integerMoney('payslip_line', 'amount'),
+  ],
 );
 
 /** A receivable, not an expense: recovered through payslip lines. */
@@ -384,7 +447,7 @@ export const staffAdvance = sqliteTable(
     date: text('date').notNull(),
     ...stamps(),
   },
-  () => [check('staff_advance_amount', sql`"amount" > 0`)],
+  () => [check('staff_advance_amount', sql`"amount" > 0`), integerMoney('staff_advance', 'amount')],
 );
 
 export const salaryPayment = sqliteTable(
@@ -401,5 +464,8 @@ export const salaryPayment = sqliteTable(
     date: text('date').notNull(),
     ...stamps(),
   },
-  () => [check('salary_payment_amount', sql`"amount" > 0`)],
+  () => [
+    check('salary_payment_amount', sql`"amount" > 0`),
+    integerMoney('salary_payment', 'amount'),
+  ],
 );

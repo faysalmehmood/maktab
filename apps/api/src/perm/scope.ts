@@ -1,24 +1,27 @@
 import { type AppDb, grp, grpSubject, staff } from '@maktab/db';
+import type { Grant } from '@maktab/shared';
 import { type Column, eq, inArray, type SQL, sql } from 'drizzle-orm';
-import type { Principal } from '../auth/principal';
 
 export type GroupScope = { kind: 'all' } | { kind: 'groups'; ids: string[] };
 
-const SEES_ALL_GROUPS = new Set(['owner', 'admin', 'accountant']);
-
 /**
- * Row scope for anything hanging off a group (students, attendance, marks, send queue).
- * Teachers see groups where they are class teacher or teach a subject (PLAN §5.4). Applied in the
- * data layer so a forgotten UI check cannot leak rows.
+ * Row scope for anything hanging off a group (students, attendance, marks, send queue), derived from
+ * the grant the permission guard resolved for this route (`c.get('grant')`) — never from roles, so
+ * a route's matrix row is the single source of truth (PLAN §5.4). Applied in the data layer so a
+ * forgotten UI check cannot leak rows.
+ *   all / all_except_owner -> every group (all_except_owner narrows payroll, not groups)
+ *   own_groups             -> groups where the user's staff row is class teacher or subject teacher
+ *   own_subjects           -> groups where they teach a subject
+ *   anything else          -> no groups (parents get child scope via their magic link later)
  */
-export async function scopeToGroups(db: AppDb, principal: Principal): Promise<GroupScope> {
-  if (principal.roles.some((r) => SEES_ALL_GROUPS.has(r))) return { kind: 'all' };
-  if (!principal.roles.includes('teacher')) return { kind: 'groups', ids: [] };
-  const mine = db.select({ id: staff.id }).from(staff).where(eq(staff.userId, principal.user.id));
-  const asClassTeacher = await db
-    .select({ id: grp.id })
-    .from(grp)
-    .where(inArray(grp.classTeacherId, mine));
+export async function scopeToGroups(db: AppDb, userId: string, grant: Grant): Promise<GroupScope> {
+  if (grant === 'all' || grant === 'all_except_owner') return { kind: 'all' };
+  if (grant !== 'own_groups' && grant !== 'own_subjects') return { kind: 'groups', ids: [] };
+  const mine = db.select({ id: staff.id }).from(staff).where(eq(staff.userId, userId));
+  const asClassTeacher =
+    grant === 'own_groups'
+      ? await db.select({ id: grp.id }).from(grp).where(inArray(grp.classTeacherId, mine))
+      : [];
   const asSubjectTeacher = await db
     .select({ id: grpSubject.grpId })
     .from(grpSubject)

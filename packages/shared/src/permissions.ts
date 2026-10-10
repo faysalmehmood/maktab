@@ -7,17 +7,18 @@ import type { PrincipalRole } from './roles';
 export const RESOURCES = {
   self: ['read'],
   student: ['read', 'write'],
-  attendance: ['mark', 'read'],
+  attendance: ['mark', 'correct', 'read'],
   fee: ['generate', 'concession'],
   receipt: ['create', 'reverse'],
   cash_session: ['close_own', 'reopen_any'],
-  expense: ['manage'],
+  expense: ['create', 'void'],
   payslip: ['read', 'approve', 'pay'],
   exam: ['marks_entry', 'read'],
   send_queue: ['use'],
   settings: ['manage'],
   role: ['manage'],
   backup: ['manage'],
+  audit: ['read'],
 } as const;
 
 export type Resource = keyof typeof RESOURCES;

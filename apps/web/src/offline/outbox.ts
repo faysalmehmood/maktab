@@ -4,7 +4,14 @@
  *
  * Protocol: entries keyed by the register's ULID `client_id` (re-enqueue is a no-op); per
  * (group, date, subject) ordering so a newer register never overtakes an older one that is backing
- * off; exponential backoff 1 s → 60 s; 4xx = permanent `failed`, 5xx / network = retry.
+ * off; exponential backoff 1 s → 60 s (a longer Retry-After wins).
+ * Response classes:
+ *   2xx                       per-entry results (applied | replaced | duplicate | stale = done; rejected = failed)
+ *   401 / 403                 PAUSE: nothing is sent until resume() (after the user signs in again);
+ *                             entries stay pending and untouched — an expired session must never
+ *                             turn a teacher's register into a "failed" one.
+ *   408 / 429 / 5xx / network retry with backoff
+ *   any other 4xx             the request itself is bad: entries move to `failed`
  * Triggers are the caller's job (online, visibilitychange, a timer); Background Sync is not relied on.
  */
 import type { AttendanceSubmission, AttendanceSyncResult } from '@maktab/shared';
@@ -27,9 +34,14 @@ export type SyncOutcome = {
   acked: number;
   failed: number;
   retried: number;
+  /** null when nothing is waiting (or the outbox is paused). */
   nextAt: number | null;
   offline: boolean;
+  /** Set while sync is paused for re-authentication: the UI shows "sign in again". */
+  paused: AuthPause | null;
 };
+
+export type AuthPause = { status: number; at: number };
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -94,6 +106,43 @@ function db(): Promise<IDBDatabase> {
 
 export const backoffMs = (attempts: number): number =>
   Math.min(CAP_MS, BASE_MS * 2 ** (attempts - 1)) + cfg.jitter();
+
+/** Transient HTTP statuses: the request may succeed unchanged later. */
+const isRetryable = (status: number): boolean => status === 408 || status === 429 || status >= 500;
+const isAuth = (status: number): boolean => status === 401 || status === 403;
+
+/** Retry-After in ms (seconds or HTTP date), or 0. */
+function retryAfterMs(resp: Response): number {
+  const h = resp.headers.get('retry-after');
+  if (!h) return 0;
+  const secs = Number(h);
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+  const at = Date.parse(h);
+  return Number.isNaN(at) ? 0 : Math.max(0, at - cfg.now());
+}
+
+async function getMeta<T>(key: string): Promise<T | undefined> {
+  const d = await db();
+  return (await req(d.transaction('meta').objectStore('meta').get(key))) as T | undefined;
+}
+
+async function setMeta(key: string, value: unknown): Promise<void> {
+  const d = await db();
+  const tx = d.transaction('meta', 'readwrite');
+  if (value === undefined) tx.objectStore('meta').delete(key);
+  else tx.objectStore('meta').put(value, key);
+  await done(tx);
+}
+
+/** Non-null while sync waits for the user to sign in again (survives reloads). */
+export async function authPaused(): Promise<AuthPause | null> {
+  return (await getMeta<AuthPause>('auth_paused')) ?? null;
+}
+
+/** Call after a successful sign-in: lifts the pause; pending entries go out on the next sync. */
+export async function resume(): Promise<void> {
+  await setMeta('auth_paused', undefined);
+}
 
 const keyOf = (s: AttendanceSubmission): string =>
   `${s.grp_id}|${s.date}|${s.grp_subject_id ?? ''}`;
@@ -169,11 +218,11 @@ async function update(id: string, fn: (e: OutboxEntry) => OutboxEntry | null): P
   await done(tx);
 }
 
-const bump = (e: OutboxEntry, msg: string): OutboxEntry => ({
+const bump = (e: OutboxEntry, msg: string, minDelayMs = 0): OutboxEntry => ({
   ...e,
   attempts: e.attempts + 1,
   error: msg,
-  next_at: cfg.now() + backoffMs(e.attempts + 1),
+  next_at: cfg.now() + Math.max(backoffMs(e.attempts + 1), minDelayMs),
 });
 
 type SyncBody = { results?: AttendanceSyncResult[]; error?: { message?: string } } | null;
@@ -186,7 +235,9 @@ async function runOnce(fetchImpl: FetchLike, force: boolean): Promise<SyncOutcom
     retried: 0,
     nextAt: null,
     offline: false,
+    paused: await authPaused(),
   };
+  if (out.paused) return out;
   // Head-of-line blocking per key: sending a newer register while an older one backs off would let
   // the server see them out of order.
   const blocked = new Set<string>();
@@ -210,7 +261,10 @@ async function runOnce(fetchImpl: FetchLike, force: boolean): Promise<SyncOutcom
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(chunk.map((e) => e.submission)),
       });
-      body = resp.status < 500 ? ((await resp.json().catch(() => null)) as SyncBody) : null;
+      body =
+        resp.ok || !isRetryable(resp.status)
+          ? ((await resp.json().catch(() => null)) as SyncBody)
+          : null;
     } catch (err) {
       // Offline / dropped / aborted: keep everything, back off, and skip later chunks (they would fail too).
       out.offline = true;
@@ -221,9 +275,16 @@ async function runOnce(fetchImpl: FetchLike, force: boolean): Promise<SyncOutcom
       }
       break;
     }
-    if (resp.status >= 500) {
+    if (isAuth(resp.status)) {
+      // Session expired or revoked: keep everything exactly as it is and stop until resume().
+      out.paused = { status: resp.status, at: cfg.now() };
+      await setMeta('auth_paused', out.paused);
+      return out;
+    }
+    if (isRetryable(resp.status)) {
+      const wait = retryAfterMs(resp);
       for (const e of chunk) {
-        await update(e.client_id, (c) => bump(c, `HTTP ${resp.status}`));
+        await update(e.client_id, (c) => bump(c, `HTTP ${resp.status}`, wait));
         out.retried++;
       }
       break;

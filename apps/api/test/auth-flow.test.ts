@@ -1,8 +1,11 @@
-import { role, user } from '@maktab/db';
+import { role, user, userSession } from '@maktab/db';
 import { newId } from '@maktab/shared';
 import { eq } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createJwksClient } from '../src/auth/google';
+import { createSession } from '../src/auth/signin';
+import type { Bindings } from '../src/env';
+import { configWarning } from '../src/lib/config';
 import { CLIENT_ID, fakeJwksServer, makeKey, mintIdToken, type TestKey, testApp } from './helpers';
 
 let key: TestKey;
@@ -11,14 +14,14 @@ beforeAll(async () => {
 });
 
 /** Drives start -> Google (simulated) -> callback, returning the callback response. */
-function googleFlow(claims: Record<string, unknown>) {
+function googleFlow(claims: Record<string, unknown>, env: Partial<Bindings> = {}) {
   const jwks = createJwksClient({ fetch: fakeJwksServer([key]).fetch });
   let nonce = '';
   const fetch = async (input: RequestInfo | URL): Promise<Response> => {
     expect(String(input)).toBe('https://oauth2.googleapis.com/token');
     return Response.json({ id_token: await mintIdToken(key, { nonce, ...claims }) });
   };
-  const t = testApp({ jwks, fetch });
+  const t = testApp({ jwks, fetch, env });
   const signIn = async () => {
     const start = await t.request('/api/auth/google/start');
     expect(start.status).toBe(302);
@@ -63,6 +66,60 @@ describe('Google sign-in', () => {
     });
     expect(out.status).toBe(200);
     expect((await flow.request('/api/me', { headers: { cookie: cookie ?? '' } })).status).toBe(401);
+  });
+
+  it('on an empty install, only OWNER_EMAIL may bootstrap; anyone else is refused', async () => {
+    const stranger = googleFlow({ email: 'stranger@example.com', sub: 'stranger-sub' });
+    const res = await stranger.signIn();
+    expect(res.headers.get('location')).toBe('http://localhost:5173/login?error=not_invited');
+    expect(sessionCookie(res)).toBeUndefined();
+    expect(await stranger.db.select().from(user)).toEqual([]);
+
+    // Unset OWNER_EMAIL: nobody can claim the installation, not even the would-be owner.
+    const unset = googleFlow({ email: 'owner@example.com' }, { OWNER_EMAIL: '' });
+    const res2 = await unset.signIn();
+    expect(res2.headers.get('location')).toBe('http://localhost:5173/login?error=not_invited');
+    expect(await unset.db.select().from(user)).toEqual([]);
+  });
+
+  it('a retried session insert with the same id is a no-op (idempotent retry)', async () => {
+    const { db } = testApp();
+    const id = newId();
+    await db.insert(user).values({ id, email: 'x@example.com', status: 'active' });
+    const sid = newId();
+    const meta = { ua: null, ip: null, nowMs: Date.now() };
+    await createSession(db, sid, id, meta);
+    await expect(createSession(db, sid, id, meta)).resolves.toMatchObject({ id: sid });
+    expect((await db.select().from(userSession)).length).toBe(1);
+  });
+
+  it('start reports a misconfiguration instead of redirecting with an empty client_id', async () => {
+    const { request } = testApp({ env: { GOOGLE_CLIENT_ID: '' } });
+    const res = await request('/api/auth/google/start');
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({
+      error: { code: 'misconfigured', message: 'GOOGLE_CLIENT_ID is not set' },
+    });
+  });
+
+  it('warns once in dev when Google settings are empty', () => {
+    expect(
+      configWarning({
+        APP_ORIGIN: 'http://localhost:5173',
+        GOOGLE_CLIENT_ID: '',
+        GOOGLE_CLIENT_SECRET: 's',
+      }),
+    ).toMatch(/GOOGLE_CLIENT_ID empty/);
+    expect(
+      configWarning({
+        APP_ORIGIN: 'http://localhost:5173',
+        GOOGLE_CLIENT_ID: 'a',
+        GOOGLE_CLIENT_SECRET: 'b',
+      }),
+    ).toBeNull();
+    expect(
+      configWarning({ APP_ORIGIN: 'https://school.example', GOOGLE_CLIENT_ID: '' }),
+    ).toBeNull();
   });
 
   it('rejects an uninvited email once an owner exists', async () => {

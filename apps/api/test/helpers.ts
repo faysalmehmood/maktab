@@ -17,6 +17,7 @@ export const env = {
   GOOGLE_CLIENT_ID: CLIENT_ID,
   GOOGLE_CLIENT_SECRET: 'test-client-secret',
   APP_ORIGIN: ORIGIN,
+  OWNER_EMAIL: 'owner@example.com',
 } as Bindings;
 
 export type TestKey = { kid: string; privateKey: CryptoKey; jwk: JsonWebKey };
@@ -82,7 +83,9 @@ export function fakeJwksServer(keys: TestKey[], cacheControl = 'public, max-age=
   return { state, fetch };
 }
 
-export function testApp(opts: { db?: AppDb; jwks?: JwksClient; fetch?: typeof fetch } = {}) {
+export function testApp(
+  opts: { db?: AppDb; jwks?: JwksClient; fetch?: typeof fetch; env?: Partial<Bindings> } = {},
+) {
   const db = opts.db ?? createTestDb();
   const jwks = opts.jwks ?? createJwksClient({ fetch: async () => new Response('{"keys":[]}') });
   const { app, routes } = createApp({
@@ -95,7 +98,7 @@ export function testApp(opts: { db?: AppDb; jwks?: JwksClient; fetch?: typeof fe
     const headers = new Headers(init.headers);
     if (init.method && init.method !== 'GET' && !headers.has('origin'))
       headers.set('origin', ORIGIN);
-    return app.request(path, { ...init, headers }, env);
+    return app.request(path, { ...init, headers }, { ...env, ...opts.env });
   };
   return { app, routes, db, request };
 }
@@ -105,6 +108,6 @@ export async function signedInAs(db: AppDb, roles: StaffRole[], email = `${newId
   const id = newId();
   await db.insert(user).values({ id, email, name: email, status: 'active' });
   if (roles.length) await db.insert(role).values(roles.map((r) => ({ userId: id, role: r })));
-  const s = await createSession(db, id, { ua: null, ip: null, nowMs: Date.now() });
+  const s = await createSession(db, newId(), id, { ua: null, ip: null, nowMs: Date.now() });
   return { userId: id, cookie: `maktab_sid=${await signSession(SECRET, s.id, s.exp)}` };
 }

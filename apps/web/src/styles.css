@@ -100,6 +100,12 @@
   }
 }
 
+/* Opt out of Nastaliq (e.g. the "اردو" language toggle): never triggers the web-font download. */
+.font-system {
+  font-family: var(--font-sans);
+  line-height: inherit;
+}
+
 /* Every number, date and amount: isolated LTR run in the system font, even inside Urdu text. */
 .num,
 bdi {

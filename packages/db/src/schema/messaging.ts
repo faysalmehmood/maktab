@@ -1,6 +1,6 @@
 import { check, index, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { family, guardian } from './academic';
-import { id, nowIso, oneOf, paisa } from './common';
+import { id, integerMoney, nowIso, oneOf, paisa } from './common';
 
 export const MESSAGE_CHANNELS = ['wa_manual', 'wa_api', 'sms', 'push', 'email'] as const;
 export const MESSAGE_STATUSES = [
@@ -24,7 +24,8 @@ export const message = sqliteTable(
     templateKey: text('template_key').notNull(),
     lang: text('lang', { enum: ['en', 'ur'] }).notNull(),
     payload: text('payload', { mode: 'json' }),
-    linkToken: text('link_token'),
+    /** SHA-256 of the parent-link token, like parent_link.token_hash; the token itself is never stored. */
+    linkTokenHash: text('link_token_hash'),
     status: text('status', { enum: MESSAGE_STATUSES }).notNull().default('queued'),
     providerRef: text('provider_ref'),
     rawResponse: text('raw_response'),
@@ -39,6 +40,8 @@ export const message = sqliteTable(
     check('message_channel', oneOf('channel', MESSAGE_CHANNELS)),
     check('message_status', oneOf('status', MESSAGE_STATUSES)),
     index('message_queue').on(t.status, t.templateKey),
+    integerMoney('message', 'cost_estimate', true),
+    integerMoney('message', 'cost_actual', true),
   ],
 );
 

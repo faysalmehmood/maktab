@@ -11,6 +11,8 @@ export type Bindings = {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   APP_ORIGIN: string;
+  /** The only address that may claim an empty installation as owner (PLAN §14.1). Empty = nobody. */
+  OWNER_EMAIL?: string;
 };
 
 export type Variables = {

@@ -4,3 +4,5 @@ SESSION_SECRET=dev-only-secret-change-me-at-least-32-chars
 # OAuth client (Web application) with redirect URI http://localhost:5173/api/auth/google/callback
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+# Your Google address: on an empty database only this account becomes owner on first sign-in.
+OWNER_EMAIL=
