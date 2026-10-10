@@ -43,6 +43,13 @@
       "when": 1791633596330,
       "tag": "0005_enrolment_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791635246557,
+      "tag": "0006_m2_attendance",
+      "breakpoints": true
     }
   ]
 }

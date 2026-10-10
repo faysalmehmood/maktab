@@ -14,6 +14,7 @@ import { user } from './auth';
 import { bool, id, nowIso, oneOf, stamps } from './common';
 
 export const SCHOOL_MODES = ['school', 'academy', 'both'] as const;
+export const ATTENDANCE_MODES = ['daily', 'per_subject'] as const;
 
 /** Single-row table: one school per installation (PLAN §2). Not in PLAN §5; the setup wizard needs it. */
 export const school = sqliteTable(
@@ -34,6 +35,13 @@ export const school = sqliteTable(
     receiptPrefix: text('receipt_prefix'),
     /** Set by the wizard's last step; until then the owner is sent to the wizard (PLAN §14.1). */
     setupCompletedAt: text('setup_completed_at'),
+    /**
+     * One register per group per day, or one per group subject (PLAN §4). Validated by the API, not
+     * a CHECK: adding a CHECK to an existing table rebuilds it (PLAN §15 schema-enum rule).
+     */
+    attendanceMode: text('attendance_mode', { enum: ATTENDANCE_MODES }).notNull().default('daily'),
+    /** JSON array of weekdays with no school (0 = Sunday … 6 = Saturday); Sunday by default. */
+    weeklyOff: text('weekly_off').notNull().default('[0]'),
     ...stamps(),
   },
   () => [check('school_mode', oneOf('mode', SCHOOL_MODES))],
@@ -310,6 +318,14 @@ export const currentRegister = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.grpId, t.date, t.grpSubjectId] })],
 );
+
+/** School holidays: no register can be taken on these dates (PLAN §14.3). */
+export const holiday = sqliteTable('holiday', {
+  date: text('date').primaryKey(),
+  nameEn: text('name_en').notNull(),
+  nameUr: text('name_ur'),
+  ...stamps(),
+});
 
 export const staffAtt = sqliteTable(
   'staff_att',
