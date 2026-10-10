@@ -46,15 +46,26 @@ const charge = (
         VALUES (${id}, 'S1', 'H1', ${o.period ?? '2026-01'}, 'family', ${o.payer ?? 'F1'}, ${amount},
           '2026-01-10', ${kind}, ${parent}, ${o.reason === undefined ? 'test' : o.reason})`;
 
+/**
+ * Raw receipt rows. Since the M3 fix pass a payment's shape is checked (sql/50_fees.sql): a cash
+ * payment needs a session and its series number, a non-cash one an account. So these rows default to
+ * method 'bank' into account ACC; with `session` they are cash, numbered from series N (base()).
+ */
 const receipt = (
   id: string,
   kind: 'payment' | 'reversal' | 'refund',
   amount: number,
   o: { reverses?: string; method?: string; payer?: string; session?: string } = {},
-) => sql`INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method,
-          collector_id, cash_session_id, business_date, idempotency_key)
-        VALUES (${id}, ${`N-${id}`}, ${kind}, ${o.reverses ?? null}, 'family', ${o.payer ?? 'F1'},
-          ${amount}, ${o.method ?? 'cash'}, 'U1', ${o.session ?? null}, '2026-01-05', ${`k-${id}`})`;
+) => {
+  const method = o.method ?? (o.session ? 'cash' : 'bank');
+  const no = o.session
+    ? sql`(SELECT series || '-' || year || '-' || printf('%05d', next_no - 1) FROM receipt_series WHERE series = 'N')`
+    : sql`${`N-${id}`}`;
+  return sql`INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method,
+          account_id, collector_id, cash_session_id, business_date, idempotency_key)
+        VALUES (${id}, ${no}, ${kind}, ${o.reverses ?? null}, 'family', ${o.payer ?? 'F1'},
+          ${amount}, ${method}, ${method === 'cash' ? null : 'ACC'}, 'U1', ${o.session ?? null}, '2026-01-05', ${`k-${id}`})`;
+};
 
 const alloc = (r: string, c: string, amount: number, id = newId()) =>
   sql`INSERT INTO receipt_allocation (id, receipt_id, charge_id, amount) VALUES (${id}, ${r}, ${c}, ${amount})`;
@@ -66,6 +77,8 @@ const credit = async (db: AppDb, payer = 'F1') =>
 
 async function base(db: AppDb) {
   await run(db, sql`INSERT INTO user (id, email) VALUES ('U1', 'a@x.pk'), ('U2', 'b@x.pk')`);
+  await run(db, sql`INSERT INTO account (id, name, kind) VALUES ('ACC', 'Bank', 'bank')`);
+  await run(db, sql`INSERT INTO receipt_series (series, year, next_no) VALUES ('N', 2026, 1)`);
   await run(db, sql`INSERT INTO family (id, name) VALUES ('F1', 'Khan'), ('F2', 'Ahmed')`);
   await run(
     db,
@@ -207,7 +220,7 @@ describe('reversals', () => {
     for (const bad of [
       receipt('rv', 'reversal', -99999999, { reverses: 'r1' }),
       receipt('rv', 'reversal', -50000, { reverses: 'r1' }),
-      receipt('rv', 'reversal', -100000, { reverses: 'r1', method: 'bank' }),
+      receipt('rv', 'reversal', -100000, { reverses: 'r1', method: 'cash' }),
       receipt('rv', 'reversal', -100000, { reverses: 'r1', payer: 'F2' }),
     ]) {
       await expectAbort(() => batch(db, bad), /reversal must mirror a payment exactly/);

@@ -39,6 +39,10 @@ async function seed(db: AppDb) {
     .insert(t.feeHead)
     .values({ id: 'H1', name: 'Tuition', kind: 'tuition', cadence: 'monthly' });
   await db.insert(t.receiptSeries).values({ series: 'R', year: 2026, nextNo: 1 });
+  // Cash payments need the collector's drawer session (sql/50_fees.sql receipt_payment_shape).
+  await db
+    .insert(t.cashSession)
+    .values({ id: 'CS', collectorId: 'U1', businessDate: '2026-03-05' });
   const base = {
     feeHeadId: 'H1',
     periodKey: '2026-03',
@@ -75,9 +79,9 @@ function receipt(
       db,
       sql`
       INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method,
-                           collector_id, business_date, idempotency_key)
+                           collector_id, cash_session_id, business_date, idempotency_key)
       SELECT ${o.id}, 'R-2026-' || printf('%05d', next_no - 1), ${o.reverses ? 'reversal' : 'payment'},
-             ${o.reverses ?? null}, 'family', 'F1', ${o.amount}, 'cash', 'U1', '2026-03-05', ${o.idem}
+             ${o.reverses ?? null}, 'family', 'F1', ${o.amount}, 'cash', 'U1', 'CS', '2026-03-05', ${o.idem}
       FROM receipt_series WHERE series = 'R' AND year = 2026`,
     ),
     ...o.allocs.map(([chargeId, amount]) =>

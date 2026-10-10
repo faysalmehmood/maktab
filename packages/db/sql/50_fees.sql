@@ -14,7 +14,12 @@ WHEN NEW.period_key NOT GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'
 BEGIN SELECT RAISE(ABORT, 'period_key must be YYYY-MM'); END;
 --> statement-breakpoint
 
--- The generation log is history: one row per request, never changed.
+-- The generation log is history: one row per request, never changed. A failed chunk (status
+-- 'failed') carries the error code; it wrote nothing else and the cron retries it next tick.
+CREATE TRIGGER billing_chunk_status BEFORE INSERT ON billing_chunk
+WHEN NEW.status NOT IN ('ok', 'failed') OR (NEW.status = 'failed') <> (NEW.error_code IS NOT NULL)
+BEGIN SELECT RAISE(ABORT, 'billing_chunk status is ok, or failed with an error code'); END;
+--> statement-breakpoint
 CREATE TRIGGER billing_chunk_no_update BEFORE UPDATE ON billing_chunk BEGIN SELECT RAISE(ABORT, 'billing_chunk is append-only'); END;
 --> statement-breakpoint
 CREATE TRIGGER billing_chunk_no_delete BEFORE DELETE ON billing_chunk BEGIN SELECT RAISE(ABORT, 'billing_chunk is append-only'); END;
@@ -47,4 +52,22 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM opening_balance o JOIN student s ON s.id = o.student_id
                     WHERE NEW.idempotency_key = 'opening:' || o.student_id AND o.amount = -NEW.amount
                       AND NEW.payer_type = 'family' AND s.family_id = NEW.payer_id);
+END;
+--> statement-breakpoint
+
+-- Payment shape (M3 fix pass). Cash goes through a drawer: it needs the collector's cash session, and
+-- its number is the one the series row was bumped to in the same batch (so a hand-typed number, or a
+-- number from no series, is refused). Money that never touches a drawer (bank, wallets, cheque) names
+-- the account it landed in and takes no session.
+CREATE TRIGGER receipt_payment_shape BEFORE INSERT ON receipt WHEN NEW.kind = 'payment'
+BEGIN
+  SELECT RAISE(ABORT, 'a cash payment needs a cash session')
+  WHERE NEW.method = 'cash' AND NEW.cash_session_id IS NULL;
+  SELECT RAISE(ABORT, 'receipt number must be the next number of its series')
+  WHERE NEW.method = 'cash' AND NOT EXISTS (
+    SELECT 1 FROM receipt_series s
+    WHERE NEW.receipt_no = s.series || '-' || s.year || '-' || printf('%05d', s.next_no - 1)
+      AND NEW.receipt_no GLOB '*-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9]*');
+  SELECT RAISE(ABORT, 'a non-cash payment names its account and takes no cash session')
+  WHERE NEW.method <> 'cash' AND (NEW.account_id IS NULL OR NEW.cash_session_id IS NOT NULL);
 END;

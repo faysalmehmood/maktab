@@ -4,6 +4,7 @@ import type { AppDb } from '../client';
 import { allocationsStatement, creditSources, openDues, planCredit } from './alloc';
 import type { AllocationInput } from './index';
 import {
+  addDays,
   assertPeriod,
   dayOf,
   daysInclusive,
@@ -28,14 +29,26 @@ import {
  *
  * Billing unit = (student, fee head, period). Per unit:
  *   G  = rate effective on the period's 1st day (group rate overrides programme rate), pro-rated by
- *        days when asked (monthly heads only), rounded half-up to the rupee.
+ *        days when asked (monthly heads only), rounded half-up to the rupee. Pro-rata follows the
+ *        enrolment chain: a mid-month transfer bills the old row's days at its rate and the new
+ *        row's days at its rate, once, on the current enrolment.
  *   K  = live concessions in creation order: pct of G (rounded half-up to the rupee) or fixed,
  *        each capped so ΣK ≤ G.
  *   N  = G − K, what is actually owed.
- *   S  = live sponsorships in creation order: share% of N (rounded), capped so ΣS ≤ N; each is
- *        its own root `fee` with payer_type 'sponsor'.
+ *   S  = live sponsorships in creation order: share% of N (rounded), capped so ΣS ≤ N, merged per
+ *        sponsor (two overlapping rows of one sponsor are one root, never two); each sponsor is its
+ *        own root `fee` with payer_type 'sponsor'.
  *   Family root = G − ΣS, with the concession lines −K under it, so the family's net is N − ΣS.
  *   (Every party's share is of the post-concession amount; the family line shows the discount.)
+ *
+ * Liveness (PLAN §14.7): a concession or sponsorship applies to a period when it is live on the
+ * period's FIRST day — or, for an enrolment that starts later in the period, on its first day. A
+ * change mid-month (end + new row) therefore affects the next period only; regenerateForStudent uses
+ * the same rule.
+ *
+ * Due date: the school's due day; for a mid-period joiner or transfer, no earlier than its start plus
+ * the same grace the month gives everyone (due day − 1 days). Late fines skip the first period of a
+ * new enrolment (fines.ts).
  *
  * Idempotency: a unit is inserted only if no root for (student, head, period) exists other than the
  * ones minted in this plan (the partial unique index charge_fee_once is the backstop). `once` heads
@@ -74,13 +87,26 @@ export type LiveConcession = {
   fee_head_id: string | null;
   type: 'pct' | 'fixed';
   value: number;
+  valid_from: string;
+  valid_to: string | null;
+  /** First day it no longer applies (endConcession). */
+  ended_at: string | null;
 };
-type LiveSponsorship = {
+export type LiveSponsorship = {
   id: string;
   sponsor_id: string;
   student_id: string;
   fee_head_id: string | null;
   share_pct: number;
+  valid_from: string;
+  valid_to: string | null;
+};
+/** An earlier enrolment in the chain (prev_enrolment_id) that overlaps the period. */
+export type ChainSegment = {
+  grp_id: string;
+  programme_id: string;
+  start_date: string;
+  end_date: string | null;
 };
 
 export type GenContext = {
@@ -96,6 +122,8 @@ export type GenContext = {
   billedUnits: Set<string>;
   /** `student|head|enrolment` for once heads already billed on that enrolment. */
   billedOnce: Set<string>;
+  /** enrolment id → its predecessors overlapping the period, oldest first (pro-rata). */
+  chains: Map<string, ChainSegment[]>;
 };
 
 export type PlannedCharge = {
@@ -131,7 +159,11 @@ const concessionApplies = (c: { fee_head_id: string | null }, h: Head) =>
 const sponsorshipApplies = (s: { fee_head_id: string | null }, h: Head) =>
   !s.fee_head_id || s.fee_head_id === h.id;
 
-function rateFor(ctx: GenContext, e: GenEnrolment, headId: string): number | null {
+function rateFor(
+  ctx: GenContext,
+  e: { grp_id: string; programme_id: string },
+  headId: string,
+): number | null {
   const start = periodStart(ctx.period);
   const pick = (rows: Rate[]) =>
     rows
@@ -144,6 +176,81 @@ function rateFor(ctx: GenContext, e: GenEnrolment, headId: string): number | nul
   if (byGroup) return byGroup.amount;
   const byProg = pick(ctx.rates.filter((r) => r.programme_id === e.programme_id).reverse());
   return byProg ? byProg.amount : null;
+}
+
+/** Live on `day`: started, not past valid_to, not ended (ended_at is the first day it stops). */
+export const liveOn = (
+  r: { valid_from: string; valid_to: string | null; ended_at?: string | null },
+  day: string,
+): boolean =>
+  r.valid_from <= day && (!r.valid_to || r.valid_to >= day) && (!r.ended_at || r.ended_at > day);
+
+/**
+ * The day a period's concessions and sponsorships are read on for this enrolment: the period's first
+ * day, or the first day the student is in school in it (the chain's start, for a mid-month joiner).
+ */
+export function referenceDay(ctx: GenContext, e: { id: string; start_date: string }): string {
+  const pStart = periodStart(ctx.period);
+  const first = ctx.chains.get(e.id)?.[0]?.start_date ?? e.start_date;
+  return maxDate(pStart, first);
+}
+
+/**
+ * Sponsor shares of `owed`: rows in creation order, capped at 100% in total, merged per sponsor (one
+ * root per sponsor, whatever overlapping rows say), each rounded half-up to the rupee, ΣS ≤ owed.
+ */
+export function sponsorShares(
+  sponsorships: readonly LiveSponsorship[],
+  owed: number,
+): { sponsor_id: string; ids: string[]; pct: number; amount: number }[] {
+  const by = new Map<string, { sponsor_id: string; ids: string[]; pct: number; amount: number }>();
+  let pctLeft = 100;
+  for (const s of sponsorships) {
+    const pct = Math.min(s.share_pct, pctLeft);
+    if (pct <= 0) continue;
+    pctLeft -= pct;
+    const cur = by.get(s.sponsor_id) ?? { sponsor_id: s.sponsor_id, ids: [], pct: 0, amount: 0 };
+    cur.ids.push(s.id);
+    cur.pct += pct;
+    by.set(s.sponsor_id, cur);
+  }
+  let total = 0;
+  const out: { sponsor_id: string; ids: string[]; pct: number; amount: number }[] = [];
+  for (const sh of by.values()) {
+    const amount = Math.min(roundRupee(owed * sh.pct, 100), owed - total);
+    if (amount <= 0) continue;
+    total += amount;
+    out.push({ ...sh, amount });
+  }
+  return out;
+}
+
+/** Gross for a monthly head billed by days: every enrolment of the chain for its own days. */
+function proRataGross(ctx: GenContext, e: GenEnrolment, headId: string, rate: number): number {
+  const p = ctx.period;
+  const pStart = periodStart(p);
+  const pEnd = periodEnd(p);
+  const segs: ChainSegment[] = [...(ctx.chains.get(e.id) ?? []), e];
+  let paisaDays = 0;
+  let days = 0;
+  for (let i = 0; i < segs.length; i++) {
+    const seg = segs[i] as ChainSegment;
+    const next = segs[i + 1];
+    // Leave dates are not validated against the start (M1): clamp the overlap to the period, and a
+    // segment ends the day before the next one starts.
+    const from = maxDate(pStart, seg.start_date);
+    let to = minDate(pEnd, seg.end_date ?? pEnd);
+    if (next) to = minDate(to, addDays(next.start_date, -1));
+    const d = daysInclusive(from, to);
+    if (d <= 0) continue;
+    const r = i === segs.length - 1 ? rate : (rateFor(ctx, seg, headId) ?? rate);
+    paisaDays += r * d;
+    days += d;
+  }
+  const total = daysInPeriod(p);
+  if (days <= 0) return 0;
+  if (days >= total && paisaDays === rate * total) return rate;
+  return roundRupee(paisaDays, total);
 }
 
 /** The planner: pure, so the admission preview, dry-run and the real run agree exactly. */
@@ -179,22 +286,15 @@ export function planCharges(
       const rate = rateFor(ctx, e, h.id);
       if (!rate || rate <= 0) continue;
       let gross = rate;
-      if (opts.proRata && h.cadence === 'monthly') {
-        // Leave dates are not validated against the start (M1): clamp the overlap to the period.
-        const from = maxDate(pStart, e.start_date);
-        const to = minDate(pEnd, e.end_date ?? pEnd);
-        const days = daysInclusive(from, to);
-        const total = daysInPeriod(p);
-        if (days <= 0) continue;
-        if (days < total) gross = roundRupee(rate * days, total);
-      }
+      if (opts.proRata && h.cadence === 'monthly') gross = proRataGross(ctx, e, h.id, rate);
       if (gross <= 0) continue;
       planned.add(unit);
+      const ref = referenceDay(ctx, e);
 
       const lines: { c: LiveConcession; amount: number }[] = [];
       let k = 0;
       for (const c of ctx.concessions) {
-        if (c.student_id !== e.student_id || !concessionApplies(c, h)) continue;
+        if (c.student_id !== e.student_id || !concessionApplies(c, h) || !liveOn(c, ref)) continue;
         const want = c.type === 'pct' ? roundRupee(gross * c.value, 100) : c.value;
         const amount = Math.min(want, gross - k);
         if (amount <= 0) continue;
@@ -202,22 +302,17 @@ export function planCharges(
         k += amount;
       }
       const owed = gross - k;
-      const shares: { s: LiveSponsorship; amount: number }[] = [];
-      let sTotal = 0;
-      let pctLeft = 100;
-      for (const s of ctx.sponsorships) {
-        if (s.student_id !== e.student_id || !sponsorshipApplies(s, h)) continue;
-        const pct = Math.min(s.share_pct, pctLeft);
-        if (pct <= 0) continue;
-        pctLeft -= pct;
-        const amount = Math.min(roundRupee(owed * pct, 100), owed - sTotal);
-        if (amount <= 0) continue;
-        shares.push({ s, amount });
-        sTotal += amount;
-      }
+      const shares = sponsorShares(
+        ctx.sponsorships.filter(
+          (s) => s.student_id === e.student_id && sponsorshipApplies(s, h) && liveOn(s, ref),
+        ),
+        owed,
+      );
+      const sTotal = shares.reduce((a, sh) => a + sh.amount, 0);
 
       let due = dayOf(p, ctx.settings.dueDay);
-      if (e.start_date > due) due = e.start_date;
+      // A mid-period joiner or transfer gets the same grace as everyone: start + (due day − 1) days.
+      if (e.start_date > pStart) due = maxDate(due, addDays(e.start_date, ctx.settings.dueDay - 1));
       if (opts.dueNotBefore && opts.dueNotBefore > due) due = opts.dueNotBefore;
       const base = {
         student_id: e.student_id,
@@ -258,21 +353,47 @@ export function planCharges(
           ...base,
           id: newId(),
           payer_type: 'sponsor',
-          payer_id: sh.s.sponsor_id,
+          payer_id: sh.sponsor_id,
           kind: 'fee',
           amount: sh.amount,
           parent_charge_id: null,
-          reason: `sponsorship:${sh.s.id}`,
+          reason: `sponsorship:${sh.ids.join(',')}`,
         });
     }
   }
   return out;
 }
 
-/** Live in the period: started by its end, not ended before its start (ended_at = end date). */
+/**
+ * Rows that could be live on some day of the period (the planner then picks the reference day per
+ * enrolment with liveOn): started by its end, not ended before its start.
+ */
 const liveIn = (from: SQL, to: SQL, ended: SQL | null, p: string) =>
   sql`${from} <= ${periodEnd(p)} AND (${to} IS NULL OR ${to} >= ${periodStart(p)})
       ${ended ? sql`AND (${ended} IS NULL OR ${ended} > ${periodStart(p)})` : sql``}`;
+
+/** Predecessors (prev_enrolment_id, any depth) of these enrolments that overlap the period. */
+async function loadChains(
+  db: AppDb,
+  period: string,
+  enrolmentIds: readonly string[],
+): Promise<Map<string, ChainSegment[]>> {
+  const out = new Map<string, ChainSegment[]>();
+  if (!enrolmentIds.length) return out;
+  const rows = await db.all<ChainSegment & { root: string; depth: number }>(sql`
+    WITH RECURSIVE ch(root, id, prev, depth) AS (
+      SELECT e.id, p.id, p.prev_enrolment_id, 1 FROM enrolment e JOIN enrolment p ON p.id = e.prev_enrolment_id
+      WHERE ${inJson(sql`e.id`, enrolmentIds)} AND p.end_date >= ${periodStart(period)}
+      UNION ALL
+      SELECT ch.root, p.id, p.prev_enrolment_id, ch.depth + 1 FROM ch JOIN enrolment p ON p.id = ch.prev
+      WHERE ch.depth < 12 AND p.end_date >= ${periodStart(period)})
+    SELECT ch.root, ch.depth, p.grp_id, g.programme_id, p.start_date, p.end_date
+    FROM ch JOIN enrolment p ON p.id = ch.id JOIN grp g ON g.id = p.grp_id
+    WHERE p.start_date <= ${periodEnd(period)}
+    ORDER BY ch.root, ch.depth DESC`);
+  for (const { root, depth: _d, ...seg } of rows) out.set(root, [...(out.get(root) ?? []), seg]);
+  return out;
+}
 
 /** Everything the planner needs for these students and groups, in a handful of reads. */
 export async function loadContext(
@@ -284,8 +405,14 @@ export async function loadContext(
   assertPeriod(period);
   const s = settings ?? (await feeSettings(db));
   const students = [...new Set(enrolments.map((e) => e.student_id))];
-  const grps = [...new Set(enrolments.map((e) => e.grp_id))];
-  const progs = [...new Set(enrolments.map((e) => e.programme_id))];
+  const chains = await loadChains(
+    db,
+    period,
+    enrolments.filter((e) => e.prev_enrolment_id).map((e) => e.id),
+  );
+  const segs = [...enrolments, ...[...chains.values()].flat()];
+  const grps = [...new Set(segs.map((e) => e.grp_id))];
+  const progs = [...new Set(segs.map((e) => e.programme_id))];
   const sessions = [
     ...new Set(enrolments.map((e) => e.session_id).filter((x): x is string => !!x)),
   ];
@@ -301,14 +428,15 @@ export async function loadContext(
         WHERE substr(start_date, 1, 7) = ${period} AND ${inJson(sql`session_id`, sessions)}`)
     : [];
   const concessions = students.length
-    ? await db.all<LiveConcession>(sql`SELECT id, student_id, fee_head_id, type, value FROM concession
+    ? await db.all<LiveConcession>(sql`SELECT id, student_id, fee_head_id, type, value, valid_from,
+        valid_to, ended_at FROM concession
         WHERE ${inJson(sql`student_id`, students)}
           AND ${liveIn(sql`valid_from`, sql`valid_to`, sql`ended_at`, period)}
         ORDER BY created_at, id`)
     : [];
   const sponsorships = students.length
-    ? await db.all<LiveSponsorship>(sql`SELECT id, sponsor_id, student_id, fee_head_id, share_pct
-        FROM sponsorship WHERE ${inJson(sql`student_id`, students)}
+    ? await db.all<LiveSponsorship>(sql`SELECT id, sponsor_id, student_id, fee_head_id, share_pct,
+        valid_from, valid_to FROM sponsorship WHERE ${inJson(sql`student_id`, students)}
           AND ${liveIn(sql`valid_from`, sql`valid_to`, null, period)}
         ORDER BY created_at, id`)
     : [];
@@ -336,6 +464,7 @@ export async function loadContext(
     sponsorships,
     billedUnits: new Set(billed.map((b) => `${b.student_id}|${b.fee_head_id}`)),
     billedOnce: new Set(once.map((b) => `${b.student_id}|${b.fee_head_id}|${b.enrolment_id}`)),
+    chains,
   };
 }
 
@@ -376,15 +505,34 @@ export async function studentEnrolments(
     WHERE e.student_id = ${studentId} AND ${eligible(period)} ORDER BY e.id`);
 }
 
-/** The next group (by id) with billable enrolments in the period, after `afterGrpId`. */
+/**
+ * Every billable enrolment of these students in the period, whatever the group (a student in a class
+ * and a batch is planned from both, primary first, whichever group's chunk reaches them first).
+ */
+export async function studentsEnrolments(
+  db: AppDb,
+  period: string,
+  studentIds: readonly string[],
+): Promise<GenEnrolment[]> {
+  if (!studentIds.length) return [];
+  return db.all<GenEnrolment>(sql`SELECT ${ENROLMENT_COLUMNS}
+    FROM enrolment e JOIN student s ON s.id = e.student_id JOIN grp g ON g.id = e.grp_id
+    LEFT JOIN session ss ON ss.id = g.session_id
+    WHERE ${inJson(sql`e.student_id`, studentIds)} AND ${eligible(period)}
+    ORDER BY e.student_id, e.id`);
+}
+
+/**
+ * The next group (by id) after `afterGrpId` that still needs a request: billable enrolments and no
+ * finished fees chunk for the period. A group that is already done is skipped, so `next` never
+ * points at a no-op request.
+ */
 export async function nextGroup(
   db: AppDb,
   period: string,
   afterGrpId: string | null,
 ): Promise<string | null> {
-  const [row] = await db.all<{ grp_id: string | null }>(sql`SELECT min(e.grp_id) AS grp_id
-    FROM enrolment e WHERE ${eligible(period)} AND e.grp_id > ${afterGrpId ?? ''}`);
-  return row?.grp_id ?? null;
+  return (await generationCursor(db, period, { afterGrpId }))?.grp_id ?? null;
 }
 
 /** Statements that write a plan: run row, roots, children. Ids minted in the plan. */
@@ -591,8 +739,13 @@ export async function generateCharges(db: AppDb, input: GenerateInput): Promise<
     more = enrolments.length > page;
     if (more) enrolments = enrolments.slice(0, page);
   }
-  const ctx = await loadContext(db, period, enrolments, settings);
-  const full = planCharges(ctx, enrolments, { proRata: input.proRata });
+  // Plan from every enrolment of these students (primary first), not only this group's rows.
+  const planWith =
+    'studentId' in input.scope
+      ? enrolments
+      : await studentsEnrolments(db, period, [...new Set(enrolments.map((e) => e.student_id))]);
+  const ctx = await loadContext(db, period, planWith, settings);
+  const full = planCharges(ctx, planWith, { proRata: input.proRata });
 
   // Trim to whole students within the budget, leaving room for credit allocations.
   let plan: PlannedCharge[] = full;
@@ -700,6 +853,7 @@ async function insertedCounts(
 export async function generationCursor(
   db: AppDb,
   period: string,
+  o: { exclude?: readonly string[]; afterGrpId?: string | null } = {},
 ): Promise<{ grp_id: string; after_student_id: string | null } | null> {
   const [row] = await db.all<{ grp_id: string; next_student_id: string | null }>(sql`
     WITH g AS (SELECT DISTINCT e.grp_id FROM enrolment e WHERE ${eligible(period)}),
@@ -709,7 +863,33 @@ export async function generationCursor(
       FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id
       WHERE r.period_key = ${period} AND k.kind = 'fees' AND k.grp_id IS NOT NULL)
     SELECT g.grp_id, l.next_student_id FROM g LEFT JOIN last l ON l.grp_id = g.grp_id AND l.rn = 1
-    WHERE l.done IS NULL OR l.done = 0
+    WHERE (l.done IS NULL OR l.done = 0) AND g.grp_id > ${o.afterGrpId ?? ''}
+      AND g.grp_id NOT IN (SELECT value FROM json_each(${JSON.stringify(o.exclude ?? [])}))
     ORDER BY g.grp_id LIMIT 1`);
   return row ? { grp_id: row.grp_id, after_student_id: row.next_student_id ?? null } : null;
+}
+
+/**
+ * Logs a chunk that failed (status 'failed', done 0, the cursor it started from) so the period never
+ * sticks on one bad group: the cursor moves on within this tick, GET /api/fees/runs shows it, and the
+ * next tick retries it (its latest chunk is unfinished). One batch; the run header is created if the
+ * failed batch rolled it back.
+ */
+export function failedChunkStatements(o: {
+  period: string;
+  grpId: string;
+  afterStudentId: string | null;
+  code: string;
+  message: string;
+  by: string | null;
+}): SQL[] {
+  return [
+    sql`INSERT INTO billing_run (id, period_key, run_at, run_by)
+        SELECT ${newId()}, ${o.period}, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ${o.by}
+        WHERE NOT EXISTS (SELECT 1 FROM billing_run WHERE period_key = ${o.period})`,
+    sql`INSERT INTO billing_chunk (id, run_id, kind, grp_id, student_id, next_student_id, done, status,
+          error_code, error_message, created_by)
+        VALUES (${newId()}, (SELECT id FROM billing_run WHERE period_key = ${o.period}), 'fees', ${o.grpId},
+          NULL, ${o.afterStudentId}, 0, 'failed', ${o.code}, ${o.message.slice(0, 500)}, ${o.by})`,
+  ];
 }

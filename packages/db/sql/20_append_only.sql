@@ -1,6 +1,7 @@
 -- Money is append-only (PLAN §5.2). Corrections are new rows (reversal, concession end + new row, void).
 -- RAISE(ABORT) inside a D1 batch rolls back the whole batch; app code matches on the message text.
--- Re-emitted by migration 0009: 0008 rebuilt `receipt`, which dropped the receipt triggers below.
+-- Re-emitted by migration 0009 (0008 rebuilt `receipt`) and again by 0011 (0010 rebuilt `receipt`
+-- and `payslip` for the final enums), each rebuild dropping the triggers on the rebuilt table.
 
 CREATE TRIGGER charge_no_update BEFORE UPDATE ON charge BEGIN SELECT RAISE(ABORT, 'charge is append-only'); END;
 --> statement-breakpoint
@@ -96,8 +97,10 @@ BEGIN
     AND length(trim(coalesce(NEW.reopen_reason, ''))) > 0
     AND NEW.expected IS OLD.expected AND NEW.counted IS OLD.counted AND NEW.closed_by IS OLD.closed_by
   );
+  -- Compared case-insensitively and with surrounding blanks ignored (the API also collapses inner
+  -- runs of whitespace before comparing): "Recount " repeats "recount".
   SELECT RAISE(ABORT, 'reopen reason must differ from the previous reopen')
-  WHERE trim(NEW.reopen_reason) = trim(coalesce(OLD.reopen_reason, ''));
+  WHERE lower(trim(NEW.reopen_reason)) = lower(trim(coalesce(OLD.reopen_reason, '')));
 END;
 --> statement-breakpoint
 CREATE TRIGGER receipt_session_open BEFORE INSERT ON receipt WHEN NEW.cash_session_id IS NOT NULL
@@ -126,11 +129,17 @@ CREATE TRIGGER payslip_no_delete BEFORE DELETE ON payslip BEGIN SELECT RAISE(ABO
 CREATE TRIGGER payslip_starts_draft BEFORE INSERT ON payslip WHEN NEW.status <> 'draft'
 BEGIN SELECT RAISE(ABORT, 'payslip must start as draft'); END;
 --> statement-breakpoint
+-- 'void' (a slip that will never be paid) is final and only reachable before any salary payment.
 CREATE TRIGGER payslip_status_forward BEFORE UPDATE OF status ON payslip
 WHEN NOT (NEW.status = OLD.status
           OR (OLD.status = 'draft' AND NEW.status = 'approved')
-          OR (OLD.status = 'approved' AND NEW.status = 'paid'))
-BEGIN SELECT RAISE(ABORT, 'payslip status only moves draft -> approved -> paid'); END;
+          OR (OLD.status = 'approved' AND NEW.status = 'paid')
+          OR (OLD.status IN ('draft', 'approved') AND NEW.status = 'void'))
+BEGIN SELECT RAISE(ABORT, 'payslip status only moves draft -> approved -> paid (or void before payment)'); END;
+--> statement-breakpoint
+CREATE TRIGGER payslip_void_unpaid BEFORE UPDATE OF status ON payslip
+WHEN NEW.status = 'void' AND EXISTS (SELECT 1 FROM salary_payment WHERE payslip_id = OLD.id)
+BEGIN SELECT RAISE(ABORT, 'a paid payslip cannot be voided'); END;
 --> statement-breakpoint
 CREATE TRIGGER payslip_frozen BEFORE UPDATE OF id, staff_id, period_key, created_at, created_by ON payslip
 BEGIN SELECT RAISE(ABORT, 'payslip identity is fixed'); END;

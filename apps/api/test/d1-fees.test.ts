@@ -119,6 +119,7 @@ describe('fees on D1', () => {
           amount: RS(2000),
           method: 'cash',
           businessDate: '2026-10-05',
+          today: '2026-10-05',
           collectorId: 'U1',
           idempotencyKey: `k-${i}`,
         }),
@@ -142,6 +143,7 @@ describe('fees on D1', () => {
       amount: RS(2000),
       method: 'cash',
       businessDate: '2026-10-05',
+      today: '2026-10-05',
       collectorId: 'U1',
       idempotencyKey: 'k-0',
     });
@@ -261,6 +263,38 @@ describe('fees on D1', () => {
     expect(print.body.totals.credit_added).toBe(RS(500));
     const rem = await api<{ queued: number }>('POST', '/api/fees/defaulters/remind', {});
     expect(rem.status).toBe(200);
+    expect(await consistency()).toEqual([]);
+  });
+
+  it('cron never sticks on D1: a failing group is logged, the rest bill and fine, retried next tick', async () => {
+    await proxy.env.DB.batch(
+      [
+        `INSERT INTO grp (id, programme_id, session_id, name) VALUES ('G0', 'P', 'SES', 'Z'), ('G2', 'P', 'SES', 'Y')`,
+        `INSERT INTO family (id, name) VALUES ('FX', 'X'), ('FY', 'Y')`,
+        `INSERT INTO student (id, family_id, admission_no, name, admission_date) VALUES ('SX', 'FX', 'AX', 'Ex', '2026-01-01'), ('SY', 'FY', 'AY', 'Why', '2026-01-01')`,
+        `INSERT INTO enrolment (id, student_id, grp_id, is_primary, start_date) VALUES ('EX', 'SX', 'G0', 1, '2026-01-01'), ('EY', 'SY', 'G2', 1, '2026-01-01')`,
+        `CREATE TRIGGER test_boom BEFORE INSERT ON charge WHEN NEW.student_id = 'SX' BEGIN SELECT RAISE(ABORT, 'boom'); END`,
+      ].map((q) => proxy.env.DB.prepare(q)),
+    );
+    const now = Date.UTC(2026, 10, 20, 3);
+    // (The routes test above added a group too; every group but G0 bills, in id order.)
+    const r1 = await runScheduled(db, { now, maxChunks: 6 });
+    expect(r1.failed.map((f) => [f.grp_id, f.code])).toEqual([['G0', 'constraint']]);
+    expect(r1.failed[0]?.message).toMatch(/boom/);
+    expect(r1.generated.map((g) => g.grp_id)).toEqual(expect.arrayContaining(['G', 'G2']));
+    expect(r1.generated.map((g) => g.grp_id)).not.toContain('G0');
+    expect(r1.fines[0]?.applied).toBeGreaterThan(0);
+    expect(
+      await one(sql`SELECT grp_id, status, error_code FROM billing_chunk WHERE status = 'failed'`),
+    ).toEqual({ grp_id: 'G0', status: 'failed', error_code: 'constraint' });
+    await proxy.env.DB.prepare('DROP TRIGGER test_boom').run();
+    const r2 = await runScheduled(db, { now: now + 1_800_000 });
+    expect([r2.failed, r2.generated.map((g) => g.grp_id)]).toEqual([[], ['G0']]);
+    expect(
+      await one(
+        sql`SELECT count(*) AS n FROM charge WHERE student_id = 'SX' AND period_key = '2026-11' AND kind = 'fee'`,
+      ),
+    ).toEqual({ n: 1 });
     expect(await consistency()).toEqual([]);
   });
 });

@@ -1,5 +1,7 @@
 -- Milestone 1 rules: people, sessions, enrolment numbering. Same style as the ledger rules: the
 -- database refuses the impossible state, app code maps the message text to a clean 409.
+-- Re-emitted by migration 0011: 0010 rebuilt `role` (explicit ON DELETE RESTRICT on user_id), which
+-- dropped the role triggers below.
 
 -- Exactly zero or one current academic session; "set current" flips it inside one batch.
 CREATE UNIQUE INDEX session_one_current ON session(is_current) WHERE is_current = 1;

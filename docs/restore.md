@@ -40,9 +40,11 @@ You need: a laptop with Node 22+, `age`, `gzip`, the Cloudflare login (`npx wran
    - At school scale (tens of MB) one file is fine; locally 28 MB / 282k statements took ~2 min.
 6. Verify against the last nightly log or yesterday's Sheet:
    `npx wrangler d1 execute "$DB-restored" --remote --command "select count(*), sum(amount) from receipt"`
-   and counts for `student` and `charge`. Confirm the triggers survived:
-   `select count(*) from sqlite_master where type='trigger'` must equal the number of
-   `CREATE TRIGGER` statements in `packages/db/migrations/` (31 at milestone 0).
+   and counts for `student` and `charge`. Confirm the triggers and views survived:
+   `npm run db:verify -- --remote --env production` (after pointing the binding at the restored
+   database, step 7) compares `sqlite_master` with `packages/db/sql/` and exits 1 on any difference;
+   by hand, `select count(*) from sqlite_master where type='trigger'` is 72 and `type='view'` is 4
+   after migration 0011 (docs/deploy.md §3).
 7. Re-point the Worker: in `apps/api/wrangler.toml`, under `[[env.production.d1_databases]]` for binding
    `DB`, set `database_id` (and optionally `database_name`) to the new database, then
    `npx wrangler deploy --env production`. Never rename the binding.

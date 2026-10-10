@@ -1,10 +1,14 @@
 -- Ledger invariants and derived views (experiment 1, hardened after the M0 review; ADR 0002).
--- Re-emitted in full by migration 0009 after 0008 rebuilt `receipt` (receipt kind 'opening', M3).
+-- Re-emitted in full by migration 0009 after 0008 rebuilt `receipt` (receipt kind 'opening', M3), and
+-- by 0011 after 0010 rebuilt it again (methods 'cheque', 'other').
 -- Charge tree: only `fee` rows are roots. concession / fine / reversal hang off a fee; fine_waiver (and a
 -- reversal of a fine) hang off the fine, so a tree is at most two levels deep. Net = sum of the tree.
 -- Allocations always target the root. Kind signs and the root rule are CHECKs on the table.
 
 -- Children: right parent kind, same student and payer as the parent.
+-- Concessions and fines belong to the family (PLAN §14.7: a sponsor is billed its share of the net and
+-- is never fined); a sponsor root only ever takes a `reversal` child (a re-bill or a void). A fine is
+-- only added to a root that still has money due.
 CREATE TRIGGER charge_parent_shape BEFORE INSERT ON charge WHEN NEW.parent_charge_id IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'invalid parent charge for this kind')
@@ -18,6 +22,14 @@ BEGIN
             ELSE p.kind = 'fee'
           END
   );
+  SELECT RAISE(ABORT, 'concessions and fines are family lines; a sponsor root takes reversals only')
+  WHERE NEW.kind IN ('concession', 'fine') AND NEW.payer_type <> 'family';
+  SELECT RAISE(ABORT, 'a fine needs money still due on the fee')
+  WHERE NEW.kind = 'fine'
+    AND (SELECT coalesce(sum(amount), 0) FROM charge
+         WHERE id = NEW.parent_charge_id OR parent_charge_id = NEW.parent_charge_id
+            OR parent_charge_id IN (SELECT id FROM charge WHERE parent_charge_id = NEW.parent_charge_id))
+      <= (SELECT coalesce(sum(amount), 0) FROM receipt_allocation WHERE charge_id = NEW.parent_charge_id);
 END;
 --> statement-breakpoint
 

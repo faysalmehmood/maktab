@@ -32,6 +32,16 @@
         "30_ledger.sql": "8449f9ad0e2484c10f225471fabf62646fc5ac6a72fb87d7fafef612494875b3",
         "50_fees.sql": "6ecd3b86d75e196f98b791df9a4d3640bf5eeba0d57939ab4803ed0b43da87f2"
       }
+    },
+    {
+      "migration": "0011_m3_fix_rules",
+      "sha256": "362116a3509b3fada7693867b66983e604f55d4b5a8fff6463d4d3d6fe2eac27",
+      "files": {
+        "20_append_only.sql": "849482967e5b651e9e7cee6d7d7bd50d0d6e2c672fd949d9d13e59cc2bb47e16",
+        "30_ledger.sql": "906d46766c9897bc6b83e95937a863d09e4a7a2ace378ba3145e63e16876d0bc",
+        "40_foundation.sql": "198c14eba2ccd636a49aacfe6d8bdb59f3de3a73a8bf79cd36e9fd678b99e061",
+        "50_fees.sql": "2a0288f5345055b0d5ae506fcf58ed3d33c2354277e0bd31e3cf99dd77a89831"
+      }
     }
   ]
 }

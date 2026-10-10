@@ -71,6 +71,20 @@
       "when": 1791639652412,
       "tag": "0009_m3_fee_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791642597185,
+      "tag": "0010_m3_final_enums",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1791642634809,
+      "tag": "0011_m3_fix_rules",
+      "breakpoints": true
     }
   ]
 }

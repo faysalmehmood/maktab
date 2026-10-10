@@ -1,7 +1,7 @@
 import { newId } from '@maktab/shared';
 import { type SQL, sql } from 'drizzle-orm';
 import type { AppDb } from '../client';
-import { auditStatement, FeeError, runBatch } from './util';
+import { auditStatement, FeeError, karachiToday, normaliseReason, runBatch } from './util';
 
 /**
  * Cash sessions (PLAN §14.6): one per collector per business day, opened automatically by the first
@@ -122,14 +122,15 @@ export async function reopenSession(
   db: AppDb,
   input: { sessionId: string; reason: string; by: string; now?: string },
 ): Promise<SessionRow> {
-  const reason = input.reason.trim();
+  const reason = input.reason.trim().replace(/\s+/g, ' ');
   if (!reason) throw new FeeError('invalid', 'reason: required', 400);
   const [s] = await db.all<SessionRow>(
     sql`SELECT * FROM cash_session WHERE id = ${input.sessionId}`,
   );
   if (!s) throw new FeeError('not_found', 'Cash session not found', 404);
   if (!s.closed_at) throw new FeeError('not_closed', 'This session is open');
-  if (s.reopen_reason && s.reopen_reason.trim() === reason)
+  // "Recount" again as " recount  " is the same reason (the trigger compares lower(trim()) too).
+  if (s.reopen_reason && normaliseReason(s.reopen_reason) === normaliseReason(reason))
     throw new FeeError('reason_repeated', 'Give a new reason for this reopen', 400);
   const now = input.now ?? new Date().toISOString();
   await runBatch(db, [
@@ -178,6 +179,9 @@ export async function recordTransfer(
   const id = input.id ?? newId();
   const fromDrawer = from.kind === 'cash';
   if (fromDrawer) await assertSessionOpen(db, input.by, input.date);
+  // Never open a drawer for a past day: a late handover goes into that day's session if it exists.
+  if (fromDrawer && input.date < karachiToday() && !(await sessionFor(db, input.by, input.date)))
+    throw new FeeError('bad_business_date', 'No cash session that day; record it for today', 400);
   await runBatch(db, [
     ...(fromDrawer ? [ensureSessionStatement(input.by, input.date)] : []),
     sql`INSERT INTO transfer (id, from_account, to_account, cash_session_id, amount, date, note, created_by)

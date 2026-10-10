@@ -133,6 +133,9 @@ export async function planAdmissionFees(
       fee_head_id: null,
       type: 'pct',
       value: pct,
+      valid_from: input.startDate,
+      valid_to: null,
+      ended_at: null,
     });
     statements.push(
       concessionStatement({

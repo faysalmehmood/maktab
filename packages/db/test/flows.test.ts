@@ -46,6 +46,11 @@ const C = (
           due_date, kind, parent_charge_id, reason)
         VALUES (${id}, ${student}, 'H1', ${period}, 'family', ${payer}, ${amount}, '2026-03-10',
           ${kind}, ${parent}, 'r')`;
+/**
+ * Raw receipt rows. Since the M3 fix pass (sql/50_fees.sql receipt_payment_shape) a payment without a
+ * session is a bank payment into A2; with a session it is cash, numbered from series R — bump it first
+ * (`bumpR`).
+ */
 const R = (
   id: string,
   kind: 'payment' | 'reversal' | 'refund',
@@ -55,11 +60,16 @@ const R = (
   payer = 'F1',
 ) => {
   n++;
+  const method = session ? 'cash' : 'bank';
+  const no = session
+    ? sql`(SELECT series || '-' || year || '-' || printf('%05d', next_no - 1) FROM receipt_series WHERE series = 'R' AND year = 2026)`
+    : sql`${`N${n}`}`;
   return sql`INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method,
-          collector_id, cash_session_id, business_date, idempotency_key)
-        VALUES (${id}, ${`N${n}`}, ${kind}, ${reverses}, 'family', ${payer}, ${amount}, 'cash', 'U1',
-          ${session}, '2026-03-05', ${`k${n}`})`;
+          account_id, collector_id, cash_session_id, business_date, idempotency_key)
+        VALUES (${id}, ${no}, ${kind}, ${reverses}, 'family', ${payer}, ${amount}, ${method},
+          ${session ? null : 'A2'}, 'U1', ${session}, '2026-03-05', ${`k${n}`})`;
 };
+const bumpR = sql`UPDATE receipt_series SET next_no = next_no + 1 WHERE series = 'R' AND year = 2026`;
 const A = (r: string, c: string, amount: number, id = newId()) =>
   sql`INSERT INTO receipt_allocation (id, receipt_id, charge_id, amount) VALUES (${id}, ${r}, ${c}, ${amount})`;
 const raw = (q: string) => sql.raw(q);
@@ -190,12 +200,14 @@ const legit: [string, SQL[], ((db: AppDb) => Promise<void>)?][] = [
       raw(
         `INSERT INTO cash_session (id, collector_id, business_date, opening) VALUES ('cs', 'U1', '2026-03-05', 0)`,
       ),
+      bumpR,
       R('p', 'payment', 5000, null, 'cs'),
       raw(
         `INSERT INTO transfer (id, from_account, to_account, cash_session_id, amount, date) VALUES ('t', 'A1', 'A2', 'cs', 5000, '2026-03-05')`,
       ),
       raw(closeCs),
       raw(reopenCs('late receipt')),
+      bumpR,
       R('p2', 'payment', 100, null, 'cs'),
     ],
   ],
@@ -457,7 +469,14 @@ describe('ledger helpers', () => {
   let db: AppDb;
   beforeEach(async () => {
     db = await fresh();
-    await batch(db, C('a', 'fee', 5000), C('b', 'fee', 4000, null, 'S2'));
+    await batch(
+      db,
+      C('a', 'fee', 5000),
+      C('b', 'fee', 4000, null, 'S2'),
+      raw(
+        `INSERT INTO cash_session (id, collector_id, business_date) VALUES ('cs0', 'U1', '2026-03-05')`,
+      ),
+    );
   });
   const base = {
     payerType: 'family',
@@ -466,6 +485,7 @@ describe('ledger helpers', () => {
     collectorId: 'U1',
     businessDate: '2026-03-05',
     series: { series: 'R', year: 2026 },
+    cashSessionId: 'cs0',
   } as const;
 
   it('createReceipt numbers from the series and allocates in one batch', async () => {
@@ -492,7 +512,8 @@ describe('ledger helpers', () => {
           amount: 1,
           series: { series: 'Z', year: 2026 },
         }),
-      /NOT NULL constraint failed: receipt.receipt_no/,
+      // The payment-shape trigger (cash = next number of a series) fires before NOT NULL.
+      /NOT NULL constraint failed: receipt.receipt_no|receipt number must be the next number/,
     );
   });
 
@@ -530,6 +551,7 @@ describe('ledger helpers', () => {
       reenter: {
         amount: 8000,
         method: 'bank',
+        accountId: 'A2',
         allocations: [
           { id: newId(), chargeId: 'a', amount: 5000 },
           { id: newId(), chargeId: 'b', amount: 3000 },
@@ -604,7 +626,13 @@ describe('ledger helpers', () => {
       amount: 5000,
       allocations: [{ id: newId(), chargeId: 'a', amount: 5000 }],
     });
-    const input = { receiptId: 'p', byUserId: 'U2', reason: 'bounced', series: base.series };
+    const input = {
+      receiptId: 'p',
+      byUserId: 'U2',
+      reason: 'bounced',
+      series: base.series,
+      cashSessionId: 'cs0',
+    };
     // Re-entry over-allocates: the whole batch (reversal, unwinds, series bumps, audit) rolls back.
     await expectAbort(
       () =>

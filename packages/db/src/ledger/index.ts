@@ -171,8 +171,9 @@ export async function reverseReceipt(
     payer_id: string;
     amount: number;
     method: PaymentMethod;
+    account_id: string | null;
   }>(
-    sql`SELECT kind, payer_type, payer_id, amount, method FROM receipt WHERE id = ${input.receiptId}`,
+    sql`SELECT kind, payer_type, payer_id, amount, method, account_id FROM receipt WHERE id = ${input.receiptId}`,
   );
   if (!orig) throw new LedgerError('not_found', `receipt ${input.receiptId} not found`);
   if (orig.kind !== 'payment')
@@ -195,7 +196,9 @@ export async function reverseReceipt(
       businessDate,
       idempotencyKey: input.idempotencyKey ?? `reversal:${input.receiptId}`,
       series: input.series,
-      cashSessionId: input.cashSessionId,
+      // Only cash touches a drawer: a bank/wallet reversal takes no session (and keeps its account).
+      cashSessionId: orig.method === 'cash' ? input.cashSessionId : null,
+      accountId: orig.method === 'cash' ? null : orig.account_id,
       note: reason,
     }),
     sql`INSERT INTO receipt_allocation (id, receipt_id, charge_id, amount)
@@ -208,6 +211,7 @@ export async function reverseReceipt(
   if (input.reenter) {
     const re = input.reenter;
     reentryId = re.id ?? newId();
+    const method = re.method ?? orig.method;
     stmts.push(
       ...receiptStatements({
         id: reentryId,
@@ -215,13 +219,16 @@ export async function reverseReceipt(
         payerType: orig.payer_type,
         payerId: orig.payer_id,
         amount: re.amount,
-        method: re.method ?? orig.method,
-        accountId: re.accountId,
+        method,
+        accountId:
+          method === 'cash'
+            ? null
+            : (re.accountId ?? (method === orig.method ? orig.account_id : null)),
         reference: re.reference,
         collectorId: input.byUserId,
         businessDate,
         series: input.series,
-        cashSessionId: input.cashSessionId,
+        cashSessionId: method === 'cash' ? input.cashSessionId : null,
         note: `re-entry for ${input.receiptId}`,
         allocations: re.allocations,
       }),
@@ -237,6 +244,7 @@ export async function reverseReceipt(
   return { reversalId, reentryId };
 }
 
+export * from './adjust';
 export * from './alloc';
 export * from './cash';
 export * from './collect';

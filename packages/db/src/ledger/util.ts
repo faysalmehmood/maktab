@@ -50,6 +50,15 @@ export function daysInclusive(a: string, b: string): number {
   return ms < 0 ? 0 : Math.round(ms / 86_400_000) + 1;
 }
 
+/** ISO date `n` days after `d` (negative = before). */
+export function addDays(d: string, n: number): string {
+  return new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** A free-text reason compared for "same reason again": case, outer and repeated blanks ignored. */
+export const normaliseReason = (s: string | null | undefined): string =>
+  (s ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+
 export const maxDate = (a: string, b: string): string => (a > b ? a : b);
 export const minDate = (a: string, b: string): string => (a < b ? a : b);
 
@@ -163,6 +172,26 @@ export async function feeSettings(db: AppDb): Promise<FeeSettings> {
   };
 }
 
+/**
+ * A stable code for an error that stopped a generation chunk (billing_chunk.error_code): a FeeError's
+ * own code, else the kind of constraint that refused the batch.
+ */
+export function errorCode(err: unknown): string {
+  if (err instanceof FeeError) return err.code;
+  const codes: string[] = [];
+  for (let e: unknown = err, depth = 0; e && depth < 5; depth++) {
+    const c = (e as { code?: unknown }).code;
+    if (typeof c === 'string') codes.push(c);
+    e = e instanceof Error ? e.cause : undefined;
+  }
+  const text = `${errorText(err)} ${codes.join(' ')}`;
+  if (/UNIQUE constraint failed: charge/.test(text)) return 'duplicate_charge';
+  if (/UNIQUE constraint failed/.test(text)) return 'conflict';
+  if (/FOREIGN KEY constraint failed/.test(text)) return 'foreign_key';
+  if (/CHECK constraint failed|SQLITE_CONSTRAINT|RAISE|constraint/i.test(text)) return 'constraint';
+  return 'internal';
+}
+
 /** One user action = one atomic batch (ADR 0001/0002). */
 export async function runBatch(db: AppDb, stmts: SQL[]): Promise<void> {
   const [first, ...rest] = stmts;
@@ -173,6 +202,16 @@ export async function runBatch(db: AppDb, stmts: SQL[]): Promise<void> {
 /** `col IN (SELECT value FROM json_each(?))` — one bound parameter however long the list. */
 export const inJson = (col: SQL, values: readonly string[]): SQL =>
   sql`${col} IN (SELECT value FROM json_each(${JSON.stringify(values)}))`;
+
+/** The innermost cause's message: SQLite's own text, without drizzle's echo of the query. */
+export function rootMessage(err: unknown): string {
+  let msg = err instanceof Error ? err.message : String(err);
+  for (let e: unknown = err, depth = 0; e && depth < 5; depth++) {
+    if (e instanceof Error) msg = e.message;
+    e = e instanceof Error ? e.cause : undefined;
+  }
+  return msg;
+}
 
 /** Message text through the cause chain (drizzle wraps driver errors). */
 export function errorText(err: unknown): string {

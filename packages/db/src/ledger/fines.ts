@@ -2,6 +2,7 @@ import { newId } from '@maktab/shared';
 import { type SQL, sql } from 'drizzle-orm';
 import type { AppDb } from '../client';
 import { allocationsStatement, planRelease } from './alloc';
+import { applyCredit } from './collect';
 import { chunkLogStatement } from './generate';
 import { assertPeriod, auditStatement, FeeError, feeSettings, roundRupee, runBatch } from './util';
 
@@ -10,7 +11,11 @@ import { assertPeriod, auditStatement, FeeError, feeSettings, roundRupee, runBat
  * that still has money due gets ONE `fine` child: fixed, or pct of what is still due, capped. The
  * partial unique index charge_fine_once (parent, period) is the backstop; the insert skips roots
  * that already have one, or that were paid off since the plan was read. Sponsor roots are never
- * fined. Chunked: at most `limit` roots per request; `done` says whether any remain.
+ * fined (and the charge trigger refuses a fine on a sponsor root or on a root with nothing due).
+ * No fine in the first period of a new enrolment that started after the period's first day (a
+ * mid-month joiner is never fined for the month they joined; someone who starts on the 1st has a
+ * normal month; a transfer continues its chain and is fined normally after its pushed due date).
+ * Chunked: at most `limit` roots per request; `done` says whether any remain.
  */
 
 export type PlannedFine = {
@@ -50,6 +55,8 @@ export async function applyLateFines(
     FROM charge_status cs JOIN charge c ON c.id = cs.id JOIN fee_head h ON h.id = cs.fee_head_id
     WHERE cs.period_key = ${input.period} AND cs.payer_type = 'family' AND h.kind = 'tuition'
       AND cs.due > 0 AND cs.due_date < ${input.asOf}
+      AND NOT EXISTS (SELECT 1 FROM enrolment e WHERE e.id = c.enrolment_id AND e.prev_enrolment_id IS NULL
+                        AND substr(e.start_date, 1, 7) = cs.period_key AND e.start_date > cs.period_key || '-01')
       AND NOT EXISTS (SELECT 1 FROM charge f WHERE f.parent_charge_id = cs.id AND f.kind = 'fine'
                         AND f.period_key = ${input.period})
     ORDER BY cs.id LIMIT ${limit + 1}`);
@@ -110,12 +117,13 @@ export async function applyLateFines(
 /**
  * Waives a fine (all of what is left, or `amount`) with a reason: a `fine_waiver` child of the fine.
  * If the root is paid beyond its new net, the surplus is released first in the same batch, so the
- * money becomes the payer's credit (ADR 0002).
+ * money becomes the payer's credit (ADR 0002); that credit is then applied to the payer's other dues
+ * in a second batch of the same call.
  */
 export async function waiveFine(
   db: AppDb,
   input: { fineId: string; reason: string; by: string; amount?: number; waiverId?: string },
-): Promise<{ waiver_id: string; amount: number; released: number }> {
+): Promise<{ waiver_id: string; amount: number; released: number; credit_applied: number }> {
   const reason = input.reason.trim();
   if (!reason) throw new FeeError('invalid', 'a waiver needs a reason', 400);
   const [fine] = await db.all<{
@@ -163,5 +171,9 @@ export async function waiveFine(
     }),
   );
   await runBatch(db, stmts);
-  return { waiver_id: waiverId, amount, released: release };
+  const applied = await applyCredit(db, {
+    payerType: fine.payer_type as 'family' | 'sponsor',
+    payerId: fine.payer_id,
+  });
+  return { waiver_id: waiverId, amount, released: release, credit_applied: applied.allocated };
 }

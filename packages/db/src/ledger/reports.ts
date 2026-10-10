@@ -1,3 +1,4 @@
+import { duesHash } from '@maktab/shared';
 import { type SQL, sql } from 'drizzle-orm';
 import type { AppDb } from '../client';
 import type { PayerType, PaymentMethod } from './index';
@@ -132,13 +133,15 @@ export async function receiptDetail(db: AppDb, id: string): Promise<ReceiptDetai
     due: number;
   }>(sql`SELECT coalesce(sum(due), 0) AS due FROM charge_status
     WHERE payer_type = ${r.payer_type} AND payer_id = ${r.payer_id} AND due > 0`);
+  const credit = await payerCredit(db, r.payer_type, r.payer_id);
   return {
     ...r,
     allocations,
     allocated,
     unallocated: r.kind === 'payment' || r.kind === 'opening' ? r.amount - allocated : 0,
-    payer_credit: await payerCredit(db, r.payer_type, r.payer_id),
-    payer_due: due?.due ?? 0,
+    payer_credit: credit,
+    // What the payer still owes: dues net of unallocated credit (floor 0).
+    payer_due: Math.max(0, (due?.due ?? 0) - credit),
   };
 }
 
@@ -169,16 +172,28 @@ export type FamilyStatement = {
   sponsored: RootLine[];
   receipts: ReceiptRow[];
   credit: number;
+  /** duesHash of the open family roots; the fee counter echoes it as expected_due_hash. */
+  dues_hash: string;
   totals: {
     gross: number;
     concession: number;
     fine: number;
     net: number;
     paid: number;
+    /** Net of unallocated credit (floor 0). */
     due: number;
+    /** Net of unallocated credit (floor 0). */
     overdue: number;
+    due_before_credit: number;
   };
 };
+
+/**
+ * Dues net of a payer's unallocated credit, floor 0 (M3 fix pass). Credit and dues can coexist for a
+ * moment (credit released by a concession, money paid in advance before the month is billed); what the
+ * family owes, what the defaulter list and reminders say, is always the net.
+ */
+export const netOfCredit = (due: number, credit: number): number => Math.max(0, due - credit);
 
 export async function familyStatement(
   db: AppDb,
@@ -215,23 +230,36 @@ export async function familyStatement(
     sql`c.payer_type = 'sponsor' AND c.period_key >= ${cutoff}
         AND c.student_id IN (SELECT id FROM student WHERE family_id = ${familyId})`,
   );
-  const totals = { gross: 0, concession: 0, fine: 0, net: 0, paid: 0, due: 0, overdue: 0 };
+  const totals = {
+    gross: 0,
+    concession: 0,
+    fine: 0,
+    net: 0,
+    paid: 0,
+    due: 0,
+    overdue: 0,
+    due_before_credit: 0,
+  };
   for (const c of charges) {
     totals.gross += c.gross;
     totals.concession += c.concession;
     totals.fine += c.fine;
     totals.net += c.net;
     totals.paid += c.paid;
-    totals.due += Math.max(0, c.due);
+    totals.due_before_credit += Math.max(0, c.due);
     if (c.due > 0 && c.due_date < today) totals.overdue += c.due;
   }
+  const credit = await payerCredit(db, 'family', familyId);
+  totals.due = netOfCredit(totals.due_before_credit, credit);
+  totals.overdue = netOfCredit(totals.overdue, credit);
   return {
     family,
     students: students.map((s) => ({ ...s, sponsored: !!s.sponsored })),
     charges,
     sponsored,
     receipts: await receiptsOf(db, 'family', familyId),
-    credit: await payerCredit(db, 'family', familyId),
+    credit,
+    dues_hash: duesHash(charges),
     totals,
   };
 }
@@ -284,7 +312,10 @@ export async function searchFamilies(db: AppDb, q: string): Promise<FamilyHit[]>
     family_id: f.id,
     family_name: f.name,
     students: students.filter((s) => s.family_id === f.id).map(({ family_id: _f, ...s }) => s),
-    due: dues.find((d) => d.payer_id === f.id)?.due ?? 0,
+    due: netOfCredit(
+      dues.find((d) => d.payer_id === f.id)?.due ?? 0,
+      credits.find((c) => c.payer_id === f.id)?.credit ?? 0,
+    ),
     credit: credits.find((c) => c.payer_id === f.id)?.credit ?? 0,
   }));
 }
@@ -325,12 +356,15 @@ export async function defaulters(
 ): Promise<DefaulterRow[]> {
   const sponsoredSql = sql`EXISTS (SELECT 1 FROM sponsorship sp WHERE sp.student_id = st.id
     AND sp.valid_from <= ${o.today} AND (sp.valid_to IS NULL OR sp.valid_to >= ${o.today}))`;
-  const rows = await db.all<Omit<DefaulterRow, 'sponsored'> & { sponsored: number }>(sql`
+  const rows = await db.all<
+    Omit<DefaulterRow, 'sponsored'> & { sponsored: number; credit: number }
+  >(sql`
     SELECT st.id AS student_id, st.name AS student_name, st.admission_no, st.family_id, f.name AS family_name,
       e.grp_id, CASE WHEN g.id IS NULL THEN NULL ELSE p.name || ' ' || g.name END AS "group",
       count(DISTINCT CASE WHEN cs.due_date < ${o.today} THEN cs.period_key END) AS months_overdue,
       sum(CASE WHEN cs.due_date < ${o.today} THEN cs.due ELSE 0 END) AS overdue,
-      sum(cs.due) AS due, min(cs.period_key) AS oldest_period, ${sponsoredSql} AS sponsored
+      sum(cs.due) AS due, min(cs.period_key) AS oldest_period, ${sponsoredSql} AS sponsored,
+      coalesce((SELECT pc.credit FROM payer_credit pc WHERE pc.payer_type = 'family' AND pc.payer_id = st.family_id), 0) AS credit
     FROM charge_status cs JOIN student st ON st.id = cs.student_id JOIN family f ON f.id = st.family_id
     LEFT JOIN enrolment e ON e.id = (SELECT e2.id FROM enrolment e2 WHERE e2.student_id = st.id
                                       AND e2.status = 'active' ORDER BY e2.is_primary DESC, e2.start_date DESC LIMIT 1)
@@ -340,9 +374,25 @@ export async function defaulters(
       ${o.studentScope ? sql`AND ${o.studentScope}` : sql``}
       ${o.excludeSponsored ? sql`AND NOT ${sponsoredSql}` : sql``}
     GROUP BY st.id
-    HAVING overdue > 0 AND months_overdue >= ${o.minMonths ?? 1} AND overdue >= ${o.minAmount ?? 1}
-    ORDER BY overdue DESC, st.name LIMIT ${o.limit ?? 1000}`);
-  return rows.map((r) => ({ ...r, sponsored: !!r.sponsored }));
+    HAVING overdue > 0 AND months_overdue >= ${o.minMonths ?? 1}
+    ORDER BY st.family_id, oldest_period, st.name, st.id`);
+  // Net of the family's unallocated credit (floor 0), spent oldest first across its children — the
+  // order credit would be applied in — so a family whose credit covers its dues is not a defaulter.
+  const left = new Map<string, { overdue: number; due: number }>();
+  const out: DefaulterRow[] = [];
+  for (const { credit, sponsored, ...r } of rows) {
+    const c = left.get(r.family_id) ?? { overdue: credit, due: credit };
+    const overdue = netOfCredit(r.overdue, c.overdue);
+    const due = netOfCredit(r.due, c.due);
+    c.overdue = Math.max(0, c.overdue - r.overdue);
+    c.due = Math.max(0, c.due - r.due);
+    left.set(r.family_id, c);
+    if (overdue <= 0 || overdue < (o.minAmount ?? 1)) continue;
+    out.push({ ...r, overdue, due, sponsored: !!sponsored });
+  }
+  return out
+    .sort((a, b) => b.overdue - a.overdue || a.student_name.localeCompare(b.student_name))
+    .slice(0, o.limit ?? 1000);
 }
 
 export type CollectionRow = {
@@ -422,7 +472,7 @@ export async function concessionRegister(
   return db.all<ConcessionRegisterRow>(sql`SELECT k.id, k.student_id, st.name AS student_name, st.admission_no,
       k.fee_head_id, h.name AS head_name, k.type, k.value, k.reason, k.note, u.name AS approved_by_name,
       k.valid_from, k.valid_to, k.ended_at, k.end_reason,
-      -coalesce((SELECT sum(x.amount) FROM charge x WHERE x.kind = 'concession'
+      -coalesce((SELECT sum(x.amount) FROM charge x WHERE x.kind IN ('concession', 'reversal')
                  AND x.reason = 'concession:' || k.id ${range}), 0) AS amount_given
     FROM concession k JOIN student st ON st.id = k.student_id LEFT JOIN fee_head h ON h.id = k.fee_head_id
     LEFT JOIN "user" u ON u.id = k.approved_by
@@ -445,6 +495,7 @@ export type SponsorStatement = {
   charges: RootLine[];
   receipts: ReceiptRow[];
   credit: number;
+  dues_hash: string;
   totals: { net: number; paid: number; due: number };
 };
 
@@ -473,6 +524,7 @@ export async function sponsorStatement(
     charges,
     receipts: await receiptsOf(db, 'sponsor', sponsorId),
     credit: await payerCredit(db, 'sponsor', sponsorId),
+    dues_hash: duesHash(charges),
     totals,
   };
 }

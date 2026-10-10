@@ -11,6 +11,7 @@
   "scripts": {
     "generate": "drizzle-kit generate && tsx scripts/sync-custom-sql.ts",
     "seed": "tsx scripts/seed.ts",
+    "verify": "tsx scripts/verify-db.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

@@ -24,7 +24,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:generate": "npm run generate -w @maktab/db",
     "db:migrate:local": "npm run migrate:local -w @maktab/api",
-    "db:seed": "npm run seed -w @maktab/db"
+    "db:seed": "npm run seed -w @maktab/db",
+    "db:verify": "npm run verify -w @maktab/db --"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

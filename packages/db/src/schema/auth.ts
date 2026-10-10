@@ -27,9 +27,10 @@ export const user = sqliteTable(
 export const role = sqliteTable(
   'role',
   {
+    // Explicit RESTRICT: users are disabled, never deleted (audit and created_by point at them).
     userId: text('user_id')
       .notNull()
-      .references(() => user.id),
+      .references(() => user.id, { onDelete: 'restrict' }),
     role: text('role', { enum: STAFF_ROLES }).notNull(),
     ...stamps(),
   },

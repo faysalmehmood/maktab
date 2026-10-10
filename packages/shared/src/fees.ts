@@ -34,7 +34,14 @@ export const CONCESSION_REASONS = [
   'needy',
   'other',
 ] as const;
-export const PAYMENT_METHODS = ['cash', 'bank', 'jazzcash', 'easypaisa'] as const;
+export const PAYMENT_METHODS = [
+  'cash',
+  'bank',
+  'jazzcash',
+  'easypaisa',
+  'cheque',
+  'other',
+] as const;
 export const ACCOUNT_KINDS = ['cash', 'bank', 'wallet'] as const;
 
 export const feeHeadInputSchema = z.object({
@@ -167,8 +174,17 @@ export const collectInputSchema = z.object({
   reference: optText(60),
   account_id: idSchema.nullable().optional(),
   note: optText(200),
-  /** Default today (Asia/Karachi); never in the future. */
+  /**
+   * Default today (Asia/Karachi). Only an owner/admin may enter yesterday, with `backdate_reason`
+   * (audited); anything else is 400 bad_business_date. The drawer session is always today's.
+   */
   business_date: isoDateSchema.optional(),
+  backdate_reason: optText(200),
+  /**
+   * `dues_hash` of the family view the collector was looking at (duesHash). If the payer's open dues
+   * changed since, the server answers 409 stale_dues instead of re-planning; ignored with `directed`.
+   */
+  expected_due_hash: z.string().trim().min(1).max(40).optional(),
   /** Pay exactly these open charges ("only Ali's March"); the rest is credit. */
   directed: z
     .array(z.object({ charge_id: idSchema, amount: positivePaisa }))
@@ -189,6 +205,9 @@ export const reverseInputSchema = z.object({
     })
     .optional(),
 });
+/** POST /api/charges/:id/void: a fee root or a fine, zeroed by a reversal line (PLAN §14.5). */
+export const voidChargeSchema = z.object({ reason: reqText(200) });
+
 export const refundInputSchema = z.object({
   idempotency_key: z.string().trim().min(8).max(80),
   payer_type: z.enum(['family', 'sponsor']).default('family'),
@@ -332,6 +351,11 @@ export type GenerateResultDto = {
   /** Send these back to continue; both null = the period is done. */
   next: { grp_id: string; after_student_id: string | null } | null;
   done: boolean;
+  /**
+   * This group's chunk failed and was logged (billing_chunk status 'failed', see GET /api/fees/runs);
+   * `next` already skips it, and the cron retries it on its next tick.
+   */
+  failed: { grp_id: string; code: string; message: string } | null;
 };
 
 export type ReceiptAllocationDto = {
@@ -389,14 +413,19 @@ export type FamilyStatementDto = {
   sponsored: FeeLineDto[];
   receipts: ReceiptDto[];
   credit: number;
+  /** Echo as `expected_due_hash` when collecting (duesHash of the open family roots). */
+  dues_hash: string;
   totals: {
     gross: number;
     concession: number;
     fine: number;
     net: number;
     paid: number;
+    /** Net of unallocated credit (due − credit, floor 0): what the family actually owes. */
     due: number;
     overdue: number;
+    /** Σ root dues before credit. */
+    due_before_credit: number;
   };
 };
 
@@ -458,7 +487,14 @@ export const RECEIPT_LABELS = {
     collector: 'Received by',
     signature: 'Signature',
     reversed_note: 'This receipt has been reversed',
-    methods: { cash: 'Cash', bank: 'Bank', jazzcash: 'JazzCash', easypaisa: 'EasyPaisa' },
+    methods: {
+      cash: 'Cash',
+      bank: 'Bank',
+      jazzcash: 'JazzCash',
+      easypaisa: 'EasyPaisa',
+      cheque: 'Cheque',
+      other: 'Other',
+    },
   },
   ur: {
     title: 'فیس رسید',
@@ -483,7 +519,14 @@ export const RECEIPT_LABELS = {
     collector: 'وصول کنندہ',
     signature: 'دستخط',
     reversed_note: 'یہ رسید منسوخ ہو چکی ہے',
-    methods: { cash: 'نقد', bank: 'بینک', jazzcash: 'جاز کیش', easypaisa: 'ایزی پیسہ' },
+    methods: {
+      cash: 'نقد',
+      bank: 'بینک',
+      jazzcash: 'جاز کیش',
+      easypaisa: 'ایزی پیسہ',
+      cheque: 'چیک',
+      other: 'دیگر',
+    },
   },
 } as const;
 
@@ -523,3 +566,25 @@ export type ReceiptPrintDto = {
   };
   reversed: boolean;
 };
+
+/**
+ * A short fingerprint of a payer's open dues (root id + amount due), order-independent. The family view
+ * returns it; the fee counter sends it back as `expected_due_hash`, so a collection made against a
+ * view that has since changed (another receipt, a concession, a fine) is refused rather than silently
+ * allocated differently from what the collector saw. FNV-1a over `id:due` lines, two 32-bit lanes.
+ */
+export function duesHash(rows: readonly { id: string; due: number }[]): string {
+  const text = rows
+    .filter((r) => r.due > 0)
+    .map((r) => `${r.id}:${r.due}`)
+    .sort()
+    .join('|');
+  let a = 0x811c9dc5;
+  let b = 0x01000193 ^ text.length;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193) >>> 0;
+    b = Math.imul(b ^ c, 0x5bd1e995) >>> 0;
+  }
+  return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+}

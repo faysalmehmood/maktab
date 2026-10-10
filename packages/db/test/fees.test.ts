@@ -11,6 +11,8 @@ import {
   collectionByCollector,
   defaulters,
   endConcession,
+  ensureSeries,
+  ensureSessionStatement,
   familyStatement,
   feeRegister,
   generateCharges,
@@ -23,6 +25,7 @@ import {
   reverseReceipt,
   roundRupee,
   runScheduled,
+  sessionIdFor,
   sponsorStatement,
   waiveFine,
 } from '../src/ledger';
@@ -116,6 +119,7 @@ const roots = (where = sql`1`) =>
     sql`SELECT c.student_id AS s, c.fee_head_id AS h, c.period_key AS p, c.payer_type AS pt, c.amount AS a, n.net, n.paid
         FROM charge c JOIN charge_net n ON n.id = c.id WHERE ${where} ORDER BY c.student_id, c.fee_head_id, c.payer_type, c.period_key`,
   );
+/** Collected on its business day (the counter only takes today, or yesterday for an admin). */
 const pay = (payer: string, amount: number, extra: Partial<Parameters<typeof collect>[1]> = {}) =>
   collect(db, {
     payerType: 'family',
@@ -123,6 +127,7 @@ const pay = (payer: string, amount: number, extra: Partial<Parameters<typeof col
     amount,
     method: 'cash',
     businessDate: '2026-10-05',
+    today: extra.businessDate ?? '2026-10-05',
     collectorId: 'U2',
     idempotencyKey: newId(),
     ...extra,
@@ -289,8 +294,9 @@ describe('generation', () => {
         .filter((c) => c.student_id === 'S7')
         .map((c) => [c.fee_head_id, c.amount, c.due_date]),
     ).toEqual([
-      ['ADM', RS(5000), '2026-10-16'],
-      ['TUI', RS(3000), '2026-10-16'],
+      // A mid-period joiner gets the month's grace from their start: 10-16 + (due day 10 − 1) days.
+      ['ADM', RS(5000), '2026-10-25'],
+      ['TUI', RS(3000), '2026-10-25'],
     ]);
     await gen('2026-10', 'G5A', { proRata: true });
     await gen('2026-11', 'G5A');
@@ -535,6 +541,11 @@ describe('collection', () => {
       reason: 'keyed 5000 instead of 4000',
       series: { series: 'R', year: 2026 },
       businessDate: '2026-10-06',
+      prelude: [
+        ensureSeries({ series: 'R', year: 2026 }),
+        ensureSessionStatement('U1', '2026-10-06'),
+      ],
+      cashSessionId: sessionIdFor('U1', '2026-10-06'),
       reenter: { amount: RS(4000), allocations: [] },
     });
     expect(reversalId).toBeTruthy();
@@ -727,7 +738,9 @@ describe('reports', () => {
       payerId: 'SP',
       amount: RS(1500),
       method: 'bank',
+      accountId: 'BANK',
       businessDate: '2026-10-05',
+      today: '2026-10-05',
       collectorId: 'U1',
       idempotencyKey: newId(),
     });

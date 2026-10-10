@@ -163,6 +163,13 @@ export const billingChunk = sqliteTable(
     sponsored: integer('sponsored').notNull().default(0),
     fines: integer('fines').notNull().default(0),
     allocations: integer('allocations').notNull().default(0),
+    /**
+     * 'ok' or 'failed' (checked by a trigger in sql/50_fees.sql, not a CHECK, so the column could be
+     * added without a rebuild). A failed chunk wrote nothing else; it is retried on the next tick.
+     */
+    status: text('status').notNull().default('ok'),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
     ...stamps(),
   },
   (t) => [
@@ -308,7 +315,14 @@ export const cashSession = sqliteTable(
  * session, never income, never reversible.
  */
 export const RECEIPT_KINDS = ['payment', 'reversal', 'refund', 'opening'] as const;
-export const PAYMENT_METHODS = ['cash', 'bank', 'jazzcash', 'easypaisa'] as const;
+export const PAYMENT_METHODS = [
+  'cash',
+  'bank',
+  'jazzcash',
+  'easypaisa',
+  'cheque',
+  'other',
+] as const;
 
 export const receipt = sqliteTable(
   'receipt',
@@ -438,7 +452,8 @@ export const expense = sqliteTable(
   ],
 );
 
-export const PAYSLIP_STATUSES = ['draft', 'approved', 'paid'] as const;
+/** 'void' (M3 fix pass, last enum pass before the pilot): a draft or approved slip that is never paid. */
+export const PAYSLIP_STATUSES = ['draft', 'approved', 'paid', 'void'] as const;
 
 export const payslip = sqliteTable(
   'payslip',
@@ -455,7 +470,7 @@ export const payslip = sqliteTable(
   (t) => [
     unique('payslip_once').on(t.staffId, t.periodKey),
     check('payslip_status', oneOf('status', PAYSLIP_STATUSES)),
-    check('payslip_approved_by', sql`"status" = 'draft' OR "approved_by" IS NOT NULL`),
+    check('payslip_approved_by', sql`"status" IN ('draft', 'void') OR "approved_by" IS NOT NULL`),
   ],
 );
 

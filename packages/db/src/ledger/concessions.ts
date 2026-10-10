@@ -2,14 +2,19 @@ import { newId } from '@maktab/shared';
 import { type SQL, sql } from 'drizzle-orm';
 import type { AppDb } from '../client';
 import { allocationsStatement, planRelease } from './alloc';
+import { applyCreditFor } from './collect';
 import {
   chargeStatements,
   chunkLogStatement,
   type GenCounts,
+  type LiveConcession,
+  liveOn,
   loadContext,
   type PlannedCharge,
   planCharges,
   planCreditForFamilies,
+  referenceDay,
+  sponsorShares,
   studentEnrolments,
 } from './generate';
 import type { AllocationInput } from './index';
@@ -19,7 +24,6 @@ import {
   DATE_RE,
   FeeError,
   feeSettings,
-  periodEnd,
   periodStart,
   roundRupee,
   runBatch,
@@ -109,7 +113,15 @@ export async function endConcession(
   ]);
 }
 
-export type LateConcession = { id: string; root_id: string; concession_id: string; amount: number };
+/** A line a late concession adds: a concession on the family root, or a re-bill on a sponsor root. */
+export type LateConcession = {
+  id: string;
+  root_id: string;
+  concession_id: string;
+  amount: number;
+  /** 'family' = concession line; 'sponsor' = reversal line re-billing the sponsor's share. */
+  payer_type: 'family' | 'sponsor';
+};
 
 export type RegenerateResult = {
   period: string;
@@ -117,15 +129,34 @@ export type RegenerateResult = {
   dry_run: boolean;
   planned: PlannedCharge[];
   late_concessions: LateConcession[];
-  counts: GenCounts & { late_concessions: number; released: number };
+  counts: GenCounts & { late_concessions: number; released: number; credit_applied: number };
+};
+
+type UnitRoot = {
+  id: string;
+  fee_head_id: string;
+  head_kind: string;
+  payer_type: 'family' | 'sponsor';
+  payer_id: string;
+  enrolment_id: string | null;
+  amount: number;
+  /** amount + concession and reversal lines: the fee part a reduction may still take. */
+  fee_part: number;
+  net: number;
+  paid: number;
+  reasons: string | null;
 };
 
 /**
  * Re-bills one student for one period (PLAN §14.7 "the current month can be re-generated"):
- * missing units are generated as usual, and every live concession not yet on an existing family
- * root is added to it — after releasing what was paid beyond the new net, so the money becomes
- * credit. Sponsor shares already billed are left as they are (the concession reduces the family's
- * line only, capped at the fee part of its net). One batch; re-running is a no-op.
+ * missing units are generated as usual, and every concession live on the period's reference day
+ * (generate.ts liveOn/referenceDay — the same rule as generation) that is not yet on the unit is
+ * added. The discount is split the way a fresh generation would have split it: sponsors are re-billed
+ * on the new base N' (their share of N' − their share of N, as a `reversal` line under the sponsor
+ * root, since concessions are family lines only) and the family line takes the rest as the
+ * `concession` line. Whatever was paid beyond a root's new net is released first in the same batch
+ * (the money becomes credit), and that credit is applied to the payers' dues in a second batch.
+ * Re-running is a no-op.
  */
 export async function regenerateForStudent(
   db: AppDb,
@@ -137,47 +168,94 @@ export async function regenerateForStudent(
   const ctx = await loadContext(db, input.period, enrolments, settings);
   const plan = planCharges(ctx, enrolments, { proRata: input.proRata });
 
-  // Existing family roots of this period, with what a late concession is measured against.
-  const roots = await db.all<{
-    id: string;
-    fee_head_id: string;
-    head_kind: string;
-    amount: number;
-    concessions: number;
-    sponsored: number;
-    net: number;
-    paid: number;
-    reasons: string | null;
-  }>(sql`SELECT c.id, c.fee_head_id, h.kind AS head_kind, c.amount,
-      coalesce((SELECT sum(x.amount) FROM charge x WHERE x.parent_charge_id = c.id AND x.kind = 'concession'), 0) AS concessions,
-      coalesce((SELECT sum(s.amount) FROM charge s WHERE s.kind = 'fee' AND s.payer_type = 'sponsor'
-                AND s.student_id = c.student_id AND s.fee_head_id = c.fee_head_id AND s.period_key = c.period_key), 0) AS sponsored,
+  const roots = await db.all<UnitRoot>(sql`SELECT c.id, c.fee_head_id, h.kind AS head_kind,
+      c.payer_type, c.payer_id, c.enrolment_id, c.amount,
+      c.amount + coalesce((SELECT sum(x.amount) FROM charge x WHERE x.parent_charge_id = c.id
+                             AND x.kind IN ('concession', 'reversal')), 0) AS fee_part,
       n.net, n.paid,
-      (SELECT json_group_array(x.reason) FROM charge x WHERE x.parent_charge_id = c.id AND x.kind = 'concession') AS reasons
+      (SELECT json_group_array(x.reason) FROM charge x WHERE x.parent_charge_id = c.id) AS reasons
     FROM charge c JOIN fee_head h ON h.id = c.fee_head_id JOIN charge_net n ON n.id = c.id
-    WHERE c.kind = 'fee' AND c.payer_type = 'family' AND c.student_id = ${input.studentId}
-      AND c.period_key = ${input.period}
-    ORDER BY c.id`);
+    WHERE c.kind = 'fee' AND c.parent_charge_id IS NULL AND c.student_id = ${input.studentId}
+      AND c.period_key = ${input.period} AND c.enrolment_id IS NOT NULL
+    ORDER BY c.payer_type, c.id`);
+  const units = new Map<string, UnitRoot[]>();
+  for (const r of roots) units.set(r.fee_head_id, [...(units.get(r.fee_head_id) ?? []), r]);
 
   const late: LateConcession[] = [];
-  for (const r of roots) {
-    const have = new Set<string>(JSON.parse(r.reasons ?? '[]'));
-    const gross = r.amount + r.sponsored;
-    let feePart = r.amount + r.concessions; // what concessions may still take off this line
-    let net = r.net;
+  for (const unitRoots of units.values()) {
+    const family = unitRoots.find((r) => r.payer_type === 'family');
+    const sponsors = unitRoots.filter((r) => r.payer_type === 'sponsor');
+    const first = unitRoots[0] as UnitRoot;
+    const e = enrolments.find((x) => x.id === first.enrolment_id);
+    const ref = e ? referenceDay(ctx, e) : periodStart(input.period);
+    const have = new Set<string>(unitRoots.flatMap((r) => JSON.parse(r.reasons ?? '[]')));
+    const gross = unitRoots.reduce((a, r) => a + r.amount, 0);
+    let kTotal = family ? family.amount - family.fee_part : 0; // concessions already given
+    const lines: { c: LiveConcession; amount: number }[] = [];
     for (const c of ctx.concessions) {
-      if (c.student_id !== input.studentId) continue;
-      if (c.fee_head_id ? c.fee_head_id !== r.fee_head_id : r.head_kind !== 'tuition') continue;
+      if (c.student_id !== input.studentId || !liveOn(c, ref)) continue;
+      if (c.fee_head_id ? c.fee_head_id !== first.fee_head_id : first.head_kind !== 'tuition')
+        continue;
       if (have.has(`concession:${c.id}`)) continue;
       const want = c.type === 'pct' ? roundRupee(gross * c.value, 100) : c.value;
-      const amount = Math.min(want, feePart, net);
+      const amount = Math.min(want, gross - kTotal);
       if (amount <= 0) continue;
-      late.push({ id: newId(), root_id: r.id, concession_id: c.id, amount });
-      feePart -= amount;
-      net -= amount;
+      lines.push({ c, amount });
+      kTotal += amount;
     }
+    if (!lines.length) continue;
+    // The sponsors' shares on the new base; each sponsor root only ever goes down.
+    const owedNew = gross - kTotal;
+    const live = ctx.sponsorships.filter(
+      (s) =>
+        s.student_id === input.studentId &&
+        (!s.fee_head_id || s.fee_head_id === first.fee_head_id) &&
+        liveOn(s, ref),
+    );
+    const targets = new Map(sponsorShares(live, owedNew).map((t) => [t.sponsor_id, t.amount]));
+    const cut = new Map<string, number>();
+    for (const sr of sponsors) {
+      const target = targets.get(sr.payer_id);
+      if (target === undefined) continue;
+      cut.set(sr.id, Math.max(0, Math.min(sr.fee_part - target, sr.net - 0)));
+    }
+    const totalL = lines.reduce((a, l) => a + l.amount, 0);
+    let familyLeft = family?.fee_part ?? 0;
+    const cutLeft = new Map(cut);
+    lines.forEach((l, i) => {
+      const last = i === lines.length - 1;
+      let sponsorPart = 0;
+      for (const sr of sponsors) {
+        const total = cut.get(sr.id) ?? 0;
+        const left = cutLeft.get(sr.id) ?? 0;
+        if (left <= 0) continue;
+        const share = last ? left : Math.min(left, roundRupee(total * l.amount, totalL));
+        if (share <= 0) continue;
+        late.push({
+          id: newId(),
+          root_id: sr.id,
+          concession_id: l.c.id,
+          amount: share,
+          payer_type: 'sponsor',
+        });
+        cutLeft.set(sr.id, left - share);
+        sponsorPart += share;
+      }
+      const familyPart = Math.min(Math.max(0, l.amount - sponsorPart), familyLeft);
+      if (family && familyPart > 0) {
+        late.push({
+          id: newId(),
+          root_id: family.id,
+          concession_id: l.c.id,
+          amount: familyPart,
+          payer_type: 'family',
+        });
+        familyLeft -= familyPart;
+      }
+    });
   }
-  // Release, per root, what was paid beyond the new net (all late lines on it together).
+
+  // Release, per root, what was paid beyond its new net (all late lines on it together).
   const surplus = new Map<string, number>();
   for (const r of roots) {
     const total = late.filter((l) => l.root_id === r.id).reduce((a, l) => a + l.amount, 0);
@@ -189,8 +267,8 @@ export async function regenerateForStudent(
   const releasedTotal = [...surplus.values()].reduce((a, n) => a + n, 0);
 
   const families = [...new Set(enrolments.map((e) => e.family_id))];
-  // Credit is applied only to fresh charges when nothing is being reduced: a late concession changes
-  // dues the credit planner would read before this batch lowers them.
+  // In-batch credit only for fresh charges when nothing is being reduced (a late line changes dues
+  // the credit planner would read before this batch lowers them); the second batch below covers it.
   const credit =
     input.dryRun || late.length ? [] : await planCreditForFamilies(db, families, plan, 200);
   const result = (counts: RegenerateResult['counts']): RegenerateResult => ({
@@ -209,6 +287,7 @@ export async function regenerateForStudent(
       allocations: 0,
       late_concessions: late.length,
       released: releasedTotal,
+      credit_applied: 0,
     });
 
   const stmts: SQL[] = chargeStatements(input.period, plan, input.by);
@@ -218,17 +297,25 @@ export async function regenerateForStudent(
       WHERE NOT EXISTS (SELECT 1 FROM billing_run WHERE period_key = ${input.period})`);
   const rel = allocationsStatement(releases);
   if (rel) stmts.push(rel);
-  for (const l of late)
+  for (const l of late) {
+    const kind = l.payer_type === 'family' ? 'concession' : 'reversal';
     stmts.push(sql`INSERT INTO charge (id, student_id, enrolment_id, fee_head_id, period_key, payer_type,
         payer_id, amount, due_date, kind, parent_charge_id, reason, created_by)
       SELECT ${l.id}, student_id, enrolment_id, fee_head_id, period_key, payer_type, payer_id, ${-l.amount},
-             due_date, 'concession', id, ${`concession:${l.concession_id}`}, ${input.by}
+             due_date, ${kind}, id, ${`concession:${l.concession_id}`}, ${input.by}
       FROM charge WHERE id = ${l.root_id}
         AND NOT EXISTS (SELECT 1 FROM charge x WHERE x.parent_charge_id = ${l.root_id}
-                          AND x.kind = 'concession' AND x.reason = ${`concession:${l.concession_id}`})`);
+                          AND x.reason = ${`concession:${l.concession_id}`})`);
+  }
   const alloc = allocationsStatement(credit, true);
   if (alloc) stmts.push(alloc);
-  if (!stmts.length) return result({ ...zero, late_concessions: 0, released: 0 });
+  if (!stmts.length) {
+    const applied = await applyCreditFor(
+      db,
+      families.map((f) => ({ payerType: 'family' as const, payerId: f })),
+    );
+    return result({ ...zero, late_concessions: 0, released: 0, credit_applied: applied });
+  }
   stmts.push(
     chunkLogStatement({
       period: input.period,
@@ -237,7 +324,12 @@ export async function regenerateForStudent(
       studentId: input.studentId,
       nextStudentId: null,
       done: true,
-      plan: [...plan, ...late.map((l) => ({ id: l.id, kind: 'concession', payer_type: 'family' }))],
+      plan: [
+        ...plan,
+        ...late
+          .filter((l) => l.payer_type === 'family')
+          .map((l) => ({ id: l.id, kind: 'concession', payer_type: 'family' })),
+      ],
       allocationIds: credit.map((a) => a.id),
       by: input.by,
     }),
@@ -252,6 +344,7 @@ export async function regenerateForStudent(
         new_charges: plan.length,
         late_concessions: late.map((l) => ({
           root_id: l.root_id,
+          payer_type: l.payer_type,
           concession_id: l.concession_id,
           amount: l.amount,
         })),
@@ -265,17 +358,38 @@ export async function regenerateForStudent(
       (SELECT count(*) FROM charge WHERE id IN (SELECT value FROM json_each(${JSON.stringify(plan.filter((c) => c.kind === 'concession').map((c) => c.id))}))) AS concessions,
       (SELECT count(*) FROM charge WHERE id IN (SELECT value FROM json_each(${JSON.stringify(plan.filter((c) => c.payer_type === 'sponsor').map((c) => c.id))}))) AS sponsored,
       (SELECT count(*) FROM receipt_allocation WHERE id IN (SELECT value FROM json_each(${JSON.stringify(credit.map((c) => c.id))}))) AS allocations`);
+  // Second batch: released (or pre-existing) credit goes to the payers' open dues, oldest first.
+  const payers = [
+    ...families.map((f) => ({ payerType: 'family' as const, payerId: f })),
+    ...roots
+      .filter((r) => r.payer_type === 'sponsor')
+      .map((r) => ({ payerType: 'sponsor' as const, payerId: r.payer_id })),
+    ...plan
+      .filter((c) => c.payer_type === 'sponsor')
+      .map((c) => ({ payerType: 'sponsor' as const, payerId: c.payer_id })),
+  ];
+  const applied = await applyCreditFor(db, payers);
   return result({
     ...(n ?? zero),
-    late_concessions: late.length,
+    late_concessions: late.filter((l) => l.payer_type === 'family').length,
     released: releasedTotal,
+    credit_applied: applied,
   });
 }
 
 const zero: GenCounts = { fees: 0, concessions: 0, sponsored: 0, allocations: 0 };
 
-/** Live concessions of a student for a period (for previews and the family view). */
-export async function liveConcessions(db: AppDb, studentId: string, period: string) {
+/**
+ * Concessions of a student that apply to a period (for previews and the family view): live on the
+ * period's first day, or on `fromDay` (an enrolment starting later in the period) — the generation rule.
+ */
+export async function liveConcessions(
+  db: AppDb,
+  studentId: string,
+  period: string,
+  fromDay?: string,
+) {
+  const day = fromDay && fromDay > periodStart(period) ? fromDay : periodStart(period);
   return db.all<{
     id: string;
     fee_head_id: string | null;
@@ -283,8 +397,8 @@ export async function liveConcessions(db: AppDb, studentId: string, period: stri
     value: number;
     reason: string;
   }>(sql`SELECT id, fee_head_id, type, value, reason FROM concession
-    WHERE student_id = ${studentId} AND valid_from <= ${periodEnd(period)}
-      AND (valid_to IS NULL OR valid_to >= ${periodStart(period)})
-      AND (ended_at IS NULL OR ended_at > ${periodStart(period)})
+    WHERE student_id = ${studentId} AND valid_from <= ${day}
+      AND (valid_to IS NULL OR valid_to >= ${day})
+      AND (ended_at IS NULL OR ended_at > ${day})
     ORDER BY created_at, id`);
 }

@@ -531,6 +531,7 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           group_done: true,
           next: null,
           done: true,
+          failed: null,
         };
         return c.json(body);
       }
@@ -558,6 +559,7 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         group_done: r.group_done,
         next,
         done: next === null,
+        failed: null,
       };
       return c.json(body);
     },
