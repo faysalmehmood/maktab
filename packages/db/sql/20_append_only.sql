@@ -1,5 +1,6 @@
 -- Money is append-only (PLAN §5.2). Corrections are new rows (reversal, concession end + new row, void).
 -- RAISE(ABORT) inside a D1 batch rolls back the whole batch; app code matches on the message text.
+-- Re-emitted by migration 0009: 0008 rebuilt `receipt`, which dropped the receipt triggers below.
 
 CREATE TRIGGER charge_no_update BEFORE UPDATE ON charge BEGIN SELECT RAISE(ABORT, 'charge is append-only'); END;
 --> statement-breakpoint

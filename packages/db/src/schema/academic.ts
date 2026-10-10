@@ -42,6 +42,16 @@ export const school = sqliteTable(
     attendanceMode: text('attendance_mode', { enum: ATTENDANCE_MODES }).notNull().default('daily'),
     /** JSON array of weekdays with no school (0 = Sunday … 6 = Saturday); Sunday by default. */
     weeklyOff: text('weekly_off').notNull().default('[0]'),
+    /**
+     * Late fine (PLAN §14.1, §14.5) as JSON `{enabled, grace_day 1–28, type 'fixed'|'pct', value,
+     * cap}`; validated by the API (a CHECK would rebuild the table). The grace day is also the
+     * monthly due day. NULL = no fines, due on the 10th.
+     */
+    fineRule: text('fine_rule'),
+    /** Sibling auto-concession (PLAN §14.2) as JSON `[{nth, pct}]`: the nth child gets pct off tuition. */
+    siblingRule: text('sibling_rule'),
+    /** Fee reminder cooldown per family and template, in days (PLAN §14.9). */
+    reminderCooldownDays: integer('reminder_cooldown_days').notNull().default(7),
     ...stamps(),
   },
   () => [check('school_mode', oneOf('mode', SCHOOL_MODES))],

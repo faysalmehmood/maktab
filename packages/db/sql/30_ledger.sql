@@ -1,4 +1,5 @@
 -- Ledger invariants and derived views (experiment 1, hardened after the M0 review; ADR 0002).
+-- Re-emitted in full by migration 0009 after 0008 rebuilt `receipt` (receipt kind 'opening', M3).
 -- Charge tree: only `fee` rows are roots. concession / fine / reversal hang off a fee; fine_waiver (and a
 -- reversal of a fine) hang off the fine, so a tree is at most two levels deep. Net = sum of the tree.
 -- Allocations always target the root. Kind signs and the root rule are CHECKs on the table.
@@ -94,7 +95,7 @@ END;
 --> statement-breakpoint
 
 -- Per (receipt, charge) pair, running sums decide (a negative row on a payment is a *release*):
---   payment:  0 <= pair sum, sum over the receipt <= receipt amount, payer credit stays >= 0;
+--   payment (and opening credit, which behaves like one):  0 <= pair sum, sum over the receipt <= receipt amount, payer credit stays >= 0;
 --   reversal: pair sum <= 0, and |pair sum| <= the reversed payment's pair sum on that charge.
 -- One trigger so the checks run in a fixed order (the first violated rule names the error).
 CREATE TRIGGER alloc_sums AFTER INSERT ON receipt_allocation
@@ -102,7 +103,7 @@ BEGIN
   SELECT RAISE(ABORT, 'release exceeds what this receipt allocated to the charge')
   FROM receipt r, (SELECT sum(amount) AS pair FROM receipt_allocation
                    WHERE receipt_id = NEW.receipt_id AND charge_id = NEW.charge_id) p
-  WHERE r.id = NEW.receipt_id AND r.kind = 'payment' AND p.pair < 0;
+  WHERE r.id = NEW.receipt_id AND r.kind IN ('payment', 'opening') AND p.pair < 0;
   SELECT RAISE(ABORT, 'reversal can only unwind what the original allocated')
   FROM receipt r, (SELECT sum(amount) AS pair FROM receipt_allocation
                    WHERE receipt_id = NEW.receipt_id AND charge_id = NEW.charge_id) p
@@ -161,7 +162,7 @@ GROUP BY r.payer_type, r.payer_id;
 --> statement-breakpoint
 
 -- Rows that should never exist if every write went through the ledger helpers. Empty when healthy;
--- the nightly alarm on it is M6. For a payment, `expected` is the upper bound (its amount).
+-- the nightly alarm on it is M6. For a payment (or opening credit), `expected` is the upper bound.
 CREATE VIEW ledger_consistency AS
 SELECT 'negative_credit' AS issue, payer_type, payer_id, NULL AS receipt_id, 0 AS expected, credit AS actual
 FROM payer_credit
@@ -176,5 +177,5 @@ FROM (SELECT r.kind || '_allocations' AS issue, r.payer_type, r.payer_id, r.id A
                ELSE r.amount END AS expected,
              (SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a WHERE a.receipt_id = r.id) AS actual
       FROM receipt r) x
-WHERE CASE WHEN issue = 'payment_allocations' THEN actual < 0 OR actual > expected
+WHERE CASE WHEN issue IN ('payment_allocations', 'opening_allocations') THEN actual < 0 OR actual > expected
            ELSE actual <> expected END;

@@ -24,8 +24,12 @@ export const feeHead = sqliteTable(
   {
     id: id(),
     name: text('name').notNull(),
+    /** Printed on Urdu receipts and the parent page. */
+    nameUr: text('name_ur'),
     kind: text('kind', { enum: FEE_HEAD_KINDS }).notNull(),
     cadence: text('cadence', { enum: FEE_CADENCES }).notNull(),
+    /** Archived heads are never generated again; their old charges stay (FK). */
+    archivedAt: text('archived_at'),
     ...stamps(),
   },
   () => [
@@ -124,6 +128,7 @@ export const sponsorship = sqliteTable(
   () => [check('sponsorship_share', sql`"share_pct" BETWEEN 1 AND 100`)],
 );
 
+/** One row per billed period (the run header); per-chunk counts and the cron cursor live in billing_chunk. */
 export const billingRun = sqliteTable('billing_run', {
   id: id(),
   periodKey: text('period_key').notNull().unique(),
@@ -132,6 +137,39 @@ export const billingRun = sqliteTable('billing_run', {
   note: text('note'),
   ...stamps(),
 });
+
+export const BILLING_CHUNK_KINDS = ['fees', 'fines'] as const;
+
+/**
+ * Append-only log of one generation or fine request (PLAN §5.2 "billing_run per (period, scope)"):
+ * billing_run.period_key is UNIQUE and append-only, so the per-scope rows live here. `grp_id` +
+ * `next_student_id` are the cursor of a chunked group (NULL next = the group is done); `student_id`
+ * marks a single-student run (admission, regenerate). Counts are of rows actually inserted.
+ */
+export const billingChunk = sqliteTable(
+  'billing_chunk',
+  {
+    id: id(),
+    runId: text('run_id')
+      .notNull()
+      .references(() => billingRun.id),
+    kind: text('kind', { enum: BILLING_CHUNK_KINDS }).notNull(),
+    grpId: text('grp_id').references(() => grp.id),
+    studentId: text('student_id').references(() => student.id),
+    nextStudentId: text('next_student_id'),
+    done: integer('done').notNull().default(1),
+    fees: integer('fees').notNull().default(0),
+    concessions: integer('concessions').notNull().default(0),
+    sponsored: integer('sponsored').notNull().default(0),
+    fines: integer('fines').notNull().default(0),
+    allocations: integer('allocations').notNull().default(0),
+    ...stamps(),
+  },
+  (t) => [
+    check('billing_chunk_kind', oneOf('kind', BILLING_CHUNK_KINDS)),
+    index('billing_chunk_run').on(t.runId, t.kind, t.grpId),
+  ],
+);
 
 export const PAYER_TYPES = ['family', 'sponsor'] as const;
 export const CHARGE_KINDS = ['fee', 'concession', 'fine', 'fine_waiver', 'reversal'] as const;
@@ -183,6 +221,7 @@ export const charge = sqliteTable(
     index('charge_student').on(t.studentId),
     index('charge_enrolment').on(t.enrolmentId),
     index('charge_due_date').on(t.dueDate),
+    index('charge_period').on(t.periodKey, t.payerType, t.payerId),
   ],
 );
 
@@ -263,7 +302,12 @@ export const cashSession = sqliteTable(
   ],
 );
 
-export const RECEIPT_KINDS = ['payment', 'reversal', 'refund'] as const;
+/**
+ * Final before the pilot (PLAN §15 enum rule). `opening` = go-live carry-in credit (a negative
+ * opening balance): payer credit like a payment, but no money moved — no series number, no cash
+ * session, never income, never reversible.
+ */
+export const RECEIPT_KINDS = ['payment', 'reversal', 'refund', 'opening'] as const;
 export const PAYMENT_METHODS = ['cash', 'bank', 'jazzcash', 'easypaisa'] as const;
 
 export const receipt = sqliteTable(
@@ -297,7 +341,7 @@ export const receipt = sqliteTable(
     // payment: money in. reversal: exact negative mirror of one payment. refund: money out of credit.
     check(
       'receipt_kind_shape',
-      sql`CASE "kind" WHEN 'payment' THEN "amount" > 0 AND "reverses_id" IS NULL WHEN 'reversal' THEN "amount" < 0 AND "reverses_id" IS NOT NULL WHEN 'refund' THEN "amount" < 0 AND "reverses_id" IS NULL ELSE 0 END`,
+      sql`CASE "kind" WHEN 'payment' THEN "amount" > 0 AND "reverses_id" IS NULL WHEN 'opening' THEN "amount" > 0 AND "reverses_id" IS NULL AND "cash_session_id" IS NULL WHEN 'reversal' THEN "amount" < 0 AND "reverses_id" IS NOT NULL WHEN 'refund' THEN "amount" < 0 AND "reverses_id" IS NULL ELSE 0 END`,
     ),
     integerMoney('receipt', 'amount'),
     index('receipt_payer').on(t.payerType, t.payerId),

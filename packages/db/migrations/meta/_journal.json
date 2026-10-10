@@ -57,6 +57,20 @@
       "when": 1791637119309,
       "tag": "0007_message_call_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791639651565,
+      "tag": "0008_m3_fees",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791639652412,
+      "tag": "0009_m3_fee_rules",
+      "breakpoints": true
     }
   ]
 }

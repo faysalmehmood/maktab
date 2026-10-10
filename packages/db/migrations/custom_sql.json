@@ -23,6 +23,15 @@
         "10_indexes.sql": "58a378a7429ce687c51d307e7d2536cad6f7757e53984ab64e5a7f8e55be84f2",
         "40_foundation.sql": "cd7f5e7a1254dcdf55bdfe2ed4d5c9cff9c6aeca0b0c064a91d0a982a14bd41c"
       }
+    },
+    {
+      "migration": "0009_m3_fee_rules",
+      "sha256": "19eb5eee807373b4964defbe08514b76b8be1880896993e2ba0bee4253b95a5a",
+      "files": {
+        "20_append_only.sql": "a94673450303c0163b49cf6041ca66749a10716174da2ca34ec92510d92bb1c5",
+        "30_ledger.sql": "8449f9ad0e2484c10f225471fabf62646fc5ac6a72fb87d7fafef612494875b3",
+        "50_fees.sql": "6ecd3b86d75e196f98b791df9a4d3640bf5eeba0d57939ab4803ed0b43da87f2"
+      }
     }
   ]
 }
