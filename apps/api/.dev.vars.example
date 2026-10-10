@@ -1,0 +1,6 @@
+# Copy to .dev.vars (gitignored) for `wrangler dev`.
+# Generate a secret with: node -e "console.log(crypto.randomUUID()+crypto.randomUUID())"
+SESSION_SECRET=dev-only-secret-change-me-at-least-32-chars
+# OAuth client (Web application) with redirect URI http://localhost:5173/api/auth/google/callback
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

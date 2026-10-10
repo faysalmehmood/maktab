@@ -1,0 +1,130 @@
+# Nightly encrypted backup of the D1 database (PLAN §9 layer 2). Adapted from experiment 5; the
+# cloud half has not run yet. Runbook: docs/restore.md
+#
+# Enable by setting repository variable BACKUP_ENABLED=true (forks and clones stay quiet otherwise).
+# Repository variables (Settings → Secrets and variables → Variables):
+#   D1_DATABASE_NAME   default "maktab"           BACKUP_R2_BUCKET   default "maktab-backups"
+# Secrets:
+#   CLOUDFLARE_API_TOKEN  (Account > D1 > Edit ; Account > Workers R2 Storage > Edit)
+#   CLOUDFLARE_ACCOUNT_ID
+#   AGE_RECIPIENT         age public key "age1..."; the PRIVATE key stays offline with two trustees
+#   B2_KEY_ID, B2_APP_KEY, B2_BUCKET, B2_ENDPOINT (e.g. https://s3.us-west-004.backblazeb2.com)
+# R2 retention: set a lifecycle rule (daily/ 95 days, monthly/ 740 days) instead of pruning here.
+name: nightly-backup
+on:
+  schedule:
+    - cron: "30 21 * * *" # 02:30 PKT: `d1 export --remote` blocks the DB while it runs.
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  issues: write
+concurrency: { group: nightly-backup, cancel-in-progress: false }
+env:
+  DB_NAME: ${{ vars.D1_DATABASE_NAME || 'maktab' }}
+  R2_BUCKET: ${{ vars.BACKUP_R2_BUCKET || 'maktab-backups' }}
+  WRANGLER_VERSION: 4.149.0
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+jobs:
+  backup:
+    if: ${{ vars.BACKUP_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install wrangler, age, rclone
+        run: |
+          npm i --no-save "wrangler@$WRANGLER_VERSION"
+          sudo apt-get update -qq && sudo apt-get install -y -qq age rclone
+
+      - name: Export D1 (remote)
+        run: |
+          set -euo pipefail
+          npx wrangler d1 export "$DB_NAME" --remote --output dump.sql
+          test -s dump.sql
+          # Sanity: core tables and the ledger triggers must be in the dump. An owner always exists.
+          grep -Eq 'CREATE TABLE [`"]?receipt[`"]? ' dump.sql
+          grep -Eq 'CREATE TABLE [`"]?charge[`"]? ' dump.sql
+          grep -q 'alloc_within_charge' dump.sql
+          grep -Eq 'INSERT INTO [`"]?user[`"]? ' dump.sql
+
+      - name: Compress + encrypt
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y-%m-%dT%H%MZ)
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          gzip -9 dump.sql
+          gzip -t dump.sql.gz
+          age -r "${{ secrets.AGE_RECIPIENT }}" -o "maktab-$STAMP.sql.gz.age" dump.sql.gz
+          sha256sum "maktab-$STAMP.sql.gz.age" > "maktab-$STAMP.sql.gz.age.sha256"
+          echo "ENC_BYTES=$(stat -c%s maktab-$STAMP.sql.gz.age)" >> "$GITHUB_ENV"
+
+      - name: Verify (never decrypts here, by design)
+        # Decrypting needs the private key; keeping it out of GitHub means a repo compromise cannot read
+        # student data. Checks: gzip integrity before encryption (above), age header, size regression.
+        run: |
+          set -euo pipefail
+          head -c 30 "maktab-$STAMP.sql.gz.age" | grep -q 'age-encryption.org'
+          npx wrangler r2 object get "$R2_BUCKET/daily/LAST_SIZE" --remote --file last_size 2>/dev/null || echo 0 > last_size
+          PREV=$(cat last_size); NOW=$ENC_BYTES
+          echo "prev=$PREV now=$NOW"
+          if [ "$PREV" -gt 0 ] && [ "$NOW" -lt $((PREV/2)) ]; then echo "::error::backup shrank by >50%"; exit 1; fi
+          if [ "$NOW" -lt 1000 ]; then echo "::error::backup suspiciously small"; exit 1; fi
+          echo "$NOW" > last_size
+
+      - name: Upload to R2
+        run: |
+          set -euo pipefail
+          F="maktab-$STAMP.sql.gz.age"
+          npx wrangler r2 object put "$R2_BUCKET/daily/$F" --file "$F" --remote
+          npx wrangler r2 object put "$R2_BUCKET/daily/$F.sha256" --file "$F.sha256" --remote
+          npx wrangler r2 object put "$R2_BUCKET/daily/LAST_SIZE" --file last_size --remote
+          if [ "$(date -u +%d)" = "01" ]; then
+            npx wrangler r2 object put "$R2_BUCKET/monthly/$F" --file "$F" --remote
+          fi
+
+      - name: Upload to Backblaze B2 (second provider)
+        env:
+          RCLONE_CONFIG_B2_TYPE: s3
+          RCLONE_CONFIG_B2_PROVIDER: Other
+          RCLONE_CONFIG_B2_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          RCLONE_CONFIG_B2_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
+          RCLONE_CONFIG_B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          F="maktab-$STAMP.sql.gz.age"
+          B2="B2:${{ secrets.B2_BUCKET }}"
+          rclone copyto "$F" "$B2/daily/$F" --s3-no-check-bucket
+          rclone copyto "$F.sha256" "$B2/daily/$F.sha256" --s3-no-check-bucket
+          if [ "$(date -u +%d)" = "01" ]; then rclone copyto "$F" "$B2/monthly/$F" --s3-no-check-bucket; fi
+          rclone check "$F" "$B2/daily/" --include "$F" --one-way
+
+      - name: Prune B2 (90 daily + 24 monthly)
+        env:
+          RCLONE_CONFIG_B2_TYPE: s3
+          RCLONE_CONFIG_B2_PROVIDER: Other
+          RCLONE_CONFIG_B2_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          RCLONE_CONFIG_B2_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
+          RCLONE_CONFIG_B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          # Names sort chronologically (UTC stamp). Only reached if every upload above succeeded.
+          B2="B2:${{ secrets.B2_BUCKET }}"
+          rclone lsf "$B2/daily/" --include '*.age' | sort | head -n -90 | while read -r f; do
+            rclone deletefile "$B2/daily/$f" && rclone deletefile "$B2/daily/$f.sha256" || true
+          done
+          rclone lsf "$B2/monthly/" --include '*.age' | sort | head -n -24 | while read -r f; do
+            rclone deletefile "$B2/monthly/$f"
+          done
+
+      - name: Notify on failure (GitHub issue emails watchers)
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.create({ ...context.repo,
+              title: `Nightly backup FAILED ${new Date().toISOString().slice(0, 10)}`,
+              body: `Run: ${url}\nCheck docs/restore.md before assuming the last good backup is recent.`,
+              labels: ['backup-failed'] });

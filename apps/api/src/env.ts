@@ -1,0 +1,24 @@
+import type { AppDb } from '@maktab/db';
+import type { Grant } from '@maktab/shared';
+import type { Principal } from './auth/principal';
+
+export type Bindings = {
+  DB: D1Database;
+  /** Declared for photos/proofs later; nothing in milestone 0 requires it at runtime. */
+  FILES?: R2Bucket;
+  ASSETS?: Fetcher;
+  SESSION_SECRET: string;
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  APP_ORIGIN: string;
+};
+
+export type Variables = {
+  db: AppDb;
+  /** undefined = not looked up yet; null = anonymous. */
+  principal: Principal | null | undefined;
+  /** The grant the permission guard resolved, for row-scope helpers. */
+  grant: Grant;
+};
+
+export type AppEnv = { Bindings: Bindings; Variables: Variables };

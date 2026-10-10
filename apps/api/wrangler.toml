@@ -1,0 +1,64 @@
+# Maktab Worker: serves the built web app (static assets) and the /api/* routes.
+# Local dev needs no Cloudflare account:  npm run db:migrate:local && npm run dev
+# Secrets for local dev go in apps/api/.dev.vars (see .dev.vars.example); in production use
+#   npx wrangler secret put SESSION_SECRET --env production   (and GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
+
+name = "maktab"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+# Smaller bundle = faster cold starts on the free plan.
+minify = true
+
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+# Without this, SPA fallback would answer /api/* with index.html.
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "maktab"
+# Any id works for --local; the real id comes from `wrangler d1 create maktab` (production below).
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "../../packages/db/migrations"
+
+# Declared for student photos / payment proofs; milestone 0 never touches it.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "maktab-files"
+
+[vars]
+APP_ORIGIN = "http://localhost:5173"
+
+[observability]
+enabled = true
+
+# ---------------------------------------------------------------------------------------------
+# Production (pilot): school.conceptlix.com. Bindings and vars are NOT inherited from the top
+# level, so each is repeated here. Before the first `npx wrangler deploy --env production`:
+#   1. npx wrangler d1 create maktab            -> paste database_id below
+#   2. npx wrangler r2 bucket create maktab-files
+#   3. npx wrangler secret put SESSION_SECRET --env production   (>= 32 random chars)
+#      npx wrangler secret put GOOGLE_CLIENT_ID --env production
+#      npx wrangler secret put GOOGLE_CLIENT_SECRET --env production
+#   4. Google Cloud console: authorised redirect URI
+#      https://school.conceptlix.com/api/auth/google/callback ; publish the consent screen.
+#   5. npx wrangler d1 migrations apply DB --remote --env production
+# ---------------------------------------------------------------------------------------------
+[env.production]
+name = "maktab"
+routes = [{ pattern = "school.conceptlix.com", custom_domain = true }]
+
+[env.production.vars]
+APP_ORIGIN = "https://school.conceptlix.com"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "maktab"
+database_id = "REPLACE_WITH_REAL_D1_ID"
+migrations_dir = "../../packages/db/migrations"
+
+[[env.production.r2_buckets]]
+binding = "FILES"
+bucket_name = "maktab-files"
