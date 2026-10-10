@@ -52,6 +52,8 @@ export const school = sqliteTable(
     siblingRule: text('sibling_rule'),
     /** Fee reminder cooldown per family and template, in days (PLAN §14.9). */
     reminderCooldownDays: integer('reminder_cooldown_days').notNull().default(7),
+    /** Suggested advance recovery per payslip, as a percent of the slip's pay (M4). */
+    advanceRecoveryPct: integer('advance_recovery_pct').notNull().default(25),
     ...stamps(),
   },
   () => [check('school_mode', oneOf('mode', SCHOOL_MODES))],
@@ -113,6 +115,10 @@ export const staff = sqliteTable('staff', {
   phone: text('phone'),
   role: text('role'),
   joined: text('joined'),
+  /** Monthly basic salary in paisa (M4 payroll); NULL = not on the payroll. */
+  baseSalary: integer('base_salary'),
+  /** JSON `[{label, amount}]` (paisa): fixed monthly allowances copied onto each new payslip. */
+  allowances: text('allowances', { mode: 'json' }),
   status: text('status', { enum: STAFF_STATUSES }).notNull().default('active'),
   extra: text('extra', { mode: 'json' }),
   ...stamps(),

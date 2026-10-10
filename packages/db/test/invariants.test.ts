@@ -370,7 +370,10 @@ describe('cash session is close-only', () => {
       sql`INSERT INTO account (id, name, kind) VALUES ('a', 'Drawer', 'cash'), ('b', 'Bank', 'bank')`,
     );
     await run(db, sql`INSERT INTO expense_category (id, name) VALUES ('ec', 'Chalk')`);
+    // M4: expense numbers come from the EXP series (sql/60_money_out.sql expense_shape).
+    await run(db, sql`INSERT INTO receipt_series (series, year, next_no) VALUES ('EXP', 2026, 1)`);
   });
+  const bumpExp = sql`UPDATE receipt_series SET next_no = next_no + 1 WHERE series = 'EXP'`;
   const close = sql`UPDATE cash_session SET expected = 5000, counted = 4800, closed_at = 't', closed_by = 'U1' WHERE id = 'cs'`;
 
   it('variance is derived; closing needs counted, expected and closer', async () => {
@@ -421,10 +424,11 @@ describe('cash session is close-only', () => {
     );
     await expectAbort(
       () =>
-        run(
+        batch(
           db,
+          bumpExp,
           sql`INSERT INTO expense (id, expense_no, category_id, account_id, cash_session_id, amount, date)
-              VALUES ('e', 'E1', 'ec', 'a', 'cs', 5, 'd')`,
+              VALUES ('e', 'EXP-2026-00001', 'ec', 'a', 'cs', 5, 'd')`,
         ),
       /cash session is closed/,
     );
@@ -440,9 +444,10 @@ describe('cash session is close-only', () => {
   });
 
   it('review #10 / #10b: a void needs a reason and cannot be undone', async () => {
-    await run(
+    await batch(
       db,
-      sql`INSERT INTO expense (id, expense_no, category_id, account_id, amount, date) VALUES ('e', 'E1', 'ec', 'a', 5, 'd')`,
+      bumpExp,
+      sql`INSERT INTO expense (id, expense_no, category_id, account_id, amount, date) VALUES ('e', 'EXP-2026-00001', 'ec', 'b', 5, 'd')`,
     );
     await expectAbort(
       () => run(db, sql`UPDATE expense SET voided_by = 'U1' WHERE id = 'e'`),
@@ -465,7 +470,8 @@ describe('payslip maker-checker', () => {
     db = createTestDb();
     await base(db);
     await run(db, sql`INSERT INTO staff (id, name) VALUES ('st', 'S')`);
-    await run(db, sql`INSERT INTO account (id, name, kind) VALUES ('a', 'Drawer', 'cash')`);
+    // Paid from the bank: a drawer payment needs a cash session since M4.
+    await run(db, sql`INSERT INTO account (id, name, kind) VALUES ('a', 'Bank', 'bank')`);
     await run(
       db,
       sql`INSERT INTO payslip (id, staff_id, period_key) VALUES ('p1', 'st', '2026-01')`,

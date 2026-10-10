@@ -8,10 +8,11 @@ import {
   sqliteTable,
   text,
   unique,
+  uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { enrolment, grp, programme, staff, student } from './academic';
 import { user } from './auth';
-import { id, integerMoney, oneOf, paisa, stamps } from './common';
+import { bool, id, integerMoney, oneOf, paisa, stamps } from './common';
 
 // Append-only rules, allocation invariants and the charge views live in ../../sql (Drizzle cannot express
 // them). Row-local rules (kind signs, integer money, reversal shape) are CHECKs here. See ADR 0002.
@@ -420,13 +421,25 @@ export const transfer = sqliteTable(
   ],
 );
 
-/** Not in PLAN §5.2, which references `category_id` without defining the table. */
-export const expenseCategory = sqliteTable('expense_category', {
-  id: id(),
-  name: text('name').notNull().unique(),
-  deletedAt: text('deleted_at'),
-  ...stamps(),
-});
+/**
+ * Not in PLAN §5.2, which references `category_id` without defining the table. The M4 list is seeded
+ * by migration 0014 with stable `code`s; `system` rows (salaries) are reserved for reports and never
+ * offered when recording an expense (salaries are payslips, not expenses).
+ */
+export const expenseCategory = sqliteTable(
+  'expense_category',
+  {
+    id: id(),
+    name: text('name').notNull().unique(),
+    nameUr: text('name_ur'),
+    code: text('code'),
+    system: bool('system').notNull().default(false),
+    sort: integer('sort').notNull().default(0),
+    deletedAt: text('deleted_at'),
+    ...stamps(),
+  },
+  (t) => [uniqueIndex('expense_category_code').on(t.code)],
+);
 
 export const expense = sqliteTable(
   'expense',
@@ -446,9 +459,13 @@ export const expense = sqliteTable(
     note: text('note'),
     voidedBy: text('voided_by').references(() => user.id),
     voidReason: text('void_reason'),
+    /** R2 key of the bill photo (optional; uploaded after the expense exists). */
+    receiptKey: text('receipt_key'),
     ...stamps(),
   },
-  () => [
+  (t) => [
+    index('expense_date').on(t.date),
+    index('expense_session').on(t.cashSessionId),
     check('expense_amount', sql`"amount" > 0`),
     integerMoney('expense', 'amount'),
     // A void always says why (PLAN §14.8); a reason without a voider is meaningless.
@@ -472,6 +489,10 @@ export const payslip = sqliteTable(
     periodKey: text('period_key').notNull(),
     status: text('status', { enum: PAYSLIP_STATUSES }).notNull().default('draft'),
     approvedBy: text('approved_by').references(() => user.id),
+    approvedAt: text('approved_at'),
+    /** A void says who and why (sql/60_payroll.sql); only before any salary payment. */
+    voidedBy: text('voided_by').references(() => user.id),
+    voidReason: text('void_reason'),
     ...stamps(),
   },
   (t) => [
@@ -515,10 +536,18 @@ export const staffAdvance = sqliteTable(
     accountId: text('account_id')
       .notNull()
       .references(() => account.id),
+    /** Set when paid out of a drawer (a cash account): the payer's session that day. */
+    cashSessionId: text('cash_session_id').references(() => cashSession.id),
     date: text('date').notNull(),
+    note: text('note'),
     ...stamps(),
   },
-  () => [check('staff_advance_amount', sql`"amount" > 0`), integerMoney('staff_advance', 'amount')],
+  (t) => [
+    check('staff_advance_amount', sql`"amount" > 0`),
+    integerMoney('staff_advance', 'amount'),
+    index('staff_advance_staff').on(t.staffId),
+    index('staff_advance_session').on(t.cashSessionId),
+  ],
 );
 
 export const salaryPayment = sqliteTable(
@@ -532,11 +561,16 @@ export const salaryPayment = sqliteTable(
     accountId: text('account_id')
       .notNull()
       .references(() => account.id),
+    /** Set when paid out of a drawer (a cash account): the payer's session that day. */
+    cashSessionId: text('cash_session_id').references(() => cashSession.id),
     date: text('date').notNull(),
+    note: text('note'),
     ...stamps(),
   },
-  () => [
+  (t) => [
     check('salary_payment_amount', sql`"amount" > 0`),
     integerMoney('salary_payment', 'amount'),
+    index('salary_payment_slip').on(t.payslipId),
+    index('salary_payment_session').on(t.cashSessionId),
   ],
 );

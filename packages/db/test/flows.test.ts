@@ -115,11 +115,15 @@ const payslip = [
   raw(`INSERT INTO payslip (id, staff_id, period_key) VALUES ('ps', 'T1', '2026-03')`),
   raw(`INSERT INTO payslip_line (id, payslip_id, kind, amount) VALUES ('l1', 'ps', 'basic', 30000),
        ('l2', 'ps', 'allowance', 2000), ('l3', 'ps', 'deduction', 1500), ('l4', 'ps', 'advance_recovery', 500)`),
+  // M4: a recovery needs an outstanding advance (sql/60_money_out.sql payslip_approve_rules).
+  raw(
+    `INSERT INTO staff_advance (id, staff_id, amount, account_id, date) VALUES ('adv', 'T1', 500, 'A2', 'd')`,
+  ),
   raw(`UPDATE payslip SET status = 'approved', approved_by = 'U1' WHERE id = 'ps'`),
 ];
 const pay = (id: string, amount: number) =>
   raw(
-    `INSERT INTO salary_payment (id, payslip_id, amount, account_id, date) VALUES ('${id}', 'ps', ${amount}, 'A1', 'd')`,
+    `INSERT INTO salary_payment (id, payslip_id, amount, account_id, date) VALUES ('${id}', 'ps', ${amount}, 'A2', 'd')`,
   );
 
 /** The reviewer's 10 legitimate flows. */

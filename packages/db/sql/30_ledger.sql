@@ -1,6 +1,7 @@
 -- Ledger invariants and derived views (experiment 1, hardened after the M0 review; ADR 0002).
 -- Re-emitted in full by migration 0009 after 0008 rebuilt `receipt` (receipt kind 'opening', M3), and
--- by 0011 after 0010 rebuilt it again (methods 'cheque', 'other').
+-- by 0011 after 0010 rebuilt it again (methods 'cheque', 'other'), and by 0015 (M4: ledger_consistency
+-- also flags drawer cash without a session, mis-numbered receipts, overpaid payslips, negative advances).
 -- Charge tree: only `fee` rows are roots. concession / fine / reversal hang off a fee; fine_waiver (and a
 -- reversal of a fine) hang off the fine, so a tree is at most two levels deep. Net = sum of the tree.
 -- Allocations always target the root. Kind signs and the root rule are CHECKs on the table.
@@ -190,4 +191,44 @@ FROM (SELECT r.kind || '_allocations' AS issue, r.payer_type, r.payer_id, r.id A
              (SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a WHERE a.receipt_id = r.id) AS actual
       FROM receipt r) x
 WHERE CASE WHEN issue IN ('payment_allocations', 'opening_allocations') THEN actual < 0 OR actual > expected
-           ELSE actual <> expected END;
+           ELSE actual <> expected END
+-- M4 (migration 0015): money shapes the triggers refuse today but older rows (or a hand edit) could
+-- carry. `receipt_id` names the offending row (a receipt, expense or payslip); payer_type 'staff'
+-- rows are payroll. Cash that touched a drawer must be in a session; every money receipt is
+-- numbered from its series (`<series>-YYYY-NNNNN`, issued: below next_no). Nested in one term: D1
+-- allows at most 5 terms in a compound SELECT.
+UNION ALL
+SELECT * FROM (
+SELECT 'cash_receipt_no_session' AS issue, r.payer_type, r.payer_id, r.id AS receipt_id, 1 AS expected, 0 AS actual
+FROM receipt r WHERE r.method = 'cash' AND r.kind <> 'opening' AND r.cash_session_id IS NULL
+UNION ALL
+SELECT 'receipt_no_format', r.payer_type, r.payer_id, r.id, 1, 0
+FROM receipt r
+WHERE r.kind <> 'opening'
+  AND NOT EXISTS (SELECT 1 FROM receipt_series s
+                  WHERE r.receipt_no = s.series || '-' || s.year || '-' || substr(r.receipt_no, -5)
+                    AND substr(r.receipt_no, -5) GLOB '[0-9][0-9][0-9][0-9][0-9]'
+                    AND CAST(substr(r.receipt_no, -5) AS INTEGER) BETWEEN 1 AND s.next_no - 1)
+UNION ALL
+SELECT 'expense_cash_no_session', 'expense', e.category_id, e.id, 1, 0
+FROM expense e JOIN account a ON a.id = e.account_id
+WHERE a.kind = 'cash' AND e.cash_session_id IS NULL
+UNION ALL
+SELECT 'payslip_overpaid', 'staff', p.staff_id, p.id,
+       (SELECT coalesce(sum(CASE WHEN l.kind IN ('basic', 'allowance') THEN l.amount ELSE -l.amount END), 0)
+        FROM payslip_line l WHERE l.payslip_id = p.id) AS expected,
+       (SELECT coalesce(sum(s.amount), 0) FROM salary_payment s WHERE s.payslip_id = p.id) AS actual
+FROM payslip p
+WHERE (SELECT coalesce(sum(s.amount), 0) FROM salary_payment s WHERE s.payslip_id = p.id)
+    > (SELECT coalesce(sum(CASE WHEN l.kind IN ('basic', 'allowance') THEN l.amount ELSE -l.amount END), 0)
+       FROM payslip_line l WHERE l.payslip_id = p.id)
+UNION ALL
+SELECT 'advance_negative', 'staff', st.id, NULL, 0,
+       (SELECT coalesce(sum(a.amount), 0) FROM staff_advance a WHERE a.staff_id = st.id)
+     - (SELECT coalesce(sum(l.amount), 0) FROM payslip_line l JOIN payslip p ON p.id = l.payslip_id
+        WHERE p.staff_id = st.id AND p.status IN ('approved', 'paid') AND l.kind = 'advance_recovery')
+FROM staff st
+WHERE (SELECT coalesce(sum(a.amount), 0) FROM staff_advance a WHERE a.staff_id = st.id)
+    < (SELECT coalesce(sum(l.amount), 0) FROM payslip_line l JOIN payslip p ON p.id = l.payslip_id
+       WHERE p.staff_id = st.id AND p.status IN ('approved', 'paid') AND l.kind = 'advance_recovery')
+);

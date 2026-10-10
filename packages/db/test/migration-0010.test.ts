@@ -44,10 +44,12 @@ describe('migration 0010 (final enums) on populated data', () => {
       INSERT INTO charge (id, student_id, fee_head_id, period_key, payer_type, payer_id, amount, due_date, kind)
         VALUES ('C1', 'X', 'FH', '2026-04', 'family', 'F', 100000, '2026-04-10', 'fee');
       INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, collector_id, cash_session_id, business_date, idempotency_key)
-        VALUES ('R1', 'R-1', 'payment', 'family', 'F', 100000, 'cash', 'U', 'CS', '2026-04-05', 'k1');
+        VALUES ('R1', 'R-2026-00001', 'payment', 'family', 'F', 100000, 'cash', 'U', 'CS', '2026-04-05', 'k1');
       INSERT INTO receipt_allocation (id, receipt_id, charge_id, amount) VALUES ('A1', 'R1', 'C1', 100000);
-      INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method, collector_id, business_date, idempotency_key)
-        VALUES ('R2', 'R-2', 'reversal', 'R1', 'family', 'F', -100000, 'cash', 'U', '2026-04-06', 'k2');
+      INSERT INTO receipt (id, receipt_no, kind, reverses_id, payer_type, payer_id, amount, method, collector_id, cash_session_id, business_date, idempotency_key)
+        VALUES ('R2', 'R-2026-00002', 'reversal', 'R1', 'family', 'F', -100000, 'cash', 'U', 'CS', '2026-04-06', 'k2');
+      -- Well-formed numbers and drawer sessions (M4's ledger_consistency flags anything else).
+      INSERT INTO receipt_series (series, year, next_no) VALUES ('R', 2026, 3);
       INSERT INTO receipt_allocation (id, receipt_id, charge_id, amount) VALUES ('A2', 'R2', 'C1', -100000);
       INSERT INTO staff (id, name) VALUES ('T', 'Teacher');
       INSERT INTO payslip (id, staff_id, period_key) VALUES ('P1', 'T', '2026-04'), ('P2', 'T', '2026-05');
@@ -90,10 +92,18 @@ describe('migration 0010 (final enums) on populated data', () => {
     db.exec(`INSERT INTO receipt (id, receipt_no, kind, payer_type, payer_id, amount, method, account_id, collector_id, business_date, idempotency_key)
       VALUES ('R3', 'Q-2026-00001', 'payment', 'family', 'F', 5000, 'cheque', 'BANK', 'U', '2026-04-07', 'k3')`);
     expect(() => db.exec(`UPDATE receipt SET amount = 1 WHERE id = 'R1'`)).toThrow(/append-only/);
-    db.exec(`UPDATE payslip SET status = 'void' WHERE id = 'P2'`);
-    expect(() => db.exec(`UPDATE payslip SET status = 'void' WHERE id = 'P1'`)).toThrow(
-      /paid payslip cannot be voided/,
+    // Since M4 (0015) a void says who and why.
+    expect(() => db.exec(`UPDATE payslip SET status = 'void' WHERE id = 'P2'`)).toThrow(
+      /needs who and a reason/,
     );
+    db.exec(
+      `UPDATE payslip SET status = 'void', voided_by = 'O', void_reason = 'left' WHERE id = 'P2'`,
+    );
+    expect(() =>
+      db.exec(
+        `UPDATE payslip SET status = 'void', voided_by = 'O', void_reason = 'x' WHERE id = 'P1'`,
+      ),
+    ).toThrow(/paid payslip cannot be voided/);
     expect(() => db.exec(`UPDATE payslip SET status = 'draft' WHERE id = 'P2'`)).toThrow(
       /status only moves/,
     );

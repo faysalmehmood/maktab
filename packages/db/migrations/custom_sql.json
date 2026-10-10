@@ -49,6 +49,14 @@
       "files": {
         "50_fees.sql": "608c5ed8ce0c2560df52dcec5fb54e623a5806c1b376aecee73e48ff04808839"
       }
+    },
+    {
+      "migration": "0015_m4_money_rules",
+      "sha256": "906bddf104e13c1603a4b0349d68d6a3ccb5d8d69fad3b18aa383333d6b77bbb",
+      "files": {
+        "30_ledger.sql": "da2164f25773e8883ed0e41ced24c8363c54907054e458e06ddeb29e0480b76d",
+        "60_money_out.sql": "73f02ebe699e19f53061034ebefb14fbf0e1964743a8cd7595380216eecd8156"
+      }
     }
   ]
 }
