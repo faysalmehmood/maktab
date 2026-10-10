@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isoDateSchema } from './attendance';
+import { admissionFeesSchema } from './fees';
 import { normalizePkMobile, normalizePkPhone } from './phone';
 import { staffRoleSchema } from './roles';
 import { idSchema } from './user';
@@ -298,7 +299,7 @@ export const enrolmentFieldsSchema = z.object({
 /**
  * One admission = one batch (PLAN §14.2): reuse a family (`family_id`, found by guardian phone) or
  * create one (`family`), add guardians, create the student — or re-admit a `left` one
- * (`readmit_student_id`) — and enrol. Fees are milestone 3.
+ * (`readmit_student_id`) — and enrol, and bill the first period (`fees`).
  */
 export const admissionInputSchema = z
   .object({
@@ -309,6 +310,8 @@ export const admissionInputSchema = z
     student: studentFieldsSchema.optional(),
     readmit_student_id: idSchema.optional(),
     enrolment: enrolmentFieldsSchema,
+    /** First-period charges in the same batch (PLAN §14.2 step 5; M3). */
+    fees: admissionFeesSchema.optional(),
   })
   .superRefine((a, ctx) => {
     if (a.readmit_student_id) {

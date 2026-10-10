@@ -162,3 +162,25 @@ export function allocationsStatement(
     WHERE NOT EXISTS (SELECT 1 FROM receipt_allocation x WHERE x.id = j.id)
       ${ifChargeExists ? sql`AND EXISTS (SELECT 1 FROM charge c WHERE c.id = j.c)` : sql``}`;
 }
+
+/**
+ * Open dues as they will be once `receiptId` is reversed (its live pair sums put back), oldest
+ * first — the plan for a "re-enter correctly" payment written in the same batch as the reversal.
+ */
+export async function duesAfterUnwind(
+  db: AppDb,
+  payerType: PayerType,
+  payerId: string,
+  receiptId: string,
+): Promise<DueRoot[]> {
+  return db.all<DueRoot>(sql`
+    SELECT cs.id, cs.student_id, cs.fee_head_id, cs.period_key, cs.due_date, cs.net,
+           cs.paid - coalesce(u.held, 0) AS paid, cs.due + coalesce(u.held, 0) AS due
+    FROM charge_status cs
+    JOIN student st ON st.id = cs.student_id
+    JOIN fee_head h ON h.id = cs.fee_head_id
+    LEFT JOIN (SELECT charge_id, sum(amount) AS held FROM receipt_allocation
+               WHERE receipt_id = ${receiptId} GROUP BY charge_id) u ON u.charge_id = cs.id
+    WHERE cs.payer_type = ${payerType} AND cs.payer_id = ${payerId} AND cs.due + coalesce(u.held, 0) > 0
+    ORDER BY cs.due_date, cs.period_key, st.name, st.id, h.name, cs.id`);
+}

@@ -1,17 +1,21 @@
 import { type AppDb, enrolment, family, grp, programme, session, student } from '@maktab/db';
 import {
+  type AdmissionFeesDto,
   type AdmissionResult,
+  admissionFeesSchema,
   admissionInputSchema,
   enrolmentEndSchema,
   enrolmentInputSchema,
   enrolmentTransferSchema,
   newId,
+  previewFeesQuerySchema,
 } from '@maktab/shared';
 import { eq, type SQL, sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
-import { idParam, jsonBody, notFoundError, todayPk, userId } from '../lib/http';
+import { planAdmissionFees } from '../lib/fees';
+import { idParam, jsonBody, notFoundError, queryParams, todayPk, userId } from '../lib/http';
 import { auditSql, readBack, tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
 import { enrolmentDto, guardianValues, nextPrioritySql, validateExtra } from './people';
@@ -105,6 +109,7 @@ async function admissionResult(
   enrolmentId: string,
   guardianIds: string[],
   readmitted: boolean,
+  fees: AdmissionFeesDto | null = null,
 ): Promise<AdmissionResult> {
   const [row] = await db
     .select({ e: enrolment, s: student })
@@ -120,11 +125,53 @@ async function admissionResult(
     admission_no: row.s.admissionNo,
     roll_no: row.e.rollNo,
     readmitted,
+    fees,
   };
 }
 
+const feeOptions = (f: unknown) => admissionFeesSchema.parse(f ?? {});
+
 export function admissionRoutes(app: Hono<AppEnv>, table: RouteTable): void {
   const write = requires('student', 'write');
+
+  /**
+   * PLAN §14.2 step 5: what admission will bill (first period + admission fee, sibling concession
+   * suggested by the rule), without writing anything. Same planner as the admission batch.
+   */
+  defineRoute(
+    app,
+    table,
+    { method: 'GET', path: '/api/admissions/preview-fees', access: write },
+    async (c) => {
+      const q = queryParams(c, previewFeesQuerySchema);
+      const db = c.get('db');
+      const g = await openGroup(db, q.grp_id);
+      let familyId = q.family_id ?? null;
+      if (q.student_id) {
+        const [s] = await db.select().from(student).where(eq(student.id, q.student_id));
+        if (!s) throw notFoundError('Student');
+        familyId = s.familyId;
+      }
+      if (familyId) {
+        const [f] = await db.select({ id: family.id }).from(family).where(eq(family.id, familyId));
+        if (!f) throw notFoundError('Family');
+      }
+      const today = todayPk();
+      const { dto } = await planAdmissionFees(db, {
+        enrolmentId: 'preview',
+        studentId: q.student_id ?? 'preview',
+        familyId: familyId ?? 'preview',
+        existingFamily: !!familyId,
+        grpId: g.id,
+        startDate: q.start_date ?? today,
+        today,
+        by: userId(c),
+        proRata: q.pro_rata ?? false,
+        sibling: q.sibling_concession ?? true,
+      });
+      return c.json({ fees: dto });
+    },
+  );
 
   /**
    * PLAN §14.2 as one batch: family (reuse or new) → guardians → student (numbered in the batch)
@@ -167,6 +214,21 @@ export function admissionRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         );
       }
       const startDate = input.enrolment.start_date ?? today;
+      const fees = feeOptions(input.fees);
+      const billed = fees.charge
+        ? await planAdmissionFees(db, {
+            enrolmentId,
+            studentId: sid,
+            familyId: s.familyId,
+            existingFamily: true,
+            grpId: g.id,
+            startDate,
+            today,
+            by: uid,
+            proRata: fees.pro_rata,
+            sibling: fees.sibling_concession,
+          })
+        : null;
       await tx(db, [
         sql`UPDATE student SET status = 'active', left_date = NULL, left_reason = NULL WHERE id = ${sid}`,
         insertEnrolment({
@@ -194,8 +256,10 @@ export function admissionRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           },
           { roll_no: readBack('enrolment', 'roll_no', enrolmentId) },
         ),
+        // First-period charges in the same batch (M1 note: both admission paths bill).
+        ...(billed?.statements ?? []),
       ]);
-      return c.json(await admissionResult(db, enrolmentId, [], true), 201);
+      return c.json(await admissionResult(db, enrolmentId, [], true, billed?.dto ?? null), 201);
     }
 
     // superRefine guarantees student + exactly one of family_id / family here.
@@ -299,8 +363,27 @@ export function admissionRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         },
       ),
     );
+    const fees = feeOptions(input.fees);
+    const billed = fees.charge
+      ? await planAdmissionFees(db, {
+          enrolmentId,
+          studentId,
+          familyId,
+          existingFamily: !!input.family_id,
+          grpId: g.id,
+          startDate,
+          today,
+          by: uid,
+          proRata: fees.pro_rata,
+          sibling: fees.sibling_concession,
+        })
+      : null;
+    items.push(...(billed?.statements ?? []));
     await tx(db, items);
-    return c.json(await admissionResult(db, enrolmentId, guardianIds, false), 201);
+    return c.json(
+      await admissionResult(db, enrolmentId, guardianIds, false, billed?.dto ?? null),
+      201,
+    );
   });
 
   defineRoute(app, table, { method: 'POST', path: '/api/enrolments', access: write }, async (c) => {

@@ -4,6 +4,7 @@ export * from './academic';
 export * from './attendance';
 export * from './csv';
 export * from './dto';
+export * from './fees';
 export * from './i18n';
 export * from './import';
 export * from './money';

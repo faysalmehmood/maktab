@@ -9,11 +9,14 @@ import { denyUndeclared, RouteTable } from './perm/routes';
 import { admissionRoutes } from './routes/admissions';
 import { attendanceRoutes } from './routes/attendance';
 import { authRoutes } from './routes/auth';
+import { cashRoutes } from './routes/cash';
 import { catalogRoutes } from './routes/catalog';
 import { coreRoutes } from './routes/core';
+import { feeRoutes } from './routes/fees';
 import { groupRoutes } from './routes/groups';
 import { importRoutes } from './routes/imports';
 import { peopleRoutes } from './routes/people';
+import { receiptRoutes } from './routes/receipts';
 import { staffRoutes } from './routes/staff';
 
 export type AppDeps = {
@@ -52,6 +55,9 @@ export function createApp(deps: AppDeps) {
   admissionRoutes(app, routes);
   importRoutes(app, routes);
   attendanceRoutes(app, routes);
+  feeRoutes(app, routes);
+  receiptRoutes(app, routes);
+  cashRoutes(app, routes);
 
   return { app, routes };
 }

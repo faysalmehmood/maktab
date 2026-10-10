@@ -11,9 +11,13 @@ export const RESOURCES = {
   catalog: ['read'],
   student: ['read', 'write'],
   attendance: ['mark', 'correct', 'read'],
-  fee: ['generate', 'concession'],
-  receipt: ['create', 'reverse'],
-  cash_session: ['close_own', 'reopen_any'],
+  /** generate: monthly runs, fines, regenerate. concession: reduce fees, waive fines.
+   *  manage: heads, rates, sponsors, opening balances. read: dues (teachers: own groups' summary). */
+  fee: ['generate', 'concession', 'manage', 'read'],
+  /** read: family/sponsor statements, receipts and the money reports (no teacher access). */
+  receipt: ['create', 'reverse', 'read'],
+  /** read: sessions (accountants their own). transfer: handover / bank deposit. */
+  cash_session: ['close_own', 'reopen_any', 'read', 'transfer'],
   expense: ['create', 'void'],
   payslip: ['read', 'approve', 'pay'],
   exam: ['marks_entry', 'read'],
@@ -93,14 +97,21 @@ export const MATRIX = {
   fee: {
     generate: g({ owner: all, admin: all }),
     concession: g({ owner: all, admin: all }),
+    manage: g({ owner: all, admin: all }),
+    // A teacher sees only their groups' dues summary (who owes, how much, how many months).
+    read: g({ owner: all, admin: all, accountant: all, teacher: 'own_groups' }),
   },
   receipt: {
     create: g({ owner: all, admin: all, accountant: all }),
     reverse: g({ owner: all, admin: all }),
+    read: g({ owner: all, admin: all, accountant: all }),
   },
   cash_session: {
     close_own: g({ owner: 'own_only', admin: 'own_only', accountant: 'own_only' }),
     reopen_any: g({ owner: all, admin: all }),
+    // Owners and admins see every drawer; a collector sees their own.
+    read: g({ owner: all, admin: all, accountant: 'own_only' }),
+    transfer: g({ owner: all, admin: all, accountant: all }),
   },
   expense: {
     create: g({ owner: all, admin: all, accountant: all }),

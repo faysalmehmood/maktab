@@ -1,6 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import type { AppDb } from '../client';
-import type { PayerType } from './index';
+import type { PayerType, PaymentMethod } from './index';
 import { inJson, periodEnd, periodStart } from './util';
 
 /**
@@ -85,7 +85,7 @@ export type ReceiptRow = {
   payer_id: string;
   payer_name: string | null;
   amount: number;
-  method: string;
+  method: PaymentMethod;
   account_id: string | null;
   collector_id: string;
   collector_name: string | null;

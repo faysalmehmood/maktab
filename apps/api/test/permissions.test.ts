@@ -24,10 +24,15 @@ attendance.correct       all          all          -                 -          
 attendance.read          all          all          -                 own_groups    own_children
 fee.generate             all          all          -                 -             -
 fee.concession           all          all          -                 -             -
+fee.manage               all          all          -                 -             -
+fee.read                 all          all          all               own_groups    -
 receipt.create           all          all          all               -             -
 receipt.reverse          all          all          -                 -             -
+receipt.read             all          all          all               -             -
 cash_session.close_own   own_only     own_only     own_only          -             -
 cash_session.reopen_any  all          all          -                 -             -
+cash_session.read        all          all          own_only          -             -
+cash_session.transfer    all          all          all               -             -
 expense.create           all          all          all               -             -
 expense.void             all          all          -                 -             -
 payslip.read             all          all          all_except_owner  own_only      -
@@ -160,6 +165,48 @@ GET    /api/holidays                             D A A A A D
 POST   /api/holidays                             D A A D D D
 DELETE /api/holidays/:date                       D A A D D D
 PUT    /api/school/attendance                    D A A D D D
+GET    /api/school/fees                          D A A A A D
+PUT    /api/school/fees                          D A A D D D
+GET    /api/fees/heads                           D A A A A D
+POST   /api/fees/heads                           D A A D D D
+PATCH  /api/fees/heads/:id                       D A A D D D
+GET    /api/fees/rates                           D A A A A D
+POST   /api/fees/rates                           D A A D D D
+GET    /api/fees/concessions                     D A A A D D
+POST   /api/fees/concessions                     D A A D D D
+POST   /api/fees/concessions/:id/end             D A A D D D
+GET    /api/fees/sponsors                        D A A A D D
+POST   /api/fees/sponsors                        D A A D D D
+PATCH  /api/fees/sponsors/:id                    D A A D D D
+POST   /api/fees/sponsorships                    D A A D D D
+POST   /api/fees/sponsorships/:id/end            D A A D D D
+GET    /api/fees/sponsors/:id/statement          D A A A D D
+POST   /api/fees/opening-balances                D A A D D D
+POST   /api/fees/generate                        D A A D D D
+GET    /api/fees/runs                            D A A D D D
+POST   /api/fees/fines/apply                     D A A D D D
+POST   /api/fees/fines/:id/waive                 D A A D D D
+POST   /api/fees/regenerate                      D A A D D D
+GET    /api/fees/defaulters                      D A A A A D
+POST   /api/fees/defaulters/remind               D A A A A D
+GET    /api/fees/register                        D A A A D D
+GET    /api/fees/concessions/register            D A A A D D
+GET    /api/fees/search                          D A A A D D
+GET    /api/fees/family/:id                      D A A A D D
+GET    /api/fees/collection                      D A A A D D
+POST   /api/receipts                             D A A A D D
+GET    /api/receipts/:id                         D A A A D D
+POST   /api/receipts/:id/reverse                 D A A D D D
+POST   /api/receipts/:id/notify                  D A A A D D
+POST   /api/refunds                              D A A D D D
+GET    /api/cash/sessions                        D A A A D D
+POST   /api/cash/sessions                        D A A A D D
+POST   /api/cash/sessions/:id/close              D A A A D D
+POST   /api/cash/sessions/:id/reopen             D A A D D D
+POST   /api/transfers                            D A A A D D
+GET    /api/accounts                             D A A A D D
+POST   /api/accounts                             D A A D D D
+GET    /api/admissions/preview-fees              D A A A D D
 `;
 
 type Who = PrincipalRole | 'anonymous';

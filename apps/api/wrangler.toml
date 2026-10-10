@@ -40,6 +40,11 @@ OWNER_EMAIL = ""
 [observability]
 enabled = true
 
+# Monthly fee generation + late fines (apps/api/src/index.ts scheduled): every 30 minutes, a few
+# resumable chunks per run; idle runs cost one read. One of the five free cron triggers.
+[triggers]
+crons = ["*/30 * * * *"]
+
 # ---------------------------------------------------------------------------------------------
 # Production (pilot): school.conceptlix.com. Bindings and vars are NOT inherited from the top
 # level, so each is repeated here. Before the first `npx wrangler deploy --env production`:
@@ -55,6 +60,9 @@ enabled = true
 [env.production]
 name = "maktab"
 routes = [{ pattern = "school.conceptlix.com", custom_domain = true }]
+
+[env.production.triggers]
+crons = ["*/30 * * * *"]
 
 [env.production.vars]
 APP_ORIGIN = "https://school.conceptlix.com"

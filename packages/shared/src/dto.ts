@@ -1,5 +1,6 @@
 import type { SchoolMode } from './academic';
 import type { AttendanceMode } from './attendance';
+import type { PlannedChargeDto } from './fees';
 import type { StaffRole, UserStatus } from './roles';
 
 /**
@@ -219,6 +220,18 @@ export type AdmissionResult = {
   admission_no: string;
   roll_no: string | null;
   readmitted: boolean;
+  /** First-period charges billed in the admission batch (null when none were billed). */
+  fees?: AdmissionFeesDto | null;
+};
+
+/** What admission bills (or would bill, for the preview): PLAN §14.2 step 5. */
+export type AdmissionFeesDto = {
+  period: string;
+  charges: PlannedChargeDto[];
+  /** The sibling rule's suggestion for this child (0 = none) and whether it was applied. */
+  sibling: { nth: number; pct: number; applied: boolean };
+  total_family: number;
+  total_sponsor: number;
 };
 
 export type SeedResult = { created: number; existing: number };
