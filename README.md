@@ -27,10 +27,11 @@ redirect URI `http://localhost:5173/api/auth/google/callback`; with the Google v
 `wrangler dev` prints a warning and sign-in answers `misconfigured`. On an empty database only the
 address in `OWNER_EMAIL` can sign in, and becomes the owner; after that, only invited emails can.
 
-`npm run build` is only needed before `wrangler deploy` (or the `--dry-run` it performs). In
-`npm run dev` the Vite server does not serve `/manifest.webmanifest` or the service worker (they
-exist only in the production build), so test PWA install against `wrangler dev` serving the built
-`apps/web/dist`.
+`npm run dev` does not need a build: it creates an empty `apps/web/dist` first (the Worker's
+`[assets]` directory must exist), and Vite serves the app. Run `npm run build` to bundle the Worker
+for deploy, and to test the PWA: the Vite dev server does not serve `/manifest.webmanifest` or the
+service worker (they exist only in the production build), so test PWA install against
+`wrangler dev` serving the built `apps/web/dist`.
 
 Checks: `npm run typecheck && npm run lint && npm test && npm run build`.
 
@@ -65,7 +66,7 @@ tier changes (PLAN §8).
 
 | Script | Does |
 |---|---|
-| `npm run dev` | Vite dev server + `wrangler dev --local`, together |
+| `npm run dev` | Vite dev server + `wrangler dev --local`, together (creates an empty `apps/web/dist` if missing) |
 | `npm run build` | Builds the web app, then bundles the Worker (`wrangler deploy --dry-run`) |
 | `npm test` | Vitest in every workspace |
 | `npm run lint` / `format` | Biome check / fix |

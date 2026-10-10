@@ -31,6 +31,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      # Only for the sanity check below: the names of the hand-written triggers/views/indexes.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packages/db/sql
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Install wrangler, age, rclone
@@ -43,11 +48,18 @@ jobs:
           set -euo pipefail
           npx wrangler d1 export "$DB_NAME" --remote --output dump.sql
           test -s dump.sql
-          # Sanity: core tables and the ledger triggers must be in the dump. An owner always exists.
+          # Sanity: core tables, and every trigger/view/partial index created in packages/db/sql (the
+          # same list the schema-presence test checks), must be in the dump. An owner always exists.
           grep -Eq 'CREATE TABLE [`"]?receipt[`"]? ' dump.sql
           grep -Eq 'CREATE TABLE [`"]?charge[`"]? ' dump.sql
-          grep -q 'alloc_within_charge' dump.sql
           grep -Eq 'INSERT INTO [`"]?user[`"]? ' dump.sql
+          NAMES=$(grep -ohE 'CREATE (UNIQUE )?(INDEX|TRIGGER|VIEW) (IF NOT EXISTS )?[A-Za-z0-9_]+' packages/db/sql/*.sql | awk '{print $NF}' | sort -u)
+          test "$(echo "$NAMES" | wc -l)" -ge 50
+          MISSING=0
+          for n in $NAMES; do
+            grep -Eq "CREATE (UNIQUE )?(INDEX|TRIGGER|VIEW) (IF NOT EXISTS )?[\`\"]?$n[\`\"]?( |\$)" dump.sql || { echo "::error::missing from dump: $n"; MISSING=1; }
+          done
+          test "$MISSING" = 0
 
       - name: Compress + encrypt
         run: |

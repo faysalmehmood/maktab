@@ -229,7 +229,8 @@ export const account = sqliteTable(
 
 /**
  * Opening/expected/counted are paisa; variance is derived. Once closed the row is frozen except for
- * an owner/admin reopen (closed_at back to NULL with reopened_by/at/reason) — sql/20_append_only.sql.
+ * an owner/admin reopen (closed_at back to NULL with reopened_by/at and a new reason); closing clears
+ * reopened_by/at — sql/20_append_only.sql.
  */
 export const cashSession = sqliteTable(
   'cash_session',
@@ -308,10 +309,12 @@ export const receipt = sqliteTable(
  * Append-only rows; several rows per (receipt, charge) pair are allowed so a later concession can
  * *release* part of an allocation (negative row on the same pair). The pair's running sum is what
  * counts: >= 0 for payments, within the original's pair sum for reversals (sql/30_ledger.sql).
+ * `id` is minted by the caller (ULID) so a retried "apply credit" is a no-op (ledger/allocate).
  */
 export const receiptAllocation = sqliteTable(
   'receipt_allocation',
   {
+    id: id(),
     receiptId: text('receipt_id')
       .notNull()
       .references(() => receipt.id),
@@ -428,6 +431,8 @@ export const payslipLine = sqliteTable(
   },
   () => [
     check('payslip_line_kind', oneOf('kind', PAYSLIP_LINE_KINDS)),
+    // Positive; the kind gives the sign (deduction and advance_recovery subtract from the net).
+    check('payslip_line_amount', sql`"amount" > 0`),
     integerMoney('payslip_line', 'amount'),
   ],
 );

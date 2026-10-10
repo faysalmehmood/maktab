@@ -3,7 +3,7 @@
  * migrations are immutable, so a change to sql/ never rewrites an old migration: it becomes a NEW
  * numbered custom migration (drizzle-kit `--custom`, so the journal and both migrators see it).
  *
- * migrations/meta/custom_sql.json records, per custom migration, the sha256 of the migration file
+ * migrations/custom_sql.json (outside meta/, which drizzle-kit parses as snapshots) records, per custom migration, the sha256 of the migration file
  * and of each sql/ file it carries. A changed file is re-emitted whole, preceded by DROP … IF EXISTS
  * for every object its previous version (and its new version) creates, so it re-runs cleanly; a
  * deleted file emits only the drops.
@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const SQL_DIR = join(root, 'sql');
 const MIGRATIONS = join(root, 'migrations');
-export const MANIFEST = 'migrations/meta/custom_sql.json';
+export const MANIFEST = 'migrations/custom_sql.json';
 const BREAK = '--> statement-breakpoint';
 
 export type ManifestEntry = { migration: string; sha256: string; files: Record<string, string> };

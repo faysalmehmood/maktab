@@ -7,4 +7,5 @@ export {
   rawStatement,
   type Schema,
 } from './client';
+export * from './ledger';
 export * from './schema';

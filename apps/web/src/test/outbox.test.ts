@@ -34,6 +34,8 @@ function fakeServer() {
     requests: 0,
     /** Forces every request to this status (401/403/408/429/5xx) when set. */
     forceStatus: null as number | null,
+    /** error.code sent with a forced status. */
+    forceCode: 'x',
     retryAfter: null as string | null,
   };
 
@@ -76,7 +78,7 @@ function fakeServer() {
       state.requests++;
       if (state.forceStatus) {
         return json(
-          { error: { code: 'x', message: `forced ${state.forceStatus}` } },
+          { error: { code: state.forceCode, message: `forced ${state.forceStatus}` } },
           state.forceStatus,
           state.retryAfter ? { 'retry-after': state.retryAfter } : {},
         );
@@ -290,12 +292,18 @@ describe('outbox (experiment 6 scenarios)', () => {
     expect(server.currentFor(s.grp_id, s.date)?.register?.sub.marks.length).toBe(40);
   });
 
-  it('9. 401/403 pause sync (sign in again) and keep every entry; resume() continues', async () => {
+  it('9. 401 and auth-coded 403s pause sync (sign in again) and keep every entry; resume() continues', async () => {
     const g = groups[8] ?? '';
     await ob.enqueue(sub(g, '2026-10-01'));
     await ob.enqueue(sub(g, '2026-10-02'));
-    for (const status of [401, 403]) {
+    for (const [status, code] of [
+      [401, 'unauthenticated'],
+      [403, 'disabled'],
+      [403, 'not_invited'],
+      [403, 'unauthenticated'],
+    ] as const) {
       server.state.forceStatus = status;
+      server.state.forceCode = code;
       const r = await ob.sync(server.fetch, { force: true });
       expect(r.paused).toMatchObject({ status });
       expect(r.nextAt).toBeNull();
@@ -315,7 +323,19 @@ describe('outbox (experiment 6 scenarios)', () => {
     expect(await ob.pending()).toBe(0);
   });
 
-  it('10. 408 / 429 / 5xx / network retry with backoff; Retry-After is honoured', async () => {
+  it('9b. a route-level 403 forbidden fails the entries instead of pausing', async () => {
+    const g = groups[8] ?? '';
+    await ob.enqueue(sub(g, '2026-10-03'));
+    server.state.forceStatus = 403;
+    server.state.forceCode = 'forbidden';
+    const r = await ob.sync(server.fetch, { force: true });
+    expect(r).toMatchObject({ failed: 1, paused: null });
+    expect(await ob.authPaused()).toBeNull();
+    expect(await ob.pending()).toBe(0);
+    expect((await ob.failed())[0]?.error).toMatch(/HTTP 403/);
+  });
+
+  it('10.408 / 429 / 5xx / network retry with backoff; Retry-After is honoured', async () => {
     const g = groups[9] ?? '';
     await ob.enqueue(sub(g, '2026-10-01'));
     const t = 5_000_000;

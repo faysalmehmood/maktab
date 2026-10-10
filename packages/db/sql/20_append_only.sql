@@ -60,11 +60,31 @@ BEGIN SELECT RAISE(ABORT, 'expense already voided'); END;
 
 -- Cash session: close-only (PLAN §14.6). While open, the drawer fields may change; once closed the row
 -- is frozen, and the only permitted change is an owner/admin reopen: closed_at back to NULL together
--- with reopened_by/at/reason, every other column unchanged. variance is a generated column.
+-- with reopened_by/at and a non-empty reopen_reason that differs from the previous reopen's, every
+-- other column unchanged. variance is a generated column.
+-- Reopen record: reopened_by/at describe the *current* reopen only. They are fixed while the session is
+-- open, and the closing update must clear them (a trigger cannot rewrite NEW, so the app sets them to
+-- NULL in the same statement); reopen_reason is kept as the last reason so the next reopen must give a
+-- new one. The full history of reopens is in `audit`.
 CREATE TRIGGER cash_session_no_delete BEFORE DELETE ON cash_session BEGIN SELECT RAISE(ABORT, 'cash_session cannot be deleted'); END;
+--> statement-breakpoint
+CREATE TRIGGER cash_session_born_open BEFORE INSERT ON cash_session
+WHEN NEW.reopened_by IS NOT NULL OR NEW.reopened_at IS NOT NULL OR NEW.reopen_reason IS NOT NULL
+BEGIN SELECT RAISE(ABORT, 'a new cash_session has no reopen record'); END;
 --> statement-breakpoint
 CREATE TRIGGER cash_session_frozen BEFORE UPDATE OF id, collector_id, business_date, opening, created_at, created_by ON cash_session
 BEGIN SELECT RAISE(ABORT, 'cash_session identity is fixed'); END;
+--> statement-breakpoint
+CREATE TRIGGER cash_session_open_update BEFORE UPDATE ON cash_session WHEN OLD.closed_at IS NULL
+BEGIN
+  SELECT RAISE(ABORT, 'reopen record is fixed while the session is open')
+  WHERE NEW.closed_at IS NULL
+    AND (NEW.reopened_by IS NOT OLD.reopened_by OR NEW.reopened_at IS NOT OLD.reopened_at
+         OR NEW.reopen_reason IS NOT OLD.reopen_reason);
+  SELECT RAISE(ABORT, 'closing must clear reopened_by and reopened_at')
+  WHERE NEW.closed_at IS NOT NULL
+    AND (NEW.reopened_by IS NOT NULL OR NEW.reopened_at IS NOT NULL OR NEW.reopen_reason IS NOT OLD.reopen_reason);
+END;
 --> statement-breakpoint
 CREATE TRIGGER cash_session_close_only BEFORE UPDATE ON cash_session WHEN OLD.closed_at IS NOT NULL
 BEGIN
@@ -75,6 +95,8 @@ BEGIN
     AND length(trim(coalesce(NEW.reopen_reason, ''))) > 0
     AND NEW.expected IS OLD.expected AND NEW.counted IS OLD.counted AND NEW.closed_by IS OLD.closed_by
   );
+  SELECT RAISE(ABORT, 'reopen reason must differ from the previous reopen')
+  WHERE trim(NEW.reopen_reason) = trim(coalesce(OLD.reopen_reason, ''));
 END;
 --> statement-breakpoint
 CREATE TRIGGER receipt_session_open BEFORE INSERT ON receipt WHEN NEW.cash_session_id IS NOT NULL
@@ -97,7 +119,7 @@ END;
 --> statement-breakpoint
 
 -- Payroll maker-checker (PLAN §5.4, §14.8): draft -> approved -> paid, never backwards; lines freeze
--- with the approval; a salary is paid only against an approved (or already paid) slip.
+-- with the approval; a salary is paid only against an approved (or already paid) slip, within its net.
 CREATE TRIGGER payslip_no_delete BEFORE DELETE ON payslip BEGIN SELECT RAISE(ABORT, 'payslip cannot be deleted'); END;
 --> statement-breakpoint
 CREATE TRIGGER payslip_starts_draft BEFORE INSERT ON payslip WHEN NEW.status <> 'draft'
@@ -139,6 +161,16 @@ CREATE TRIGGER salary_payment_needs_approval BEFORE INSERT ON salary_payment
 BEGIN
   SELECT RAISE(ABORT, 'payslip is not approved')
   WHERE (SELECT status FROM payslip WHERE id = NEW.payslip_id) NOT IN ('approved', 'paid');
+END;
+--> statement-breakpoint
+-- Salary paid against a slip never exceeds its net. Lines are positive (CHECK); basic and allowance
+-- add, deduction and advance_recovery subtract. The net is fixed because lines freeze at approval.
+CREATE TRIGGER salary_payment_within_net AFTER INSERT ON salary_payment
+BEGIN
+  SELECT RAISE(ABORT, 'salary payments exceed payslip net')
+  WHERE (SELECT sum(amount) FROM salary_payment WHERE payslip_id = NEW.payslip_id)
+      > (SELECT coalesce(sum(CASE WHEN kind IN ('basic', 'allowance') THEN amount ELSE -amount END), 0)
+         FROM payslip_line WHERE payslip_id = NEW.payslip_id);
 END;
 --> statement-breakpoint
 

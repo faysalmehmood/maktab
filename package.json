@@ -15,6 +15,7 @@
     "apps/web"
   ],
   "scripts": {
+    "predev": "node -e \"require('node:fs').mkdirSync('apps/web/dist', { recursive: true })\"",
     "dev": "concurrently -k -n web,api -c cyan,magenta \"npm run dev -w @maktab/web\" \"npm run dev -w @maktab/api\"",
     "build": "npm run build -w @maktab/web && npm run build -w @maktab/api",
     "test": "npm run test --workspaces --if-present",

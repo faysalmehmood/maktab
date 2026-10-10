@@ -110,6 +110,16 @@ describe('Google sign-in', () => {
         GOOGLE_CLIENT_SECRET: 's',
       }),
     ).toMatch(/GOOGLE_CLIENT_ID empty/);
+    const secretOnly = configWarning({
+      APP_ORIGIN: 'http://localhost:5173',
+      GOOGLE_CLIENT_ID: 'a',
+      GOOGLE_CLIENT_SECRET: ' ',
+    });
+    expect(secretOnly).toMatch(/GOOGLE_CLIENT_SECRET empty/);
+    expect(secretOnly).not.toMatch(/GOOGLE_CLIENT_ID/);
+    expect(configWarning({ APP_ORIGIN: 'http://localhost:5173' })).toMatch(
+      /GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET empty/,
+    );
     expect(
       configWarning({
         APP_ORIGIN: 'http://localhost:5173',

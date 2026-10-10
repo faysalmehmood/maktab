@@ -1,7 +1,9 @@
+import { newId } from '@maktab/shared';
 import { eq, sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { checkCustomSql } from '../scripts/sync-custom-sql';
 import { type AppDb, atomic, rawStatement } from '../src/client';
+import { allocationStatement } from '../src/ledger';
 import { createTestDb } from '../src/node';
 import * as t from '../src/schema';
 
@@ -79,7 +81,7 @@ function receipt(
       FROM receipt_series WHERE series = 'R' AND year = 2026`,
     ),
     ...o.allocs.map(([chargeId, amount]) =>
-      db.insert(t.receiptAllocation).values({ receiptId: o.id, chargeId, amount }),
+      rawStatement(db, allocationStatement(o.id, { id: newId(), chargeId, amount })),
     ),
   ]);
 }

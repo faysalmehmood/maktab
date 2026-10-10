@@ -76,11 +76,31 @@ BEGIN SELECT RAISE(ABORT, 'expense already voided'); END;
 
 -- Cash session: close-only (PLAN §14.6). While open, the drawer fields may change; once closed the row
 -- is frozen, and the only permitted change is an owner/admin reopen: closed_at back to NULL together
--- with reopened_by/at/reason, every other column unchanged. variance is a generated column.
+-- with reopened_by/at and a non-empty reopen_reason that differs from the previous reopen's, every
+-- other column unchanged. variance is a generated column.
+-- Reopen record: reopened_by/at describe the *current* reopen only. They are fixed while the session is
+-- open, and the closing update must clear them (a trigger cannot rewrite NEW, so the app sets them to
+-- NULL in the same statement); reopen_reason is kept as the last reason so the next reopen must give a
+-- new one. The full history of reopens is in `audit`.
 CREATE TRIGGER cash_session_no_delete BEFORE DELETE ON cash_session BEGIN SELECT RAISE(ABORT, 'cash_session cannot be deleted'); END;
+--> statement-breakpoint
+CREATE TRIGGER cash_session_born_open BEFORE INSERT ON cash_session
+WHEN NEW.reopened_by IS NOT NULL OR NEW.reopened_at IS NOT NULL OR NEW.reopen_reason IS NOT NULL
+BEGIN SELECT RAISE(ABORT, 'a new cash_session has no reopen record'); END;
 --> statement-breakpoint
 CREATE TRIGGER cash_session_frozen BEFORE UPDATE OF id, collector_id, business_date, opening, created_at, created_by ON cash_session
 BEGIN SELECT RAISE(ABORT, 'cash_session identity is fixed'); END;
+--> statement-breakpoint
+CREATE TRIGGER cash_session_open_update BEFORE UPDATE ON cash_session WHEN OLD.closed_at IS NULL
+BEGIN
+  SELECT RAISE(ABORT, 'reopen record is fixed while the session is open')
+  WHERE NEW.closed_at IS NULL
+    AND (NEW.reopened_by IS NOT OLD.reopened_by OR NEW.reopened_at IS NOT OLD.reopened_at
+         OR NEW.reopen_reason IS NOT OLD.reopen_reason);
+  SELECT RAISE(ABORT, 'closing must clear reopened_by and reopened_at')
+  WHERE NEW.closed_at IS NOT NULL
+    AND (NEW.reopened_by IS NOT NULL OR NEW.reopened_at IS NOT NULL OR NEW.reopen_reason IS NOT OLD.reopen_reason);
+END;
 --> statement-breakpoint
 CREATE TRIGGER cash_session_close_only BEFORE UPDATE ON cash_session WHEN OLD.closed_at IS NOT NULL
 BEGIN
@@ -91,6 +111,8 @@ BEGIN
     AND length(trim(coalesce(NEW.reopen_reason, ''))) > 0
     AND NEW.expected IS OLD.expected AND NEW.counted IS OLD.counted AND NEW.closed_by IS OLD.closed_by
   );
+  SELECT RAISE(ABORT, 'reopen reason must differ from the previous reopen')
+  WHERE trim(NEW.reopen_reason) = trim(coalesce(OLD.reopen_reason, ''));
 END;
 --> statement-breakpoint
 CREATE TRIGGER receipt_session_open BEFORE INSERT ON receipt WHEN NEW.cash_session_id IS NOT NULL
@@ -113,7 +135,7 @@ END;
 --> statement-breakpoint
 
 -- Payroll maker-checker (PLAN §5.4, §14.8): draft -> approved -> paid, never backwards; lines freeze
--- with the approval; a salary is paid only against an approved (or already paid) slip.
+-- with the approval; a salary is paid only against an approved (or already paid) slip, within its net.
 CREATE TRIGGER payslip_no_delete BEFORE DELETE ON payslip BEGIN SELECT RAISE(ABORT, 'payslip cannot be deleted'); END;
 --> statement-breakpoint
 CREATE TRIGGER payslip_starts_draft BEFORE INSERT ON payslip WHEN NEW.status <> 'draft'
@@ -155,6 +177,16 @@ CREATE TRIGGER salary_payment_needs_approval BEFORE INSERT ON salary_payment
 BEGIN
   SELECT RAISE(ABORT, 'payslip is not approved')
   WHERE (SELECT status FROM payslip WHERE id = NEW.payslip_id) NOT IN ('approved', 'paid');
+END;
+--> statement-breakpoint
+-- Salary paid against a slip never exceeds its net. Lines are positive (CHECK); basic and allowance
+-- add, deduction and advance_recovery subtract. The net is fixed because lines freeze at approval.
+CREATE TRIGGER salary_payment_within_net AFTER INSERT ON salary_payment
+BEGIN
+  SELECT RAISE(ABORT, 'salary payments exceed payslip net')
+  WHERE (SELECT sum(amount) FROM salary_payment WHERE payslip_id = NEW.payslip_id)
+      > (SELECT coalesce(sum(CASE WHEN kind IN ('basic', 'allowance') THEN amount ELSE -amount END), 0)
+         FROM payslip_line WHERE payslip_id = NEW.payslip_id);
 END;
 --> statement-breakpoint
 
@@ -243,11 +275,29 @@ BEGIN
 END;
 --> statement-breakpoint
 
--- A refund pays credit back out; it can never exceed the payer's unallocated credit.
-CREATE TRIGGER receipt_refund_within_credit AFTER INSERT ON receipt WHEN NEW.kind = 'refund'
+-- Payer credit (unallocated money) = Σ receipts (payment + reversal + refund, signed) − Σ allocations
+-- (signed), per payer. It never goes below zero: a refund pays out at most the credit, and a positive
+-- allocation (alloc_sums, below) spends at most the credit.
+-- A reversal is inserted BEFORE its unwind allocations (they reference it), so at insert time its effect
+-- is checked ASSUMING the unwinds follow in the same batch — packages/db/src/ledger reverseReceipt is the
+-- only writer and always does this. The unwinds give back exactly what the payment still has allocated,
+-- so: credit_now − |payment| + Σ payment allocations must stay >= 0 (e.g. a refund already paid that
+-- credit out). A reversal inserted without its unwinds shows up in the ledger_consistency view.
+CREATE TRIGGER receipt_within_credit AFTER INSERT ON receipt WHEN NEW.kind IN ('refund', 'reversal')
 BEGIN
   SELECT RAISE(ABORT, 'refund exceeds unallocated credit')
-  WHERE (SELECT credit FROM payer_credit WHERE payer_type = NEW.payer_type AND payer_id = NEW.payer_id) < 0;
+  WHERE NEW.kind = 'refund'
+    AND (SELECT coalesce(sum(amount), 0) FROM receipt
+         WHERE payer_type = NEW.payer_type AND payer_id = NEW.payer_id)
+      - (SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a JOIN receipt r ON r.id = a.receipt_id
+         WHERE r.payer_type = NEW.payer_type AND r.payer_id = NEW.payer_id) < 0;
+  SELECT RAISE(ABORT, 'reversal would leave negative payer credit; the money was already paid out')
+  WHERE NEW.kind = 'reversal'
+    AND (SELECT coalesce(sum(amount), 0) FROM receipt
+         WHERE payer_type = NEW.payer_type AND payer_id = NEW.payer_id)
+      - (SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a JOIN receipt r ON r.id = a.receipt_id
+         WHERE r.payer_type = NEW.payer_type AND r.payer_id = NEW.payer_id)
+      + (SELECT coalesce(sum(amount), 0) FROM receipt_allocation WHERE receipt_id = NEW.reverses_id) < 0;
 END;
 --> statement-breakpoint
 
@@ -268,7 +318,7 @@ END;
 --> statement-breakpoint
 
 -- Per (receipt, charge) pair, running sums decide (a negative row on a payment is a *release*):
---   payment:  0 <= pair sum, and sum over the receipt <= receipt amount;
+--   payment:  0 <= pair sum, sum over the receipt <= receipt amount, payer credit stays >= 0;
 --   reversal: pair sum <= 0, and |pair sum| <= the reversed payment's pair sum on that charge.
 -- One trigger so the checks run in a fixed order (the first violated rule names the error).
 CREATE TRIGGER alloc_sums AFTER INSERT ON receipt_allocation
@@ -293,6 +343,14 @@ BEGIN
       > (SELECT coalesce(sum(amount), 0) FROM charge
          WHERE id = NEW.charge_id OR parent_charge_id = NEW.charge_id
             OR parent_charge_id IN (SELECT id FROM charge WHERE parent_charge_id = NEW.charge_id));
+  -- A positive row spends payer credit; it may not spend credit that was refunded or reversed away.
+  SELECT RAISE(ABORT, 'allocation exceeds payer credit')
+  FROM receipt p
+  WHERE NEW.amount > 0 AND p.id = NEW.receipt_id
+    AND (SELECT coalesce(sum(amount), 0) FROM receipt
+         WHERE payer_type = p.payer_type AND payer_id = p.payer_id)
+      - (SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a JOIN receipt r ON r.id = a.receipt_id
+         WHERE r.payer_type = p.payer_type AND r.payer_id = p.payer_id) < 0;
 END;
 --> statement-breakpoint
 
@@ -324,3 +382,23 @@ SELECT r.payer_type, r.payer_id,
                                  WHERE ra.payer_type = r.payer_type AND ra.payer_id = r.payer_id), 0) AS credit
 FROM receipt r
 GROUP BY r.payer_type, r.payer_id;
+--> statement-breakpoint
+
+-- Rows that should never exist if every write went through the ledger helpers. Empty when healthy;
+-- the nightly alarm on it is M6. For a payment, `expected` is the upper bound (its amount).
+CREATE VIEW ledger_consistency AS
+SELECT 'negative_credit' AS issue, payer_type, payer_id, NULL AS receipt_id, 0 AS expected, credit AS actual
+FROM payer_credit
+WHERE credit < 0
+UNION ALL
+SELECT issue, payer_type, payer_id, receipt_id, expected, actual
+FROM (SELECT r.kind || '_allocations' AS issue, r.payer_type, r.payer_id, r.id AS receipt_id,
+             CASE r.kind
+               WHEN 'reversal' THEN -(SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a
+                                      WHERE a.receipt_id = r.reverses_id)
+               WHEN 'refund' THEN 0
+               ELSE r.amount END AS expected,
+             (SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a WHERE a.receipt_id = r.id) AS actual
+      FROM receipt r) x
+WHERE CASE WHEN issue = 'payment_allocations' THEN actual < 0 OR actual > expected
+           ELSE actual <> expected END;

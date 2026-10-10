@@ -7,9 +7,11 @@
  * off; exponential backoff 1 s → 60 s (a longer Retry-After wins).
  * Response classes:
  *   2xx                       per-entry results (applied | replaced | duplicate | stale = done; rejected = failed)
- *   401 / 403                 PAUSE: nothing is sent until resume() (after the user signs in again);
+ *   401; 403 whose error.code is disabled | not_invited | unauthenticated
+ *                             PAUSE: nothing is sent until resume() (after the user signs in again);
  *                             entries stay pending and untouched — an expired session must never
  *                             turn a teacher's register into a "failed" one.
+ *   other 403 (`forbidden`)   the route refuses this user; re-auth won't help: entries move to `failed`
  *   408 / 429 / 5xx / network retry with backoff
  *   any other 4xx             the request itself is bad: entries move to `failed`
  * Triggers are the caller's job (online, visibilitychange, a timer); Background Sync is not relied on.
@@ -109,7 +111,10 @@ export const backoffMs = (attempts: number): number =>
 
 /** Transient HTTP statuses: the request may succeed unchanged later. */
 const isRetryable = (status: number): boolean => status === 408 || status === 429 || status >= 500;
-const isAuth = (status: number): boolean => status === 401 || status === 403;
+/** 403 codes that mean "who you are" is the problem (sign in again), not "what you asked for". */
+const AUTH_403_CODES = new Set(['disabled', 'not_invited', 'unauthenticated']);
+const isAuth = (status: number, body: SyncBody): boolean =>
+  status === 401 || (status === 403 && AUTH_403_CODES.has(body?.error?.code ?? ''));
 
 /** Retry-After in ms (seconds or HTTP date), or 0. */
 function retryAfterMs(resp: Response): number {
@@ -225,7 +230,10 @@ const bump = (e: OutboxEntry, msg: string, minDelayMs = 0): OutboxEntry => ({
   next_at: cfg.now() + Math.max(backoffMs(e.attempts + 1), minDelayMs),
 });
 
-type SyncBody = { results?: AttendanceSyncResult[]; error?: { message?: string } } | null;
+type SyncBody = {
+  results?: AttendanceSyncResult[];
+  error?: { code?: string; message?: string };
+} | null;
 
 async function runOnce(fetchImpl: FetchLike, force: boolean): Promise<SyncOutcome> {
   const out: SyncOutcome = {
@@ -275,7 +283,7 @@ async function runOnce(fetchImpl: FetchLike, force: boolean): Promise<SyncOutcom
       }
       break;
     }
-    if (isAuth(resp.status)) {
+    if (isAuth(resp.status, body)) {
       // Session expired or revoked: keep everything exactly as it is and stop until resume().
       out.paused = { status: resp.status, at: cfg.now() };
       await setMeta('auth_paused', out.paused);

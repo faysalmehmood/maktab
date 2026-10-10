@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "76226ba4-441a-47c1-a071-a37ba87ccb02",
+  "id": "18e21fe7-bfec-44d8-aadf-b7e384907460",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "att_mark": {
@@ -4304,6 +4304,10 @@
           "name": "payslip_line_kind",
           "value": "\"kind\" IN ('basic','allowance','deduction','advance_recovery')"
         },
+        "payslip_line_amount": {
+          "name": "payslip_line_amount",
+          "value": "\"amount\" > 0"
+        },
         "payslip_line_amount_int": {
           "name": "payslip_line_amount_int",
           "value": "typeof(\"amount\") = 'integer'"
@@ -4555,6 +4559,13 @@
     "receipt_allocation": {
       "name": "receipt_allocation",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
         "receipt_id": {
           "name": "receipt_id",
           "type": "text",

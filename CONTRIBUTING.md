@@ -9,7 +9,7 @@ Thanks for helping. Maktab is small on purpose; please keep it that way.
 - Money is integer paisa, money rows are never updated or deleted, and balances are derived.
 - Schema changes: edit `packages/db/src/schema`, run `npm run db:generate`, commit the migration.
   Triggers, views and partial indexes live in `packages/db/sql/`; editing one emits a new numbered
-  migration (never edit a committed migration; CI checks `migrations/meta/custom_sql.json`, ADR 0002).
+  migration (never edit a committed migration; CI checks `migrations/custom_sql.json`, ADR 0002).
 - Every user-facing string needs both `en` and `ur` (`packages/shared/src/i18n.ts`; the type
   checker enforces matching keys). Numbers stay in Latin digits.
 - Comments explain why, not what. No `any`.

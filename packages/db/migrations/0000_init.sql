@@ -618,6 +618,7 @@ CREATE TABLE `payslip_line` (
 	`created_by` text,
 	FOREIGN KEY (`payslip_id`) REFERENCES `payslip`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "payslip_line_kind" CHECK("kind" IN ('basic','allowance','deduction','advance_recovery')),
+	CONSTRAINT "payslip_line_amount" CHECK("amount" > 0),
 	CONSTRAINT "payslip_line_amount_int" CHECK(typeof("amount") = 'integer')
 );
 --> statement-breakpoint
@@ -656,6 +657,7 @@ CREATE UNIQUE INDEX `receipt_idempotency_key_unique` ON `receipt` (`idempotency_
 CREATE INDEX `receipt_payer` ON `receipt` (`payer_type`,`payer_id`);--> statement-breakpoint
 CREATE INDEX `receipt_day_collector` ON `receipt` (`business_date`,`collector_id`);--> statement-breakpoint
 CREATE TABLE `receipt_allocation` (
+	`id` text PRIMARY KEY NOT NULL,
 	`receipt_id` text NOT NULL,
 	`charge_id` text NOT NULL,
 	`amount` integer NOT NULL,

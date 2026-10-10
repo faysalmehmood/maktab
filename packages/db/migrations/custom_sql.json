@@ -1,0 +1,13 @@
+{
+  "entries": [
+    {
+      "migration": "0001_ledger_rules",
+      "sha256": "30bd204a2fac4a8e455787098adf1d8264b44fe8e13989fb67513b8af9f2b601",
+      "files": {
+        "10_indexes.sql": "22adfbeff421a0fbdeccbb6a4beb235105298c9babdbd3f42e8783d460956b92",
+        "20_append_only.sql": "cc0da79505666b0c01046360a402704571681fbce9d83005f5fa1f08bbcff365",
+        "30_ledger.sql": "aac406bd2dcb9eb42bc37b80b17f33a300284ba5ea01a5bfdc27aa5ec4f6e474"
+      }
+    }
+  ]
+}

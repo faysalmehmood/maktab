@@ -51,11 +51,29 @@ BEGIN
 END;
 --> statement-breakpoint
 
--- A refund pays credit back out; it can never exceed the payer's unallocated credit.
-CREATE TRIGGER receipt_refund_within_credit AFTER INSERT ON receipt WHEN NEW.kind = 'refund'
+-- Payer credit (unallocated money) = Σ receipts (payment + reversal + refund, signed) − Σ allocations
+-- (signed), per payer. It never goes below zero: a refund pays out at most the credit, and a positive
+-- allocation (alloc_sums, below) spends at most the credit.
+-- A reversal is inserted BEFORE its unwind allocations (they reference it), so at insert time its effect
+-- is checked ASSUMING the unwinds follow in the same batch — packages/db/src/ledger reverseReceipt is the
+-- only writer and always does this. The unwinds give back exactly what the payment still has allocated,
+-- so: credit_now − |payment| + Σ payment allocations must stay >= 0 (e.g. a refund already paid that
+-- credit out). A reversal inserted without its unwinds shows up in the ledger_consistency view.
+CREATE TRIGGER receipt_within_credit AFTER INSERT ON receipt WHEN NEW.kind IN ('refund', 'reversal')
 BEGIN
   SELECT RAISE(ABORT, 'refund exceeds unallocated credit')
-  WHERE (SELECT credit FROM payer_credit WHERE payer_type = NEW.payer_type AND payer_id = NEW.payer_id) < 0;
+  WHERE NEW.kind = 'refund'
+    AND (SELECT coalesce(sum(amount), 0) FROM receipt
+         WHERE payer_type = NEW.payer_type AND payer_id = NEW.payer_id)
+      - (SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a JOIN receipt r ON r.id = a.receipt_id
+         WHERE r.payer_type = NEW.payer_type AND r.payer_id = NEW.payer_id) < 0;
+  SELECT RAISE(ABORT, 'reversal would leave negative payer credit; the money was already paid out')
+  WHERE NEW.kind = 'reversal'
+    AND (SELECT coalesce(sum(amount), 0) FROM receipt
+         WHERE payer_type = NEW.payer_type AND payer_id = NEW.payer_id)
+      - (SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a JOIN receipt r ON r.id = a.receipt_id
+         WHERE r.payer_type = NEW.payer_type AND r.payer_id = NEW.payer_id)
+      + (SELECT coalesce(sum(amount), 0) FROM receipt_allocation WHERE receipt_id = NEW.reverses_id) < 0;
 END;
 --> statement-breakpoint
 
@@ -76,7 +94,7 @@ END;
 --> statement-breakpoint
 
 -- Per (receipt, charge) pair, running sums decide (a negative row on a payment is a *release*):
---   payment:  0 <= pair sum, and sum over the receipt <= receipt amount;
+--   payment:  0 <= pair sum, sum over the receipt <= receipt amount, payer credit stays >= 0;
 --   reversal: pair sum <= 0, and |pair sum| <= the reversed payment's pair sum on that charge.
 -- One trigger so the checks run in a fixed order (the first violated rule names the error).
 CREATE TRIGGER alloc_sums AFTER INSERT ON receipt_allocation
@@ -101,6 +119,14 @@ BEGIN
       > (SELECT coalesce(sum(amount), 0) FROM charge
          WHERE id = NEW.charge_id OR parent_charge_id = NEW.charge_id
             OR parent_charge_id IN (SELECT id FROM charge WHERE parent_charge_id = NEW.charge_id));
+  -- A positive row spends payer credit; it may not spend credit that was refunded or reversed away.
+  SELECT RAISE(ABORT, 'allocation exceeds payer credit')
+  FROM receipt p
+  WHERE NEW.amount > 0 AND p.id = NEW.receipt_id
+    AND (SELECT coalesce(sum(amount), 0) FROM receipt
+         WHERE payer_type = p.payer_type AND payer_id = p.payer_id)
+      - (SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a JOIN receipt r ON r.id = a.receipt_id
+         WHERE r.payer_type = p.payer_type AND r.payer_id = p.payer_id) < 0;
 END;
 --> statement-breakpoint
 
@@ -132,3 +158,23 @@ SELECT r.payer_type, r.payer_id,
                                  WHERE ra.payer_type = r.payer_type AND ra.payer_id = r.payer_id), 0) AS credit
 FROM receipt r
 GROUP BY r.payer_type, r.payer_id;
+--> statement-breakpoint
+
+-- Rows that should never exist if every write went through the ledger helpers. Empty when healthy;
+-- the nightly alarm on it is M6. For a payment, `expected` is the upper bound (its amount).
+CREATE VIEW ledger_consistency AS
+SELECT 'negative_credit' AS issue, payer_type, payer_id, NULL AS receipt_id, 0 AS expected, credit AS actual
+FROM payer_credit
+WHERE credit < 0
+UNION ALL
+SELECT issue, payer_type, payer_id, receipt_id, expected, actual
+FROM (SELECT r.kind || '_allocations' AS issue, r.payer_type, r.payer_id, r.id AS receipt_id,
+             CASE r.kind
+               WHEN 'reversal' THEN -(SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a
+                                      WHERE a.receipt_id = r.reverses_id)
+               WHEN 'refund' THEN 0
+               ELSE r.amount END AS expected,
+             (SELECT coalesce(sum(a.amount), 0) FROM receipt_allocation a WHERE a.receipt_id = r.id) AS actual
+      FROM receipt r) x
+WHERE CASE WHEN issue = 'payment_allocations' THEN actual < 0 OR actual > expected
+           ELSE actual <> expected END;

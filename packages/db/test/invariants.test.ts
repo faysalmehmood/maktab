@@ -1,3 +1,4 @@
+import { newId } from '@maktab/shared';
 import { type SQL, sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -55,8 +56,8 @@ const receipt = (
         VALUES (${id}, ${`N-${id}`}, ${kind}, ${o.reverses ?? null}, 'family', ${o.payer ?? 'F1'},
           ${amount}, ${o.method ?? 'cash'}, 'U1', ${o.session ?? null}, '2026-01-05', ${`k-${id}`})`;
 
-const alloc = (r: string, c: string, amount: number) =>
-  sql`INSERT INTO receipt_allocation (receipt_id, charge_id, amount) VALUES (${r}, ${c}, ${amount})`;
+const alloc = (r: string, c: string, amount: number, id = newId()) =>
+  sql`INSERT INTO receipt_allocation (id, receipt_id, charge_id, amount) VALUES (${id}, ${r}, ${c}, ${amount})`;
 
 const net = async (db: AppDb, id: string) =>
   (await all(db, sql`SELECT net, paid, due FROM charge_status WHERE id = ${id}`))[0];
