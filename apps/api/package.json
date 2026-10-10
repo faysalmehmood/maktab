@@ -13,7 +13,8 @@
     "dev:session": "tsx scripts/dev-session.ts",
     "smoke:m1": "tsx scripts/smoke-m1.ts",
     "smoke:m2": "tsx scripts/smoke-m2.ts",
-    "smoke:m3": "tsx scripts/smoke-m3.ts"
+    "smoke:m3": "tsx scripts/smoke-m3.ts",
+    "smoke:m3b": "tsx scripts/smoke-m3b.ts"
   },
   "dependencies": {
     "@maktab/db": "0.0.0",
