@@ -1,11 +1,14 @@
 import {
+  type AppDb,
   addConcession,
   applyLateFines,
+  collectionByCollector,
   concessionRegister,
   defaulters,
   endConcession,
   type FeeSettings,
   failingGroups,
+  familyStatement,
   feeRegister,
   feeSettings,
   generateCharges,
@@ -21,11 +24,13 @@ import {
   waiveFine,
 } from '@maktab/db';
 import {
+  type ConcessionDto,
   concessionEndSchema,
   concessionInputSchema,
   concessionRegisterQuerySchema,
   type DefaulterDto,
   defaultersQuerySchema,
+  type FeeDashboardDto,
   type FeeHeadDto,
   type FeeRateDto,
   type FeeSettingsDto,
@@ -42,6 +47,8 @@ import {
   regenerateInputSchema,
   registerQuerySchema,
   remindInputSchema,
+  type SponsorshipDto,
+  type StudentFeesDto,
   sponsorInputSchema,
   sponsorPatchSchema,
   sponsorshipEndSchema,
@@ -79,12 +86,19 @@ const headDto = (h: HeadRow): FeeHeadDto => ({
   archived: !!h.archived_at,
 });
 
-const settingsDto = (s: FeeSettings): FeeSettingsDto => ({
-  fine_rule: s.fineRule,
-  sibling_rule: s.siblingRule,
-  reminder_cooldown_days: s.cooldownDays,
-  due_day: s.dueDay,
-});
+/** The fee settings plus the receipt series state (the prefix locks once a receipt exists). */
+async function settingsBody(db: AppDb): Promise<FeeSettingsDto> {
+  const s: FeeSettings = await feeSettings(db);
+  const [r] = await db.all<{ n: number }>(sql`SELECT EXISTS (SELECT 1 FROM receipt) AS n`);
+  return {
+    fine_rule: s.fineRule,
+    sibling_rule: s.siblingRule,
+    reminder_cooldown_days: s.cooldownDays,
+    due_day: s.dueDay,
+    receipt_prefix: s.receiptPrefix,
+    receipts_issued: !!r?.n,
+  };
+}
 
 /** Rupees with paisa for CSV (spreadsheets want numbers, not "PKR 5,700"). */
 const rupees = (paisa: number) => paisa / 100;
@@ -102,7 +116,7 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     app,
     table,
     { method: 'GET', path: '/api/school/fees', access: requires('catalog', 'read') },
-    async (c) => c.json({ fees: settingsDto(await feeSettings(c.get('db'))) }),
+    async (c) => c.json({ fees: await settingsBody(c.get('db')) }),
   );
 
   defineRoute(
@@ -132,7 +146,7 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
             ...diff,
           }),
         ]);
-      return c.json({ fees: settingsDto(await feeSettings(db)) });
+      return c.json({ fees: await settingsBody(db) });
     },
   );
 
@@ -734,7 +748,7 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const db = c.get('db');
       const grant = c.get('grant');
       const scope = await scopeToGroups(db, userId(c), grant);
-      const rows: DefaulterDto[] = await defaulters(db, {
+      const rows = await defaulters(db, {
         today: todayPk(),
         grpId: q.grp_id ?? null,
         minMonths: q.min_months,
@@ -756,7 +770,22 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           })),
         });
       const total = rows.reduce((a, r) => a + r.overdue, 0);
-      return c.json({ summary_only: false, defaulters: rows, total_overdue: total });
+      // The first guardian by priority, for the office's call / WhatsApp (M3b rows show the phone).
+      const fams = [...new Set(rows.map((r) => r.family_id))];
+      const guardians = fams.length
+        ? await db.all<{ family_id: string; name: string; phone: string | null }>(sql`
+            SELECT g.family_id, g.name, COALESCE(g.whatsapp, g.phone) AS phone FROM guardian g
+            WHERE g.id = (SELECT g2.id FROM guardian g2 WHERE g2.family_id = g.family_id
+                          ORDER BY g2.priority, g2.created_at, g2.id LIMIT 1)
+              AND g.family_id IN (SELECT value FROM json_each(${JSON.stringify(fams)}))`)
+        : [];
+      const byFamily = new Map(guardians.map((g) => [g.family_id, g]));
+      const out: DefaulterDto[] = rows.map((r) => ({
+        ...r,
+        guardian_name: byFamily.get(r.family_id)?.name ?? null,
+        guardian_phone: byFamily.get(r.family_id)?.phone ?? null,
+      }));
+      return c.json({ summary_only: false, defaulters: out, total_overdue: total });
     },
   );
 
@@ -937,6 +966,100 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         concessions: rows,
         total_given: rows.reduce((a, r) => a + r.amount_given, 0),
       });
+    },
+  );
+
+  // ---- M3b read endpoints (thin; no money writes) ----
+
+  /** The student detail "Fees" tab: this child's lines, concessions, sponsorships, opening balance. */
+  defineRoute(
+    app,
+    table,
+    { method: 'GET', path: '/api/fees/student/:id', access: money },
+    async (c) => {
+      const db = c.get('db');
+      const id = idParam(c);
+      const [st] = await db.all<{
+        id: string;
+        name: string;
+        admission_no: string;
+        family_id: string;
+      }>(sql`SELECT id, name, admission_no, family_id FROM student WHERE id = ${id}`);
+      if (!st) throw notFoundError('Student');
+      const fam = await familyStatement(db, st.family_id, todayPk());
+      if (!fam) throw notFoundError('Family');
+      const lines = fam.charges.filter((l) => l.student_id === id);
+      const concessions = await db.all<ConcessionDto>(sql`SELECT k.id, k.student_id,
+          st.name AS student_name, k.fee_head_id, h.name AS head_name, k.type, k.value, k.reason,
+          k.note, k.valid_from, k.valid_to, k.ended_at, k.end_reason, k.created_at
+        FROM concession k JOIN student st ON st.id = k.student_id
+        LEFT JOIN fee_head h ON h.id = k.fee_head_id
+        WHERE k.student_id = ${id} ORDER BY k.valid_from DESC, k.created_at DESC`);
+      const sponsorships = await db.all<SponsorshipDto>(sql`SELECT sp.id, sp.sponsor_id,
+          s.name AS sponsor_name, sp.student_id, sp.fee_head_id, h.name AS head_name, sp.share_pct,
+          sp.valid_from, sp.valid_to
+        FROM sponsorship sp JOIN sponsor s ON s.id = sp.sponsor_id
+        LEFT JOIN fee_head h ON h.id = sp.fee_head_id
+        WHERE sp.student_id = ${id} ORDER BY sp.valid_from DESC`);
+      const [ob] = await db.all<{ amount: number; as_of: string; note: string | null }>(
+        sql`SELECT amount, as_of, note FROM opening_balance WHERE student_id = ${id}`,
+      );
+      const body: StudentFeesDto = {
+        student: st,
+        family_name: fam.family.name,
+        lines,
+        sponsored: fam.sponsored.filter((l) => l.student_id === id),
+        due: lines.reduce((a, l) => a + Math.max(0, l.due), 0),
+        family_due: fam.totals.due,
+        family_credit: fam.credit,
+        concessions,
+        sponsorships,
+        opening_balance: ob ?? null,
+        receipts: fam.receipts,
+      };
+      return c.json(body);
+    },
+  );
+
+  /** Office fee tiles (PLAN §14.11): today's collection, dues, defaulters, alerts, queued messages. */
+  defineRoute(
+    app,
+    table,
+    { method: 'GET', path: '/api/dashboard/fees', access: money },
+    async (c) => {
+      const db = c.get('db');
+      const today = todayPk();
+      const rows = await collectionByCollector(db, { from: today, to: today });
+      const byMethod = new Map<string, { amount: number; count: number }>();
+      for (const r of rows) {
+        const m = byMethod.get(r.method) ?? { amount: 0, count: 0 };
+        byMethod.set(r.method, { amount: m.amount + r.net, count: m.count + r.payments });
+      }
+      const [dues] = await db.all<{
+        n: number;
+      }>(sql`SELECT coalesce(sum(max(0, d.due - coalesce(pc.credit, 0))), 0) AS n
+        FROM (SELECT payer_id, sum(due) AS due FROM charge_status
+              WHERE payer_type = 'family' AND due > 0 GROUP BY payer_id) d
+        LEFT JOIN payer_credit pc ON pc.payer_type = 'family' AND pc.payer_id = d.payer_id`);
+      const [queued] = await db.all<{ n: number }>(sql`SELECT count(*) AS n FROM message
+        WHERE status = 'queued' AND template_key IN ('fee_due', 'fee_overdue', 'payment_received')`);
+      const late = await defaulters(db, { today, limit: 5000 });
+      const collected = [...byMethod.entries()].map(([method, v]) => ({
+        method: method as FeeDashboardDto['collected'][number]['method'],
+        ...v,
+      }));
+      const body: FeeDashboardDto = {
+        date: today,
+        collected,
+        collected_total: collected.reduce((a, r) => a + r.amount, 0),
+        dues_outstanding: Number(dues?.n ?? 0),
+        defaulters: late.length,
+        billing_alerts: (await failingGroups(db, today.slice(0, 7))).filter(
+          (f) => f.attention_required,
+        ).length,
+        queued_fee_messages: Number(queued?.n ?? 0),
+      };
+      return c.json(body);
     },
   );
 }

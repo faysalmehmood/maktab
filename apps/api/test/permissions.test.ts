@@ -208,6 +208,8 @@ POST   /api/transfers                            D A A A D D
 GET    /api/accounts                             D A A A D D
 POST   /api/accounts                             D A A D D D
 GET    /api/admissions/preview-fees              D A A A D D
+GET    /api/fees/student/:id                     D A A A D D
+GET    /api/dashboard/fees                       D A A A D D
 `;
 
 type Who = PrincipalRole | 'anonymous';

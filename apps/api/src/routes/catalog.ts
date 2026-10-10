@@ -96,6 +96,16 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       receiptPrefix: input.receipt_prefix ?? null,
     };
     const auditId = newId();
+    // Printed receipt numbers carry the prefix: once one is issued the series is fixed.
+    if (existing && (existing.receiptPrefix ?? null) !== values.receiptPrefix) {
+      const [r] = await db.all<{ n: number }>(sql`SELECT EXISTS (SELECT 1 FROM receipt) AS n`);
+      if (r?.n)
+        throw new ApiError(
+          409,
+          'prefix_locked',
+          'Receipts have been issued; the receipt prefix can no longer change',
+        );
+    }
     if (existing) {
       const diff = changed(existing, values);
       if (diff) {

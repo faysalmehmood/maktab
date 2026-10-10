@@ -3,13 +3,17 @@ import {
   type AdmissionResult,
   type CollectResultDto,
   type DefaulterDto,
+  type DefaultersResponse,
   type FamilyStatementDto,
+  type FeeDashboardDto,
   type FeeHeadDto,
+  type FeeSettingsDto,
   type GenerateResultDto,
   type GroupDto,
   newId,
   type ProgrammeDto,
   type ReceiptPrintDto,
+  type StudentFeesDto,
 } from '@maktab/shared';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
@@ -806,5 +810,75 @@ describe('M3a fix pass over HTTP', () => {
     await s.db.run(sql`DROP TRIGGER test_boom`);
     await s.api('POST', '/api/fees/generate', { period, grp_id: s.g5b.id });
     expect(await dash()).toBe(0);
+  });
+});
+
+describe('M3b thin reads', () => {
+  it('student fees tab, office fee tiles, defaulter phones, receipt prefix locks after the first receipt', async () => {
+    const s = await setup();
+    const a = await admitNew(s.api, s.g5a.id, 'Ali');
+    const fam = a.body.family_id;
+    // The previous month too, so something is overdue whatever today's date is.
+    let next: GenerateResultDto['next'] | undefined;
+    do {
+      const g = await s.api<GenerateResultDto>('POST', '/api/fees/generate', {
+        period: prevPeriod,
+        ...(next ? { grp_id: next.grp_id, after_student_id: next.after_student_id } : {}),
+      });
+      next = g.body.next;
+    } while (next);
+    let fees = await s.api<{ fees: FeeSettingsDto }>('GET', '/api/school/fees');
+    expect(fees.body).toMatchObject({ fees: { receipt_prefix: 'AN', receipts_issued: false } });
+    // Before any receipt the prefix may change (and back).
+    const school = { name: 'Al-Noor', name_ur: 'النور', mode: 'school' };
+    expect((await s.api('PUT', '/api/school', { ...school, receipt_prefix: 'AX' })).status).toBe(
+      200,
+    );
+    expect((await s.api('PUT', '/api/school', { ...school, receipt_prefix: 'AN' })).status).toBe(
+      200,
+    );
+    const st = await s.api<FamilyStatementDto>('GET', `/api/fees/family/${fam}`);
+    const r = await s.api<CollectResultDto>('POST', '/api/receipts', {
+      idempotency_key: newId(),
+      payer_id: fam,
+      amount: RS(1000),
+      method: 'cash',
+      expected_due_hash: st.body.dues_hash,
+    });
+    expect(r.status).toBe(201);
+    fees = await s.api<{ fees: FeeSettingsDto }>('GET', '/api/school/fees');
+    expect(fees.body).toMatchObject({ fees: { receipts_issued: true } });
+    const locked = await s.api<{ error: { code: string } }>('PUT', '/api/school', {
+      ...school,
+      receipt_prefix: 'ZZ',
+    });
+    expect(locked.status).toBe(409);
+    expect(locked.body.error.code).toBe('prefix_locked');
+    // Unchanged prefix still saves.
+    expect((await s.api('PUT', '/api/school', { ...school, receipt_prefix: 'AN' })).status).toBe(
+      200,
+    );
+
+    const tab = await s.api<StudentFeesDto>('GET', `/api/fees/student/${a.body.student_id}`);
+    expect(tab.status).toBe(200);
+    expect(tab.body.student.family_id).toBe(fam);
+    expect(tab.body.lines.every((l) => l.student_id === a.body.student_id)).toBe(true);
+    expect(tab.body.due).toBe(RS(3000 + 8000 - 1000));
+    expect(tab.body.receipts.map((x) => x.id)).toEqual([r.body.receipt.id]);
+    expect(tab.body.opening_balance).toBeNull();
+
+    const dash = await s.api<FeeDashboardDto>('GET', '/api/dashboard/fees');
+    expect(dash.status).toBe(200);
+    expect(dash.body.collected).toEqual([{ method: 'cash', amount: RS(1000), count: 1 }]);
+    expect(dash.body.collected_total).toBe(RS(1000));
+    expect(dash.body.dues_outstanding).toBe(RS(10000));
+
+    // Office defaulters carry the first guardian's number; the teacher variant never does.
+    const d = await s.api<DefaultersResponse>('GET', '/api/fees/defaulters');
+    expect(d.body.summary_only).toBe(false);
+    const row = d.body.defaulters[0] as DefaulterDto;
+    expect(row.guardian_name).toBe('Ali father');
+    expect(row.guardian_phone).toMatch(/^92300/);
+    expect((await s.api<FeeDashboardDto>('GET', '/api/dashboard/fees')).body.defaulters).toBe(1);
   });
 });

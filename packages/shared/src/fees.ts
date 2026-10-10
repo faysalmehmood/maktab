@@ -91,7 +91,13 @@ export const feeSettingsSchema = z.object({
   reminder_cooldown_days: z.number().int().min(1).max(90),
 });
 export type FeeSettingsInput = z.input<typeof feeSettingsSchema>;
-export type FeeSettingsDto = z.output<typeof feeSettingsSchema> & { due_day: number };
+export type FeeSettingsDto = z.output<typeof feeSettingsSchema> & {
+  due_day: number;
+  /** The receipt series prefix in use ('R' when the school set none). */
+  receipt_prefix: string;
+  /** Once true, the prefix is locked (PUT /api/school refuses a change: 409 prefix_locked). */
+  receipts_issued: boolean;
+};
 
 export const concessionInputSchema = z
   .object({
@@ -464,7 +470,18 @@ export type DefaulterDto = {
   due: number;
   oldest_period: string;
   sponsored: boolean;
+  /** First guardian by priority (WhatsApp number if any, else phone); office view only. */
+  guardian_name: string | null;
+  guardian_phone: string | null;
 };
+/** The teacher's variant (fee.read own_groups): no family, phone or payment detail. */
+export type DefaulterSummaryDto = Pick<
+  DefaulterDto,
+  'student_id' | 'student_name' | 'admission_no' | 'grp_id' | 'group' | 'months_overdue' | 'overdue'
+>;
+export type DefaultersResponse =
+  | { summary_only: false; defaulters: DefaulterDto[]; total_overdue: number }
+  | { summary_only: true; defaulters: DefaulterSummaryDto[] };
 
 /** Receipt print bilingual labels (PLAN §14.4 "receipt prints in ur/en"); numbers stay Latin. */
 export const RECEIPT_LABELS = {
@@ -592,3 +609,67 @@ export function duesHash(rows: readonly { id: string; due: number }[]): string {
   }
   return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
 }
+
+/** A concession row (never edited; "End" sets ended_at / valid_to). value: percent or paisa. */
+export type ConcessionDto = {
+  id: string;
+  student_id: string;
+  student_name: string;
+  fee_head_id: string | null;
+  head_name: string | null;
+  type: 'pct' | 'fixed';
+  value: number;
+  reason: (typeof CONCESSION_REASONS)[number];
+  note: string | null;
+  valid_from: string;
+  valid_to: string | null;
+  ended_at: string | null;
+  end_reason: string | null;
+  created_at: string;
+};
+
+export type SponsorshipDto = {
+  id: string;
+  sponsor_id: string;
+  sponsor_name: string;
+  student_id: string;
+  fee_head_id: string | null;
+  head_name: string | null;
+  share_pct: number;
+  valid_from: string;
+  valid_to: string | null;
+};
+
+/** GET /api/fees/student/:id — the student detail "Fees" tab (PLAN §14.7, M3b screen 10). */
+export type StudentFeesDto = {
+  student: { id: string; name: string; admission_no: string; family_id: string };
+  family_name: string;
+  /** The family's roots for this child (open + settled in the last 12 months). */
+  lines: FeeLineDto[];
+  /** What sponsors are billed for this child. */
+  sponsored: FeeLineDto[];
+  /** Σ open family dues of this child (before the family's credit). */
+  due: number;
+  family_due: number;
+  family_credit: number;
+  concessions: ConcessionDto[];
+  sponsorships: SponsorshipDto[];
+  opening_balance: { amount: number; as_of: string; note: string | null } | null;
+  /** The family's receipts (one receipt may cover several children). */
+  receipts: ReceiptDto[];
+};
+
+/** GET /api/dashboard/fees — the office fee tiles (PLAN §14.11). */
+export type FeeDashboardDto = {
+  date: string;
+  /** Today's money in, by method (cash on its drawer's date, non-cash on its business date). */
+  collected: { method: (typeof PAYMENT_METHODS)[number]; amount: number; count: number }[];
+  collected_total: number;
+  /** Σ family dues net of each family's unallocated credit. */
+  dues_outstanding: number;
+  /** Students with money past its due date. */
+  defaulters: number;
+  billing_alerts: number;
+  /** fee_due / fee_overdue / payment_received rows waiting in the send queue. */
+  queued_fee_messages: number;
+};
