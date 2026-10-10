@@ -427,9 +427,10 @@ export function moneyRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     { method: 'POST', path: '/api/payslips/generate', access: requires('payslip', 'prepare') },
     async (c) => {
       const input = await jsonBody(c, payslipGenerateSchema);
-      officeScope(c);
+      const { excludeOwners } = officeScope(c);
       const r: GeneratePayslipsDto = await generatePayslips(c.get('db'), {
         periodKey: input.period,
+        excludeOwners,
         after: input.after ?? null,
         by: userId(c),
       });

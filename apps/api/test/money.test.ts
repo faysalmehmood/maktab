@@ -231,7 +231,12 @@ describe('payroll over HTTP', () => {
     ).toBe(404);
 
     const gen = await s.as.acct<GeneratePayslipsDto>('POST', '/api/payslips/generate', { period });
-    expect(gen.body).toEqual({ created: 4, skipped: 0, next: null });
+    // The accountant never prepares the owner's slip; the owner's own run does.
+    expect(gen.body).toEqual({ created: 3, skipped: 0, next: null });
+    expect(
+      (await s.as.owner<GeneratePayslipsDto>('POST', '/api/payslips/generate', { period })).body
+        .created,
+    ).toBe(1);
     const list = await s.as.acct<PayslipListDto>('GET', `/api/payslips?period=${period}`);
     expect(list.body.payslips.map((p) => p.staff_id).sort()).toEqual(['ST_ACC', 'ST_T', 'ST_T2']);
     const own = await s.as.owner<PayslipListDto>('GET', `/api/payslips?period=${period}`);

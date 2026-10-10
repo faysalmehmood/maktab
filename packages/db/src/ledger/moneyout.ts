@@ -479,7 +479,14 @@ export const PAYSLIP_CHUNK = 50;
  */
 export async function generatePayslips(
   db: AppDb,
-  input: { periodKey: string; by: string; after?: string | null; limit?: number },
+  input: {
+    periodKey: string;
+    by: string;
+    after?: string | null;
+    limit?: number;
+    /** Accountant scope: never prepare an owner's slip (PLAN §5.4). */
+    excludeOwners?: boolean;
+  },
 ): Promise<{ created: number; skipped: number; next: string | null }> {
   assertPeriod(input.periodKey);
   const limit = Math.min(Math.max(1, input.limit ?? PAYSLIP_CHUNK), PAYSLIP_CHUNK);
@@ -489,6 +496,7 @@ export async function generatePayslips(
         FROM staff s
         WHERE s.status = 'active' AND s.base_salary IS NOT NULL AND s.base_salary > 0
           AND s.id > ${input.after ?? ''}
+          ${input.excludeOwners ? sql`AND NOT EXISTS (SELECT 1 FROM role ro WHERE ro.user_id = s.user_id AND ro.role = 'owner')` : sql``}
         ORDER BY s.id LIMIT ${limit + 1}`,
   );
   const page = staff.slice(0, limit);
