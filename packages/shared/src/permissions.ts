@@ -6,6 +6,9 @@ import type { PrincipalRole } from './roles';
  */
 export const RESOURCES = {
   self: ['read'],
+  /** School profile, sessions, programmes, subjects, custom fields: reference data every staff
+   *  screen needs (labels, pickers). Writing it is settings.manage. */
+  catalog: ['read'],
   student: ['read', 'write'],
   attendance: ['mark', 'correct', 'read'],
   fee: ['generate', 'concession'],

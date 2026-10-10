@@ -4,7 +4,7 @@ import type { Principal } from './auth/principal';
 
 export type Bindings = {
   DB: D1Database;
-  /** Declared for photos/proofs later; nothing in milestone 0 requires it at runtime. */
+  /** Student photos and the school logo. Unbound → upload routes answer 501 `no_storage`. */
   FILES?: R2Bucket;
   ASSETS?: Fetcher;
   SESSION_SECRET: string;

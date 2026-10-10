@@ -111,3 +111,23 @@ export async function signedInAs(db: AppDb, roles: StaffRole[], email = `${newId
   const s = await createSession(db, newId(), id, { ua: null, ip: null, nowMs: Date.now() });
   return { userId: id, cookie: `maktab_sid=${await signSession(SECRET, s.id, s.exp)}` };
 }
+
+/** In-memory stand-in for the R2 binding: just the calls the app makes. */
+export function fakeR2() {
+  const objects = new Map<string, { bytes: Uint8Array; contentType: string | undefined }>();
+  const bucket = {
+    async put(key: string, value: Uint8Array, opts?: { httpMetadata?: { contentType?: string } }) {
+      objects.set(key, { bytes: value, contentType: opts?.httpMetadata?.contentType });
+      return {};
+    },
+    async get(key: string) {
+      const o = objects.get(key);
+      if (!o) return null;
+      return {
+        body: new Blob([new Uint8Array(o.bytes)]).stream(),
+        httpMetadata: { contentType: o.contentType },
+      };
+    },
+  };
+  return { objects, bucket: bucket as unknown as R2Bucket };
+}

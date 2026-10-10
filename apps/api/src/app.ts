@@ -6,8 +6,14 @@ import { createJwksClient, type JwksClient } from './auth/google';
 import type { AppEnv, Bindings } from './env';
 import { notFound, onError } from './lib/errors';
 import { denyUndeclared, RouteTable } from './perm/routes';
+import { admissionRoutes } from './routes/admissions';
 import { authRoutes } from './routes/auth';
+import { catalogRoutes } from './routes/catalog';
 import { coreRoutes } from './routes/core';
+import { groupRoutes } from './routes/groups';
+import { importRoutes } from './routes/imports';
+import { peopleRoutes } from './routes/people';
+import { staffRoutes } from './routes/staff';
 
 export type AppDeps = {
   getDb: (env: Bindings) => AppDb;
@@ -38,6 +44,12 @@ export function createApp(deps: AppDeps) {
     jwks: deps.jwks ?? defaultJwks,
     fetch: deps.fetch ?? ((input, init) => fetch(input, init)),
   });
+  catalogRoutes(app, routes);
+  groupRoutes(app, routes);
+  staffRoutes(app, routes);
+  peopleRoutes(app, routes);
+  admissionRoutes(app, routes);
+  importRoutes(app, routes);
 
   return { app, routes };
 }

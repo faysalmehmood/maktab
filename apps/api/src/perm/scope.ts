@@ -40,3 +40,15 @@ export function groupFilter(column: Column, scope: GroupScope): SQL | undefined 
   if (scope.ids.length === 0) return sql`0`;
   return inArray(column, scope.ids);
 }
+
+/**
+ * Students a scope may see: everyone for `all`; otherwise students with an *active* enrolment in
+ * one of the scope's groups (a teacher's current classes, not last year's). Ids go through
+ * json_each so a long list never hits D1's 100-parameter cap.
+ */
+export function studentFilter(column: Column | SQL, scope: GroupScope): SQL | undefined {
+  if (scope.kind === 'all') return undefined;
+  if (scope.ids.length === 0) return sql`0`;
+  return sql`${column} IN (SELECT e.student_id FROM enrolment e WHERE e.status = 'active'
+    AND e.grp_id IN (SELECT value FROM json_each(${JSON.stringify(scope.ids)})))`;
+}

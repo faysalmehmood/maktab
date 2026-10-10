@@ -16,6 +16,7 @@ import { signedInAs, testApp } from './helpers';
  */
 const PLAN_TABLE = `
 self.read                own_only     own_only     own_only          own_only      -
+catalog.read             all          all          all               all           -
 student.read             all          all          all               own_groups    own_children
 student.write            all          all          all               -             -
 attendance.mark          all          all          -                 own_groups    -
@@ -75,49 +76,89 @@ describe('permission matrix', () => {
   });
 });
 
-/** Every registered route × every role, over HTTP. Allowed = anything but 401/403. */
-const ROUTE_SNAPSHOT: Record<string, Record<PrincipalRole | 'anonymous', 'allow' | 'deny'>> = {
-  'GET /api/health': {
-    anonymous: 'allow',
-    owner: 'allow',
-    admin: 'allow',
-    accountant: 'allow',
-    teacher: 'allow',
-    parent: 'allow',
-  },
-  'GET /api/auth/google/start': {
-    anonymous: 'allow',
-    owner: 'allow',
-    admin: 'allow',
-    accountant: 'allow',
-    teacher: 'allow',
-    parent: 'allow',
-  },
-  'GET /api/auth/google/callback': {
-    anonymous: 'allow',
-    owner: 'allow',
-    admin: 'allow',
-    accountant: 'allow',
-    teacher: 'allow',
-    parent: 'allow',
-  },
-  'POST /api/auth/logout': {
-    anonymous: 'allow',
-    owner: 'allow',
-    admin: 'allow',
-    accountant: 'allow',
-    teacher: 'allow',
-    parent: 'allow',
-  },
-  'GET /api/me': {
-    anonymous: 'deny',
-    owner: 'allow',
-    admin: 'allow',
-    accountant: 'allow',
-    teacher: 'allow',
-    parent: 'deny',
-  },
-};
+/**
+ * Every registered route × every role, over HTTP. Allowed = anything but 401/403.
+ * Columns: anonymous owner admin accountant teacher parent; A = allow, D = deny.
+ * Teachers reach student.read routes but only see their own groups (scope tests below / m1 tests).
+ */
+const ROUTE_TABLE = `
+GET    /api/health                               A A A A A A
+GET    /api/auth/google/start                    A A A A A A
+GET    /api/auth/google/callback                 A A A A A A
+POST   /api/auth/logout                          A A A A A A
+GET    /api/me                                   D A A A A D
+GET    /api/school                               D A A A A D
+GET    /api/school/logo                          D A A A A D
+GET    /api/sessions                             D A A A A D
+GET    /api/terms                                D A A A A D
+GET    /api/programmes                           D A A A A D
+GET    /api/subjects                             D A A A A D
+GET    /api/custom-fields                        D A A A A D
+PUT    /api/school                               D A A D D D
+POST   /api/school/logo                          D A A D D D
+POST   /api/sessions                             D A A D D D
+PATCH  /api/sessions/:id                         D A A D D D
+POST   /api/sessions/:id/current                 D A A D D D
+POST   /api/terms                                D A A D D D
+PATCH  /api/terms/:id                            D A A D D D
+DELETE /api/terms/:id                            D A A D D D
+POST   /api/programmes                           D A A D D D
+POST   /api/programmes/seed-pk                   D A A D D D
+PATCH  /api/programmes/:id                       D A A D D D
+DELETE /api/programmes/:id                       D A A D D D
+POST   /api/subjects                             D A A D D D
+POST   /api/subjects/seed-pk                     D A A D D D
+PATCH  /api/subjects/:id                         D A A D D D
+DELETE /api/subjects/:id                         D A A D D D
+POST   /api/custom-fields                        D A A D D D
+PATCH  /api/custom-fields/:id                    D A A D D D
+DELETE /api/custom-fields/:id                    D A A D D D
+POST   /api/groups                               D A A D D D
+PATCH  /api/groups/:id                           D A A D D D
+PUT    /api/groups/:id/subjects                  D A A D D D
+GET    /api/staff                                D A A D D D
+POST   /api/staff                                D A A D D D
+PATCH  /api/staff/:id                            D A A D D D
+POST   /api/staff/invite                         D A D D D D
+POST   /api/users/:id/disable                    D A D D D D
+POST   /api/users/:id/enable                     D A D D D D
+PUT    /api/users/:id/roles                      D A D D D D
+GET    /api/groups                               D A A A A A
+GET    /api/groups/:id                           D A A A A A
+GET    /api/families                             D A A A A A
+GET    /api/families/:id                         D A A A A A
+GET    /api/students                             D A A A A A
+GET    /api/students/:id                         D A A A A A
+GET    /api/students/:id/photo                   D A A A A A
+POST   /api/families                             D A A A D D
+PATCH  /api/families/:id                         D A A A D D
+POST   /api/guardians                            D A A A D D
+PATCH  /api/guardians/:id                        D A A A D D
+DELETE /api/guardians/:id                        D A A A D D
+PATCH  /api/students/:id                         D A A A D D
+POST   /api/students/:id/photo                   D A A A D D
+POST   /api/students/:id/status                  D A A A D D
+POST   /api/admissions                           D A A A D D
+POST   /api/enrolments                           D A A A D D
+POST   /api/enrolments/:id/end                   D A A A D D
+POST   /api/enrolments/:id/transfer              D A A A D D
+GET    /api/imports/students/template.csv        D A A A D D
+POST   /api/imports/students                     D A A A D D
+`;
+
+type Who = PrincipalRole | 'anonymous';
+const WHO: Who[] = ['anonymous', 'owner', 'admin', 'accountant', 'teacher', 'parent'];
+const ROUTE_SNAPSHOT: Record<string, Record<Who, 'allow' | 'deny'>> = Object.fromEntries(
+  ROUTE_TABLE.trim()
+    .split('\n')
+    .map((line) => {
+      const [method = '', path = '', ...cells] = line.trim().split(/\s+/);
+      const row = Object.fromEntries(
+        WHO.map((w, i) => [w, cells[i] === 'A' ? 'allow' : 'deny']),
+      ) as Record<Who, 'allow' | 'deny'>;
+      return [`${method} ${path}`, row];
+    }),
+);
 
 describe('route × role', () => {
   it('every registered route has a declared permission and a snapshot row', () => {
@@ -132,10 +173,10 @@ describe('route × role', () => {
 
   it('allows and denies exactly as the snapshot says', async () => {
     const { routes, db, request } = testApp();
-    const cookies = new Map<string, string>();
-    for (const r of STAFF_ROLES) cookies.set(r, (await signedInAs(db, [r])).cookie);
-
     for (const spec of routes.list()) {
+      // Fresh sessions per route: POST /api/auth/logout ends the session it is called with.
+      const cookies = new Map<string, string>();
+      for (const r of STAFF_ROLES) cookies.set(r, (await signedInAs(db, [r])).cookie);
       const want = ROUTE_SNAPSHOT[`${spec.method} ${spec.path}`];
       expect(want).toBeDefined();
       if (!want) continue;
@@ -145,6 +186,10 @@ describe('route × role', () => {
           method: spec.method,
           headers: cookie ? { cookie } : {},
         });
+        // Allowed must still mean "handled": a crash is a bug, not an allow (501 = no R2 bound).
+        if (res.status !== 501) {
+          expect(res.status, `${who} ${spec.method} ${spec.path}`).toBeLessThan(500);
+        }
         const got = res.status === 401 || res.status === 403 ? 'deny' : 'allow';
         expect(got, `${who} ${spec.method} ${spec.path} -> ${res.status}`).toBe(want[who]);
       }

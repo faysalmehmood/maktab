@@ -25,6 +25,9 @@ export const MATRIX = {
   self: {
     read: g({ owner: 'own_only', admin: 'own_only', accountant: 'own_only', teacher: 'own_only' }),
   },
+  // Reference data (school profile, sessions, programmes, subjects, custom fields): every staff
+  // screen needs it for labels and pickers; changing it is settings.manage.
+  catalog: { read: g({ owner: all, admin: all, accountant: all, teacher: all }) },
   student: {
     read: g({
       owner: all,
