@@ -65,6 +65,42 @@ const ConcessionRegisterPage = lazyFees(
 const SponsorsPage = lazyFees(() => import('@/pages/fees/Sponsors'), 'SponsorsPage');
 const SponsorDetail = lazyFees(() => import('@/pages/fees/Sponsors'), 'SponsorDetail');
 
+const ExpensesPage = lazyFees(() => import('@/pages/money/Expenses'), 'ExpensesPage');
+const AdvancesPage = lazyFees(() => import('@/pages/money/Advances'), 'AdvancesPage');
+const SalaryPage = lazyFees(() => import('@/pages/money/Salary'), 'SalaryPage');
+const PayslipPage = lazyFees(() => import('@/pages/money/Salary'), 'PayslipPage');
+const PayslipPrintPage = lazyFees(() => import('@/pages/money/Salary'), 'PayslipPrintPage');
+const MyPayslipsPage = lazyFees(() => import('@/pages/money/Salary'), 'MyPayslipsPage');
+const SalaryRegisterPage = lazyFees(() => import('@/pages/money/Salary'), 'SalaryRegisterPage');
+const ReportsHub = lazyFees(() => import('@/pages/money/Reports'), 'ReportsHub');
+const IncomeExpensePage = lazyFees(() => import('@/pages/money/Reports'), 'IncomeExpensePage');
+const CashbookPage = lazyFees(() => import('@/pages/money/Reports'), 'CashbookPage');
+const AccountsPage = lazyFees(() => import('@/pages/money/Reports'), 'AccountsPage');
+const ExpenseRegisterPage = lazyFees(() => import('@/pages/money/Reports'), 'ExpenseRegisterPage');
+const AdvanceRegisterPage = lazyFees(() => import('@/pages/money/Reports'), 'AdvanceRegisterPage');
+const AuditPage = lazyFees(() => import('@/pages/money/Audit'), 'AuditPage');
+
+/**
+ * Money-out routes (M4), same shape as FEE_ROUTES: each page's main API call decides its grant.
+ * The office payroll needs payslip.prepare (a teacher's payslip.read is own-only: "My payslips").
+ */
+export const MONEY_ROUTES: [string, ComponentType, GrantRef][] = [
+  ['expenses', ExpensesPage, ['expense', 'read']],
+  ['salary', SalaryPage, ['payslip', 'prepare']],
+  ['salary/:id', PayslipPage, ['payslip', 'prepare']],
+  ['payslips/:id/print', PayslipPrintPage, ['payslip', 'read']],
+  ['my/payslips', MyPayslipsPage, ['payslip', 'read']],
+  ['advances', AdvancesPage, ['payslip', 'pay']],
+  ['reports', ReportsHub, ['receipt', 'read']],
+  ['reports/income-expense', IncomeExpensePage, ['receipt', 'read']],
+  ['reports/cashbook', CashbookPage, ['receipt', 'read']],
+  ['reports/accounts', AccountsPage, ['receipt', 'read']],
+  ['reports/expenses', ExpenseRegisterPage, ['expense', 'read']],
+  ['reports/salaries', SalaryRegisterPage, ['payslip', 'prepare']],
+  ['reports/advances', AdvanceRegisterPage, ['payslip', 'pay']],
+  ['audit', AuditPage, ['audit', 'read']],
+];
+
 /**
  * Fee routes (M3b): path → page → the MATRIX grant its main API call needs. Each is lazily loaded
  * behind the shared Suspense and guarded: without the grant the URL redirects home with a toast.
@@ -204,7 +240,7 @@ export function App() {
             </Loading>
           }
         />
-        {FEE_ROUTES.map(([path, Page, grant]) => (
+        {[...FEE_ROUTES, ...MONEY_ROUTES].map(([path, Page, grant]) => (
           <Route
             key={path}
             path={path}

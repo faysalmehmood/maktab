@@ -3,13 +3,18 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Banknote,
   CalendarCheck,
+  ChartColumn,
   CloudOff,
+  HandCoins,
   Layers,
   LayoutDashboard,
   LogOut,
   type LucideIcon,
   Menu,
   MessageSquareText,
+  PiggyBank,
+  ReceiptText,
+  ScrollText,
   Settings,
   Users,
   Wallet,
@@ -56,11 +61,21 @@ export const NAV: NavItem[] = [
   { to: '/fees', label: 'nav.fees', icon: Wallet, grants: [['receipt', 'read']] },
   { to: '/cash', label: 'fee.nav.cash', icon: Banknote, grants: [['cash_session', 'read']] },
   {
+    to: '/expenses',
+    label: 'money.nav.expenses',
+    icon: ReceiptText,
+    grants: [['expense', 'read']],
+  },
+  { to: '/salary', label: 'money.nav.salary', icon: HandCoins, grants: [['payslip', 'prepare']] },
+  { to: '/advances', label: 'money.nav.advances', icon: PiggyBank, grants: [['payslip', 'pay']] },
+  { to: '/reports', label: 'money.nav.reports', icon: ChartColumn, grants: [['receipt', 'read']] },
+  {
     to: '/messages',
     label: 'nav.sendQueue',
     icon: MessageSquareText,
     grants: [['message', 'read']],
   },
+  { to: '/audit', label: 'money.nav.audit', icon: ScrollText, grants: [['audit', 'read']] },
   // Full settings for settings.manage; the office's "settings-lite" (account + school profile)
   // for whoever writes students.
   {
@@ -90,6 +105,16 @@ export function navFor(roles: readonly StaffRole[]): NavItem[] {
       label: 'fee.nav.dues',
       icon: Wallet,
       grants: [['fee', 'read']],
+    });
+  }
+  // Staff who read only their own payslip (teachers) get "My payslips".
+  if (holds(roles, ['payslip', 'read']) && !holds(roles, ['payslip', 'prepare'])) {
+    const at = items.findIndex((i) => i.to === '/settings');
+    items.splice(at < 0 ? items.length : at, 0, {
+      to: '/my/payslips',
+      label: 'money.nav.myPayslips',
+      icon: HandCoins,
+      grants: [['payslip', 'read']],
     });
   }
   return items;

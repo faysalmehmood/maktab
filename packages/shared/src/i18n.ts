@@ -1,4 +1,5 @@
 import { feeEn, feeErrorsEn, feeErrorsUr, feeUr } from './i18n-fees';
+import { moneyEn, moneyErrorsEn, moneyErrorsUr, moneyUr } from './i18n-money';
 
 export const LANGUAGES = ['en', 'ur'] as const;
 export type Language = (typeof LANGUAGES)[number];
@@ -63,8 +64,10 @@ export const en = {
     step: 'Step {{n}} of {{total}}',
   },
   fee: feeEn,
+  money: moneyEn,
   errors: {
     ...feeErrorsEn,
+    ...moneyErrorsEn,
     holiday: 'This date is a school holiday',
     weekly_off: 'The school is closed on this weekday',
     future_date: 'You cannot take attendance for a future date',
@@ -551,8 +554,10 @@ export const ur: Messages = {
     step: 'مرحلہ {{n}} از {{total}}',
   },
   fee: feeUr,
+  money: moneyUr,
   errors: {
     ...feeErrorsUr,
+    ...moneyErrorsUr,
     holiday: 'یہ تاریخ اسکول کی چھٹی ہے',
     weekly_off: 'اس دن اسکول بند ہوتا ہے',
     future_date: 'آنے والی تاریخ کی حاضری نہیں لی جا سکتی',

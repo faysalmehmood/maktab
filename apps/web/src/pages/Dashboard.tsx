@@ -5,6 +5,7 @@ import { Link } from 'react-router';
 import { DayOffNote, TodayList } from '@/components/attendance/common';
 import { FeeTiles } from '@/components/fees/DashboardTiles';
 import { Num } from '@/components/form';
+import { MonthTiles } from '@/components/money/MonthTiles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useMe } from '@/lib/api';
@@ -161,6 +162,7 @@ export function Dashboard() {
           <p className="text-muted-foreground">{t('dashboard.setupNotFinished')}</p>
         ))}
       {canReadMoney(roles) && <FeeTiles />}
+      {canReadMoney(roles) && <MonthTiles />}
       {attendance && (canCorrect(roles) ? <OfficeToday /> : <TeacherToday />)}
       {!attendance && !canReadMoney(roles) && (
         <p className="text-muted-foreground">{t('common.comingSoon')}</p>
