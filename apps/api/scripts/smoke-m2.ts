@@ -224,6 +224,23 @@ async function main() {
     return `taken by ${mine?.taken_by_name}`;
   });
 
+  await step('phone clock far ahead -> rejected clock_skew', async () => {
+    const [r] = await sync([register({ taken_at: '2099-01-01T00:00:00.000Z' })]);
+    expectOk(r?.status === 'rejected' && r.error === 'clock_skew', r);
+  });
+
+  await step('more than 200 marks in one request -> 400 too_many_marks', async () => {
+    const marks = Array.from({ length: 101 }, () => ({
+      student_id: newId(),
+      status: 'P' as const,
+    }));
+    const r = await teacher<{ error: { code: string } }>('POST', '/api/attendance/sync', [
+      register({ marks }),
+      register({ marks }),
+    ]);
+    expectOk(r.status === 400 && r.body.error.code === 'too_many_marks', r);
+  });
+
   await step(
     'GET /api/messages?status=queued&template_key=absence shows 2 for this group',
     async () => {

@@ -2,12 +2,21 @@ import { z } from 'zod';
 import { idSchema } from './user';
 
 /**
- * Per-request budget (PLAN §8, §15 standing rules): ≤ 200 rows per request. A register carries at
- * most 60 marks (one json_each parameter), so one sync request carries at most 3 registers; the
- * outbox sends larger backlogs as several requests in one pass.
+ * Per-request budget (PLAN §8, §15 standing rules): ≤ 200 rows per request. One register carries at
+ * most 200 marks (a class bigger than that is split into sections before the pilot); one sync
+ * request carries at most 3 registers AND at most 200 marks in total, so the outbox packs requests
+ * greedily (a 150-mark register goes alone) and sends a backlog as several requests in one pass.
  */
-export const MAX_MARKS_PER_REGISTER = 60;
+export const MAX_MARKS_PER_REGISTER = 200;
+export const MAX_MARKS_PER_SYNC = 200;
 export const MAX_SUBMISSIONS_PER_SYNC = 3;
+
+/**
+ * A phone clock more than this far ahead of the server is refused (`clock_skew`), not trusted: the
+ * current-register pointer moves by taken_at, so a phone set to 2099 would otherwise win forever.
+ * Within the window the server stores min(client taken_at, server now).
+ */
+export const MAX_CLOCK_SKEW_MS = 5 * 60_000;
 
 /** Whole-day registers use this instead of NULL so the (grp, date, subject) key stays unique. */
 export const WHOLE_DAY = '';
@@ -58,6 +67,13 @@ export type AttendanceCorrection = z.input<typeof attendanceCorrectionSchema>;
 
 export const attendanceSyncRequestSchema = z.array(z.unknown()).max(MAX_SUBMISSIONS_PER_SYNC);
 
+/** Marks in a raw sync body (before per-item validation), for the whole-request budget check. */
+export const countMarks = (items: readonly unknown[]): number =>
+  items.reduce<number>((n, item) => {
+    const marks = (item as { marks?: unknown } | null)?.marks;
+    return n + (Array.isArray(marks) ? marks.length : 0);
+  }, 0);
+
 /** Why a submission was rejected; the web maps each to a translated sentence. */
 export const SYNC_REJECT_CODES = [
   'invalid',
@@ -70,6 +86,7 @@ export const SYNC_REJECT_CODES = [
   'weekly_off',
   'not_enrolled',
   'before_enrolment',
+  'clock_skew',
   'db_error',
 ] as const;
 export type SyncRejectCode = (typeof SYNC_REJECT_CODES)[number];

@@ -2,7 +2,18 @@ import { type AppDb, grp, grpSubject, staff } from '@maktab/db';
 import type { Grant } from '@maktab/shared';
 import { type Column, eq, inArray, type SQL, sql } from 'drizzle-orm';
 
-export type GroupScope = { kind: 'all' } | { kind: 'groups'; ids: string[] };
+export type GroupScope =
+  | { kind: 'all' }
+  | {
+      kind: 'groups';
+      ids: string[];
+      /**
+       * Groups the user reaches only as a subject teacher -> the grp_subject ids they teach there.
+       * Absent when there are none. Writes to such a group are limited to those subjects' registers
+       * (a subject teacher never takes the class teacher's whole-day register).
+       */
+      subjectsOnly?: Record<string, string[]>;
+    };
 
 /**
  * Row scope for anything hanging off a group (students, attendance, marks, send queue), derived from
@@ -23,11 +34,47 @@ export async function scopeToGroups(db: AppDb, userId: string, grant: Grant): Pr
       ? await db.select({ id: grp.id }).from(grp).where(inArray(grp.classTeacherId, mine))
       : [];
   const asSubjectTeacher = await db
-    .select({ id: grpSubject.grpId })
+    .select({ id: grpSubject.grpId, gs: grpSubject.id })
     .from(grpSubject)
     .where(inArray(grpSubject.teacherId, mine));
   const ids = [...new Set([...asClassTeacher, ...asSubjectTeacher].map((r) => r.id))].sort();
-  return { kind: 'groups', ids };
+  const classIds = new Set(asClassTeacher.map((r) => r.id));
+  const subjectsOnly: Record<string, string[]> = {};
+  for (const r of asSubjectTeacher) {
+    if (classIds.has(r.id)) continue;
+    const list = subjectsOnly[r.id] ?? [];
+    list.push(r.gs);
+    subjectsOnly[r.id] = list;
+  }
+  for (const list of Object.values(subjectsOnly)) list.sort();
+  return Object.keys(subjectsOnly).length
+    ? { kind: 'groups', ids, subjectsOnly }
+    : { kind: 'groups', ids };
+}
+
+/**
+ * May this scope write the register (group, subject)? Everyone in `all`; a class teacher any register
+ * of their group; a teacher who reaches the group only through a subject, only that subject's.
+ */
+export function mayWriteRegister(scope: GroupScope, grpId: string, grpSubjectId: string): boolean {
+  if (scope.kind === 'all') return true;
+  if (!scope.ids.includes(grpId)) return false;
+  const only = scope.subjectsOnly?.[grpId];
+  return !only || only.includes(grpSubjectId);
+}
+
+/**
+ * WHERE fragment over a register key (group and subject columns) for what a scope may read in
+ * per-register lists: whole groups, plus single subjects of subject-only groups. json_each keeps it
+ * to two parameters however many groups.
+ */
+export function registerFilter(grpCol: SQL, subjectCol: SQL, scope: GroupScope): SQL {
+  if (scope.kind === 'all') return sql`1`;
+  const only = scope.subjectsOnly ?? {};
+  const whole = scope.ids.filter((id) => !only[id]);
+  const pairs = Object.entries(only).flatMap(([g, list]) => list.map((gs) => `${g}|${gs}`));
+  return sql`(${grpCol} IN (SELECT value FROM json_each(${JSON.stringify(whole)}))
+    OR (${grpCol} || '|' || ${subjectCol}) IN (SELECT value FROM json_each(${JSON.stringify(pairs)})))`;
 }
 
 /**

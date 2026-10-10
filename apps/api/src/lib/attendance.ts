@@ -4,6 +4,8 @@ import {
   type AttendanceSyncResult,
   type attendanceSubmissionSchema,
   type DayOff,
+  MAX_CLOCK_SKEW_MS,
+  MAX_MARKS_PER_SYNC,
   type MarkCounts,
   newId,
   type SyncRejectCode,
@@ -11,7 +13,7 @@ import {
 } from '@maktab/shared';
 import { asc, type SQL, sql } from 'drizzle-orm';
 import type { z } from 'zod';
-import type { GroupScope } from '../perm/scope';
+import { type GroupScope, mayWriteRegister } from '../perm/scope';
 import { dbConflict } from './errors';
 import { todayPk } from './http';
 import { isTransientD1Error } from './retry';
@@ -21,14 +23,22 @@ import { tx } from './tx';
  * The attendance write path (PLAN §5.1, §12 exp6, §14.3). One function serves the teacher's sync
  * and the office correction, so both obey the same validation, pointer rule and absence queue.
  *
- * Per submission, inside the request's one batch:
+ * Per submission, inside the request's batch:
  *   1. INSERT OR IGNORE the register by client_id, stamped with this request's nonce
- *   2. marks via one json_each parameter (only if step 1 created the row)
- *   3. pointer upsert that moves only when the new taken_at is later (client time, not arrival)
- *   4. absence messages for today's absentees, one per family per day (reminder_state)
- *   5. the audit row, whose `after.status` records what happened; it is read back afterwards
+ *   2. marks via json_each slices of ≤ 100 (only if step 1 created the row; the guard is repeated
+ *      on every slice)
+ *   3. pointer upsert that moves only when the new taken_at is later (client time, not arrival;
+ *      clamped to server now, and a clock more than 5 min ahead is refused as clock_skew)
+ *   4. the audit row, whose `after.status` records what happened; it is read back afterwards
+ *   5. the absence queue for today's absentees, one row per family per day (reminder_state):
+ *      `wa_manual` to the first consenting guardian with a number, otherwise `call`
  * The nonce is what lets a statement tell "this call created the register" from "a replay already
  * did" without read-then-write, and it makes the transient-error retry replay byte-identical.
+ *
+ * Budget (PLAN §15): a request carries ≤ 200 marks. Marks + absentee rows above 200 put step 5 of
+ * every register into a second batch of the same request (never more than two). That batch is
+ * best-effort: the register is already saved, and the queue is a prompt for the office — M5 rebuilds
+ * each absence message from the current registers at send time anyway (see absenceStatements).
  */
 
 type Submission = z.output<typeof attendanceSubmissionSchema>;
@@ -91,6 +101,7 @@ async function validate(
   subs: ApplyInput[],
   scope: GroupScope,
   today: string,
+  clock: { kind: 'sync' | 'correct'; nowMs: number },
 ): Promise<{ rejections: Map<number, Rejection>; groups: Map<string, GroupInfo> }> {
   const rejections = new Map<number, Rejection>();
   if (!subs.length) return { rejections, groups: new Map() };
@@ -122,6 +133,8 @@ async function validate(
     if (!groups.has(s.grp_id)) return { code: 'unknown_group', message: 'Group not found' };
     if (scope.kind === 'groups' && !scope.ids.includes(s.grp_id))
       return { code: 'forbidden', message: 'Not one of your groups' };
+    if (!mayWriteRegister(scope, s.grp_id, s.grp_subject_id))
+      return { code: 'forbidden', message: 'Only the register of a subject you teach' };
     const subjects = subjectsOf.get(s.grp_id) ?? new Set<string>();
     if (s.grp_subject_id && !subjects.has(s.grp_subject_id))
       return { code: 'unknown_subject', message: 'Subject is not taught in this group' };
@@ -129,7 +142,13 @@ async function validate(
       return { code: 'wrong_mode', message: 'The school takes one register per day' };
     if (settings.mode === 'per_subject' && !s.grp_subject_id && subjects.size)
       return { code: 'wrong_mode', message: 'The school takes one register per subject' };
-    if (s.date > today) return { code: 'future_date', message: `Date is after today (${today})` };
+    // future_date before holiday / weekly_off on purpose: it is the stronger rule (a register for
+    // tomorrow is wrong whatever tomorrow is), so a future holiday answers future_date.
+    if (s.date > today)
+      return { code: 'future_date', message: `${s.date} is after today (${today})` };
+    // The office correction is stamped by the server; only a phone's clock can be wrong.
+    if (clock.kind === 'sync' && Date.parse(s.taken_at) > clock.nowMs + MAX_CLOCK_SKEW_MS)
+      return { code: 'clock_skew', message: "The phone's clock is ahead of the school's; fix it" };
     const h = holidays.get(s.date);
     if (h?.kind === 'holiday') return { code: 'holiday', message: `Holiday: ${h.name_en}` };
     if (settings.weeklyOff.includes(weekdayOf(s.date)))
@@ -175,13 +194,75 @@ type Planned = {
   sub: ApplyInput;
   regId: string;
   auditId: string;
-  statements: SQL[];
+  /** Register, marks, pointer, audit: always one batch. */
+  core: SQL[];
+  /** Absence queue rows (step 5); a second batch when the request is over the row budget. */
+  alerts: SQL[];
+  /** Message ids reserved for this register's absentees (one per absent student, min per family). */
+  messageIds: string[];
+  /** Rows this register writes: marks + absentees (the PLAN §15 budget). */
+  rows: number;
 };
+
+/** Marks per json_each statement: half the request budget, so a 200-mark register is two slices. */
+const MARK_SLICE = 100;
+
+/**
+ * Absence queue rows for one register (PLAN §14.3, §14.9): one per family per day, whichever group
+ * or register its children were marked absent in first.
+ *   wa_manual  the first guardian (by priority) with WhatsApp consent and a number
+ *   call       no such guardian (no consent, or consent but no number): the office phones the first
+ *              guardian with a number (guardian_id NULL if the family has no guardian at all)
+ *
+ * The row is a prompt, not the message text. M5 MUST rebuild each queued absence message from the
+ * current registers at send time: skip it if none of the family's children is still absent (a later
+ * register or a correction may have marked them present) and merge siblings absent in other groups
+ * the same day into one message — the payload here only records the first register that queued it.
+ */
+function absenceStatements(
+  s: ApplyInput,
+  ctx: { uid: string; regId: string; groupLabel: string; mine: SQL },
+  absentJson: string,
+): SQL[] {
+  const firstWith = (cond: SQL) => sql`(SELECT g2.id FROM guardian g2
+      WHERE g2.family_id = st.family_id AND ${cond}
+      ORDER BY g2.priority, g2.created_at, g2.id LIMIT 1)`;
+  const hasNumber = sql`COALESCE(NULLIF(g2.whatsapp, ''), NULLIF(g2.phone, '')) IS NOT NULL`;
+  return [
+    sql`INSERT INTO message (id, family_id, guardian_id, channel, template_key, lang, payload,
+                             status, created_by)
+        SELECT x.mid, x.family_id, COALESCE(x.wa, x.callg),
+               CASE WHEN x.wa IS NOT NULL THEN 'wa_manual' ELSE 'call' END, 'absence',
+               COALESCE((SELECT lang FROM guardian WHERE id = COALESCE(x.wa, x.callg)), 'ur'),
+               x.payload, 'queued', ${ctx.uid}
+        FROM (
+          SELECT min(json_extract(j.value, '$.m')) AS mid, st.family_id,
+                 ${firstWith(sql`g2.consent_whatsapp = 1 AND ${hasNumber}`)} AS wa,
+                 COALESCE(${firstWith(hasNumber)}, ${firstWith(sql`1`)}) AS callg,
+                 json_object('student_ids', json_group_array(st.id),
+                             'student_names', json_group_array(st.name),
+                             'date', ${s.date}, 'grp_id', ${s.grp_id},
+                             'grp_name', ${ctx.groupLabel}, 'register_id', ${ctx.regId}) AS payload
+          FROM json_each(${absentJson}) j
+          JOIN student st ON st.id = json_extract(j.value, '$.s')
+          WHERE ${ctx.mine}
+            AND EXISTS (SELECT 1 FROM current_register c WHERE c.register_id = ${ctx.regId})
+            AND NOT EXISTS (SELECT 1 FROM reminder_state rs WHERE rs.family_id = st.family_id
+                            AND rs.template_key = 'absence' AND rs.last_sent_on >= ${s.date})
+          GROUP BY st.family_id
+        ) x`,
+    sql`INSERT INTO reminder_state (family_id, template_key, last_sent_on)
+        SELECT DISTINCT family_id, 'absence', ${s.date} FROM message
+        WHERE id IN (SELECT json_extract(value, '$.m') FROM json_each(${absentJson}))
+        ON CONFLICT (family_id, template_key) DO UPDATE SET last_sent_on = excluded.last_sent_on
+          WHERE excluded.last_sent_on > reminder_state.last_sent_on`,
+  ];
+}
 
 /** The statements for one submission (see the header comment for the order and why). */
 function plan(
   index: number,
-  s: ApplyInput,
+  s: ApplyInput & { client_taken_at: string },
   ctx: {
     uid: string;
     nonce: string;
@@ -195,7 +276,7 @@ function plan(
   const auditId = newId();
   const key = sql`grp_id = ${s.grp_id} AND date = ${s.date} AND grp_subject_id = ${s.grp_subject_id}`;
   // A correction is stamped by the server and must become current even if a phone with a fast
-  // clock submitted "later": max(now, current + 1 ms).
+  // clock submitted "later": max(now, current + 1 ms). A sync's taken_at was already clamped to now.
   const takenAt =
     ctx.kind === 'correct'
       ? sql`(SELECT CASE WHEN max(taken_at) >= ${ctx.now}
@@ -204,68 +285,37 @@ function plan(
              FROM current_register WHERE ${key})`
       : sql`${s.taken_at}`;
   const mine = sql`EXISTS (SELECT 1 FROM att_register WHERE id = ${regId} AND batch_token = ${ctx.nonce})`;
-  const marks = JSON.stringify(
-    s.marks.map((m) => ({ s: m.student_id, st: m.status, n: m.note ?? null })),
-  );
   const absent = s.marks
     .filter((m) => m.status === 'A')
     .map((m) => ({ s: m.student_id, m: newId() }));
   const absentJson = JSON.stringify(absent);
 
-  const statements: SQL[] = [
+  const core: SQL[] = [
     sql`INSERT OR IGNORE INTO att_register
           (id, client_id, grp_id, date, grp_subject_id, taken_by, taken_at, batch_token)
         VALUES (${regId}, ${s.client_id}, ${s.grp_id}, ${s.date}, ${s.grp_subject_id}, ${ctx.uid},
                 ${takenAt}, ${ctx.nonce})`,
-    sql`INSERT OR IGNORE INTO att_mark (register_id, student_id, status, note)
-        SELECT ${regId}, json_extract(j.value, '$.s'), json_extract(j.value, '$.st'),
-               json_extract(j.value, '$.n')
-        FROM json_each(${marks}) j WHERE ${mine}`,
+  ];
+  for (let i = 0; i < s.marks.length; i += MARK_SLICE) {
+    const slice = JSON.stringify(
+      s.marks
+        .slice(i, i + MARK_SLICE)
+        .map((m) => ({ s: m.student_id, st: m.status, n: m.note ?? null })),
+    );
+    core.push(
+      sql`INSERT OR IGNORE INTO att_mark (register_id, student_id, status, note)
+          SELECT ${regId}, json_extract(j.value, '$.s'), json_extract(j.value, '$.st'),
+                 json_extract(j.value, '$.n')
+          FROM json_each(${slice}) j WHERE ${mine}`,
+    );
+  }
+  core.push(
     sql`INSERT INTO current_register (grp_id, date, grp_subject_id, register_id, taken_at)
         SELECT grp_id, date, grp_subject_id, id, taken_at FROM att_register
         WHERE id = ${regId} AND batch_token = ${ctx.nonce}
         ON CONFLICT (grp_id, date, grp_subject_id) DO UPDATE
           SET register_id = excluded.register_id, taken_at = excluded.taken_at
           WHERE excluded.taken_at > current_register.taken_at`,
-  ];
-
-  // Absence alerts only for today's register, only when it became current, and at most one
-  // message per family per day across every register and group (reminder_state is the cooldown).
-  if (s.date === ctx.today && absent.length) {
-    statements.push(
-      sql`INSERT INTO message (id, family_id, guardian_id, channel, template_key, lang, payload,
-                               status, created_by)
-          SELECT min(json_extract(j.value, '$.m')), st.family_id, gd.id, 'wa_manual', 'absence',
-                 gd.lang,
-                 json_object('student_ids', json_group_array(st.id),
-                             'student_names', json_group_array(st.name),
-                             'date', ${s.date}, 'grp_id', ${s.grp_id},
-                             'grp_name', ${ctx.group.label}, 'register_id', ${regId}),
-                 'queued', ${ctx.uid}
-          FROM json_each(${absentJson}) j
-          JOIN student st ON st.id = json_extract(j.value, '$.s')
-          JOIN guardian gd ON gd.id = (
-            SELECT g2.id FROM guardian g2
-            WHERE g2.family_id = st.family_id AND g2.consent_whatsapp = 1
-            ORDER BY g2.priority, g2.created_at, g2.id LIMIT 1)
-          WHERE ${mine}
-            AND EXISTS (SELECT 1 FROM current_register c WHERE c.register_id = ${regId})
-            AND NOT EXISTS (SELECT 1 FROM reminder_state rs WHERE rs.family_id = st.family_id
-                            AND rs.template_key = 'absence' AND rs.last_sent_on >= ${s.date})
-          GROUP BY st.family_id, gd.id`,
-      sql`INSERT INTO reminder_state (family_id, template_key, last_sent_on)
-          SELECT DISTINCT family_id, 'absence', ${s.date} FROM message
-          WHERE id IN (SELECT json_extract(value, '$.m') FROM json_each(${absentJson}))
-          ON CONFLICT (family_id, template_key) DO UPDATE SET last_sent_on = excluded.last_sent_on
-            WHERE excluded.last_sent_on > reminder_state.last_sent_on`,
-    );
-  }
-
-  const queued = absent.length
-    ? sql`(SELECT count(*) FROM message
-           WHERE id IN (SELECT json_extract(value, '$.m') FROM json_each(${absentJson})))`
-    : sql`0`;
-  statements.push(
     sql`INSERT OR IGNORE INTO audit (id, user_id, entity, entity_id, action, diff)
         SELECT ${auditId}, ${ctx.uid}, 'att_register', r.id, ${ctx.kind},
           json_object('before', NULL, 'after', json_object(
@@ -276,26 +326,82 @@ function plan(
               ELSE 'applied' END,
             'client_id', r.client_id, 'grp_id', r.grp_id, 'date', r.date,
             'grp_subject_id', r.grp_subject_id, 'taken_at', r.taken_at,
+            'client_taken_at', ${s.client_taken_at},
             'marks', ${s.marks.length}, 'absent', ${absent.length},
-            'reason', ${s.reason ?? null}, 'queued', ${queued}))
+            'reason', ${s.reason ?? null}))
         FROM att_register r WHERE r.id = ${regId} AND r.batch_token = ${ctx.nonce}`,
   );
-  return { index, sub: s, regId, auditId, statements };
+
+  // Absence alerts only for today's register, only when it became current, and at most one row
+  // per family per day across every register and group (reminder_state is the cooldown).
+  const alerts =
+    s.date === ctx.today && absent.length
+      ? absenceStatements(s, { uid: ctx.uid, regId, groupLabel: ctx.group.label, mine }, absentJson)
+      : [];
+  return {
+    index,
+    sub: s,
+    regId,
+    auditId,
+    core,
+    alerts,
+    messageIds: alerts.length ? absent.map((a) => a.m) : [],
+    rows: s.marks.length + absent.length,
+  };
+}
+
+/**
+ * Writes planned registers in at most two batches (PLAN §15): everything in one when marks +
+ * absentee rows fit in 200, else the registers first and every absence queue row second. Throws
+ * only what the caller must see (transient errors and a failed register batch).
+ */
+async function writePlanned(db: AppDb, planned: Planned[]): Promise<void> {
+  const rows = planned.reduce((n, p) => n + p.rows, 0);
+  const alerts = planned.flatMap((p) => p.alerts);
+  if (rows <= MAX_MARKS_PER_SYNC || !alerts.length) {
+    await tx(
+      db,
+      planned.flatMap((p) => [...p.core, ...p.alerts]),
+    );
+    return;
+  }
+  await tx(
+    db,
+    planned.flatMap((p) => p.core),
+  );
+  try {
+    await tx(db, alerts);
+  } catch (err) {
+    // The registers are saved; a lost queue row is recovered by M5's rebuild-at-send-time and the
+    // dashboard's absentee list (computed from registers). Never turn a saved register into a 5xx.
+    console.warn('attendance: absence queue batch failed', describe(err));
+  }
 }
 
 type Outcome = { status: 'applied' | 'replaced' | 'stale'; queued: number };
 
+/** What each planned register became (its audit row) and how many queue rows it added. */
 async function readOutcomes(db: AppDb, planned: Planned[]): Promise<Map<string, Outcome>> {
   if (!planned.length) return new Map();
-  const rows = await db.all<{ id: string; status: Outcome['status']; queued: number }>(
-    sql`SELECT id, json_extract(diff, '$.after.status') AS status,
-               json_extract(diff, '$.after.queued') AS queued
+  const rows = await db.all<{ id: string; status: Outcome['status'] }>(
+    sql`SELECT id, json_extract(diff, '$.after.status') AS status
         FROM audit WHERE ${inJson(
           sql`id`,
           planned.map((p) => p.auditId),
         )}`,
   );
-  return new Map(rows.map((r) => [r.id, { status: r.status, queued: Number(r.queued ?? 0) }]));
+  const messageIds = planned.flatMap((p) => p.messageIds);
+  const queued = messageIds.length
+    ? await db.all<{ register_id: string; n: number }>(
+        sql`SELECT json_extract(payload, '$.register_id') AS register_id, count(*) AS n
+            FROM message WHERE ${inJson(sql`id`, messageIds)} GROUP BY 1`,
+      )
+    : [];
+  const queuedBy = new Map(queued.map((q) => [q.register_id, Number(q.n)]));
+  const regOf = new Map(planned.map((p) => [p.auditId, p.regId]));
+  return new Map(
+    rows.map((r) => [r.id, { status: r.status, queued: queuedBy.get(regOf.get(r.id) ?? '') ?? 0 }]),
+  );
 }
 
 async function registersByClientId(db: AppDb, clientIds: string[]) {
@@ -319,7 +425,12 @@ export async function applySubmissions(
   const today = todayPk(nowDate);
   const now = nowDate.toISOString();
   // Comparable strings: "08:00:00Z" sorts after "08:00:00.500Z", so normalise to milliseconds.
-  const normalised = subs.map((s) => ({ ...s, taken_at: new Date(s.taken_at).toISOString() }));
+  // The raw client value is kept for the audit row.
+  const normalised = subs.map((s) => ({
+    ...s,
+    client_taken_at: s.taken_at,
+    taken_at: new Date(s.taken_at).toISOString(),
+  }));
   const results: (AttendanceSyncResult | undefined)[] = normalised.map(() => undefined);
 
   // Replays are answered before validation: a register accepted yesterday stays accepted even if
@@ -338,11 +449,21 @@ export async function applySubmissions(
   });
 
   const todo = normalised.map((s, i) => ({ s, i })).filter(({ i }) => !results[i]);
+  const nowMs = nowDate.getTime();
   const { rejections, groups } = await validate(
     db,
     todo.map((t) => t.s),
     opts.scope,
     today,
+    { kind: opts.kind, nowMs },
+  );
+  // A phone clock a little ahead (within MAX_CLOCK_SKEW_MS) is clamped to server now. Several
+  // clamped registers in one request keep their client order 1 ms apart, so the later one still wins.
+  const ahead = todo
+    .filter(({ s }, j) => !rejections.has(j) && s.taken_at > now)
+    .sort((a, b) => (a.s.taken_at < b.s.taken_at ? -1 : a.s.taken_at > b.s.taken_at ? 1 : 0));
+  const clamped = new Map(
+    ahead.map(({ i }, rank) => [i, new Date(nowMs - (ahead.length - 1 - rank)).toISOString()]),
   );
   const nonce = newId();
   const planned: Planned[] = [];
@@ -358,25 +479,24 @@ export async function applySubmissions(
       };
       return;
     }
-    planned.push(plan(i, s, { uid: opts.uid, nonce, today, group, kind: opts.kind, now }));
+    const sub = { ...s, taken_at: clamped.get(i) ?? s.taken_at };
+    planned.push(plan(i, sub, { uid: opts.uid, nonce, today, group, kind: opts.kind, now }));
   });
 
-  // Normal case: one batch for the whole request (≤ 3 registers, PLAN §8 budget). If it fails for
-  // a non-transient reason, apply one by one so a single bad register cannot block the others.
+  // Normal case: one request = one batch (two when over the row budget, see writePlanned). If it
+  // fails for a non-transient reason, apply one by one so a single bad register cannot block the
+  // others.
   const failedAt = new Map<number, string>();
   if (planned.length) {
     try {
-      await tx(
-        db,
-        planned.flatMap((p) => p.statements),
-      );
+      await writePlanned(db, planned);
     } catch (err) {
       if (isTransientD1Error(err)) throw err;
       if (planned.length === 1) failedAt.set(planned[0]?.index ?? -1, describe(err));
       else
         for (const p of planned) {
           try {
-            await tx(db, p.statements);
+            await writePlanned(db, [p]);
           } catch (e) {
             if (isTransientD1Error(e)) throw e;
             failedAt.set(p.index, describe(e));
@@ -386,16 +506,13 @@ export async function applySubmissions(
   }
 
   const outcomes = await readOutcomes(db, planned);
-  const lost = planned.filter((p) => !failedAt.has(p.index) && !outcomes.has(p.auditId));
-  // No audit row = the register insert was ignored: another request stored this client_id between
-  // our duplicate check and our batch. That is a duplicate, not an error.
-  const raced = await registersByClientId(
-    db,
-    lost.map((p) => p.sub.client_id),
-  );
   for (const p of planned) {
     const fail = failedAt.get(p.index);
     const o = outcomes.get(p.auditId);
+    // No audit row = the register INSERT OR IGNORE wrote nothing although the batch succeeded: a
+    // constraint swallowed it, or another request stored this client_id between our duplicate
+    // check and our batch. Either way this request did not save it; say so (the outbox keeps the
+    // entry as failed, and its Retry answers `duplicate` if the other request did store it).
     results[p.index] = fail
       ? { client_id: p.sub.client_id, status: 'rejected', error: 'db_error', message: fail }
       : o
@@ -407,8 +524,9 @@ export async function applySubmissions(
           }
         : {
             client_id: p.sub.client_id,
-            status: 'duplicate',
-            register_id: raced.get(p.sub.client_id),
+            status: 'rejected',
+            error: 'db_error',
+            message: 'The register was not stored',
           };
   }
   // In-request repeats point at whatever their first copy became.

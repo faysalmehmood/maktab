@@ -7,10 +7,12 @@ import {
   attendanceSettingsSchema,
   attendanceSubmissionSchema,
   attendanceSyncRequestSchema,
+  countMarks,
   type DashboardTodayResponse,
   type HolidayDto,
   holidayInputSchema,
   isoDateSchema,
+  MAX_MARKS_PER_SYNC,
   type MarkCounts,
   type MarkStatus,
   type MessageDto,
@@ -43,7 +45,7 @@ import { ApiError } from '../lib/errors';
 import { idParam, jsonBody, notFoundError, queryParams, todayPk, userId } from '../lib/http';
 import { auditSql, changed, tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
-import { type GroupScope, scopeToGroups, studentFilter } from '../perm/scope';
+import { type GroupScope, registerFilter, scopeToGroups, studentFilter } from '../perm/scope';
 import { schoolDto } from './dto';
 
 const scopeOf = (c: Context<AppEnv>) => scopeToGroups(c.get('db'), userId(c), c.get('grant'));
@@ -145,7 +147,10 @@ async function todayItems(
     const keys = subs.length
       ? subs.map((s) => ({ id: s.id, name: s.name as string | null }))
       : [{ id: WHOLE_DAY, name: null }];
+    // A teacher who reaches this group only through a subject sees only that subject's register.
+    const only = scope.kind === 'groups' ? scope.subjectsOnly?.[g.id] : undefined;
     for (const k of keys) {
+      if (only && !only.includes(k.id)) continue;
       const r = byKey.get(`${g.id}|${k.id}`);
       items.push({
         grp_id: g.id,
@@ -212,6 +217,15 @@ export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     { method: 'POST', path: '/api/attendance/sync', access: mark },
     async (c) => {
       const raw = await jsonBody(c, attendanceSyncRequestSchema);
+      // Whole-request budget (PLAN §15): ≤ 200 marks, however they are spread over the registers.
+      // The outbox packs requests to fit; anything bigger is refused as a whole, not half-applied.
+      const marks = countMarks(raw);
+      if (marks > MAX_MARKS_PER_SYNC)
+        throw new ApiError(
+          400,
+          'too_many_marks',
+          `${marks} marks in one request; at most ${MAX_MARKS_PER_SYNC}`,
+        );
       const db = c.get('db');
       const parsed = raw.map((item) => attendanceSubmissionSchema.safeParse(item));
       const valid = parsed.flatMap((p) => (p.success ? [p.data] : []));
@@ -310,12 +324,11 @@ export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         sql`SELECT st.id AS student_id, st.name, x.roll_no, st.admission_no, st.photo_key,
                    m.status, m.note
             FROM (
+              -- Only students enrolled on that date: the roster is what the next save submits, and
+              -- the server refuses marks for anyone else (not_enrolled). A student who has since
+              -- left keeps their old marks in history and reports.
               SELECT e.student_id, max(e.roll_no) AS roll_no FROM enrolment e
               WHERE e.grp_id = ${q.grp_id} AND ${covers(q.date)} GROUP BY e.student_id
-              UNION
-              SELECT m2.student_id, NULL FROM att_mark m2 WHERE m2.register_id = ${cur?.register_id ?? ''}
-                AND m2.student_id NOT IN (SELECT e.student_id FROM enrolment e
-                                          WHERE e.grp_id = ${q.grp_id} AND ${covers(q.date)})
             ) x
             JOIN student st ON st.id = x.student_id
             LEFT JOIN att_mark m ON m.register_id = ${cur?.register_id ?? ''} AND m.student_id = st.id
@@ -395,6 +408,8 @@ export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const to = q.to ?? today;
       const from = q.from ?? `${to.slice(0, 7)}-01`;
       if (from > to) throw new ApiError(400, 'invalid', 'from: after to');
+      // Only registers of groups (or subjects) in the caller's scope: a teacher sees their own
+      // class's days, not the student's other batches.
       const days = await db.all<{
         date: string;
         grp_id: string;
@@ -405,6 +420,7 @@ export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         sql`SELECT c.date, c.grp_id, c.grp_subject_id, m.status, m.note
             FROM current_register c JOIN att_mark m ON m.register_id = c.register_id
             WHERE m.student_id = ${id} AND c.date BETWEEN ${from} AND ${to}
+              AND ${registerFilter(sql`c.grp_id`, sql`c.grp_subject_id`, scope)}
             ORDER BY c.date, c.grp_subject_id`,
       );
       const counts = emptyCounts();

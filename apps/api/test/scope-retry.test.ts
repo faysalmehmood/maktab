@@ -3,7 +3,7 @@ import { createTestDb } from '@maktab/db/node';
 import type { Grant } from '@maktab/shared';
 import { describe, expect, it } from 'vitest';
 import { isTransientD1Error, withD1Retry } from '../src/lib/retry';
-import { groupFilter, scopeToGroups } from '../src/perm/scope';
+import { groupFilter, mayWriteRegister, scopeToGroups } from '../src/perm/scope';
 import { signedInAs } from './helpers';
 
 describe('scopeToGroups', () => {
@@ -27,9 +27,20 @@ describe('scopeToGroups', () => {
       .values({ id: 'GS', grpId: 'G3', subjectId: 'MATH', teacherId: 'T-A' });
 
     const scope = (userId: string, grant: Grant) => scopeToGroups(db, userId, grant);
-    expect(await scope(a.userId, 'own_groups')).toEqual({ kind: 'groups', ids: ['G1', 'G3'] });
+    // A reaches G3 only as the maths teacher: writes there are limited to that subject.
+    const aGroups = await scope(a.userId, 'own_groups');
+    expect(aGroups).toEqual({ kind: 'groups', ids: ['G1', 'G3'], subjectsOnly: { G3: ['GS'] } });
     expect(await scope(b.userId, 'own_groups')).toEqual({ kind: 'groups', ids: ['G2', 'G3'] });
-    expect(await scope(a.userId, 'own_subjects')).toEqual({ kind: 'groups', ids: ['G3'] });
+    expect(await scope(a.userId, 'own_subjects')).toEqual({
+      kind: 'groups',
+      ids: ['G3'],
+      subjectsOnly: { G3: ['GS'] },
+    });
+    expect(mayWriteRegister(aGroups, 'G1', '')).toBe(true);
+    expect(mayWriteRegister(aGroups, 'G3', 'GS')).toBe(true);
+    expect(mayWriteRegister(aGroups, 'G3', '')).toBe(false);
+    expect(mayWriteRegister(aGroups, 'G2', '')).toBe(false);
+    expect(mayWriteRegister({ kind: 'all' }, 'G2', '')).toBe(true);
     expect(await scope('nobody', 'own_groups')).toEqual({ kind: 'groups', ids: [] });
     expect(await scope(a.userId, 'all')).toEqual({ kind: 'all' });
     // A teacher whose route grants `all` (e.g. a future school-wide notice) sees all groups;

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx scripts/dev.ts",
     "build": "wrangler deploy --dry-run --outdir dist --env=\"\"",
-    "migrate:local": "wrangler d1 migrations apply DB --local",
+    "migrate:local": "tsx scripts/migrate-local.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "dev:session": "tsx scripts/dev-session.ts",

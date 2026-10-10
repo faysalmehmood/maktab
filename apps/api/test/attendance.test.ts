@@ -199,7 +199,7 @@ describe('POST /api/attendance/sync', () => {
     expect(b?.status).toBe('stale');
   });
 
-  it('rejects with a clear code: holiday, weekly off, future, not enrolled, before enrolment, 61 marks', async () => {
+  it('rejects with a clear code: holiday, weekly off, future, not enrolled, before enrolment, 201 marks', async () => {
     const s = await setup();
     const hol = daysAgo(1);
     expect(
@@ -223,17 +223,13 @@ describe('POST /api/attendance/sync', () => {
     expect(results[0]?.message).toMatch(/Eid/);
     const more = await sync(s.tApi, [
       submission(s, { date: daysAgo(41) }),
-      submission(s, {
-        marks: Array.from({ length: 61 }, () => ({ student_id: newId(), status: 'P' as const })),
-      }),
       { client_id: stranger, grp_id: 'nope' },
     ]);
     expect(more.map((r) => [r.status, r.error])).toEqual([
       ['rejected', 'before_enrolment'],
       ['rejected', 'invalid'],
-      ['rejected', 'invalid'],
     ]);
-    expect(more[2]?.client_id).toBe(stranger);
+    expect(more[1]?.client_id).toBe(stranger);
     // Weekly off: make today's weekday a day off.
     const wd = new Date(`${today}T00:00:00Z`).getUTCDay();
     await s.api('PUT', '/api/school/attendance', { attendance_mode: 'daily', weekly_off: [wd] });
@@ -241,6 +237,85 @@ describe('POST /api/attendance/sync', () => {
     expect([off?.status, off?.error]).toEqual(['rejected', 'weekly_off']);
     const [regs] = await s.db.all<{ n: number }>(sql`SELECT count(*) AS n FROM att_register`);
     expect(regs?.n).toBe(0);
+  });
+
+  it('validation order: a future holiday is future_date (with the date); a past holiday is holiday', async () => {
+    const s = await setup();
+    const t = new Date(`${today}T00:00:00Z`);
+    t.setUTCDate(t.getUTCDate() + 2);
+    const future = t.toISOString().slice(0, 10);
+    for (const date of [future, daysAgo(2)])
+      expect((await s.api('POST', '/api/holidays', { date, name_en: 'Eid' })).status).toBe(201);
+    const [f, p] = await sync(s.tApi, [
+      submission(s, { date: future }),
+      submission(s, { date: daysAgo(2) }),
+    ]);
+    expect([f?.error, p?.error]).toEqual(['future_date', 'holiday']);
+    expect(f?.message).toContain(future);
+  });
+
+  it('refuses more than 200 marks per request, in one register or spread over several', async () => {
+    const s = await setup();
+    const many = (n: number) =>
+      Array.from({ length: n }, () => ({ student_id: newId(), status: 'P' as const }));
+    for (const body of [
+      [submission(s, { marks: many(201) })],
+      [submission(s, { marks: many(101) }), submission(s, { marks: many(101) })],
+    ]) {
+      const r = await s.tApi<Err>('POST', '/api/attendance/sync', body);
+      expect([r.status, r.body.error.code]).toEqual([400, 'too_many_marks']);
+    }
+    // 200 in one register is within budget (refused per item here only because nobody is enrolled).
+    const [ok] = await sync(s.tApi, [submission(s, { marks: many(200) })]);
+    expect([ok?.status, ok?.error]).toEqual(['rejected', 'not_enrolled']);
+    const [regs] = await s.db.all<{ n: number }>(sql`SELECT count(*) AS n FROM att_register`);
+    expect(regs?.n).toBe(0);
+  });
+
+  it('a phone clock: > 5 min ahead is clock_skew; a little ahead is clamped, so it cannot win forever', async () => {
+    const s = await setup();
+    const [far] = await sync(s.tApi, [submission(s, { taken_at: '2099-01-01T00:00:00.000Z' })]);
+    expect([far?.status, far?.error]).toEqual(['rejected', 'clock_skew']);
+    const ahead = new Date(Date.now() + 4 * 60_000).toISOString();
+    const [fast] = await sync(s.tApi, [submission(s, { taken_at: ahead })]);
+    expect(fast?.status).toBe('applied');
+    const [stored] = await s.db.all<{ taken_at: string; client: string }>(
+      sql`SELECT r.taken_at, json_extract(a.diff, '$.after.client_taken_at') AS client
+          FROM att_register r JOIN audit a ON a.entity_id = r.id WHERE r.id = ${fast?.register_id}`,
+    );
+    expect((stored?.taken_at ?? '9') <= new Date().toISOString()).toBe(true);
+    expect(stored?.client).toBe(ahead); // the raw phone value stays in the audit row
+    // A correct phone a moment later replaces it (it would have been stale against `ahead`).
+    await new Promise((r) => setTimeout(r, 5));
+    const [later] = await sync(s.tApi, [
+      submission(s, { taken_at: new Date().toISOString(), absent: [s.ali.student_id] }),
+    ]);
+    expect(later?.status).toBe('replaced');
+    // And an office correction after both still becomes current.
+    const corr = await s.aApi<AttendanceSyncResult>('POST', '/api/attendance/correct', {
+      client_id: newId(),
+      grp_id: s.g5a.id,
+      date: today,
+      reason: 'checked with the class',
+      marks: [s.ali, s.sara, s.bilal].map((st) => ({ student_id: st.student_id, status: 'P' })),
+    });
+    expect(corr.body.status).toBe('replaced');
+    const [cur] = await s.db.all<{ register_id: string }>(
+      sql`SELECT register_id FROM current_register WHERE grp_id = ${s.g5a.id} AND date = ${today}`,
+    );
+    expect(cur?.register_id).toBe(corr.body.register_id);
+  });
+
+  it('an INSERT OR IGNORE that stores nothing is db_error, not duplicate', async () => {
+    const s = await setup();
+    await s.db.run(
+      sql.raw(
+        `CREATE TRIGGER swallow BEFORE INSERT ON att_register BEGIN SELECT RAISE(IGNORE); END`,
+      ),
+    );
+    const [r] = await sync(s.tApi, [submission(s)]);
+    expect([r?.status, r?.error]).toEqual(['rejected', 'db_error']);
+    expect(r?.register_id).toBeUndefined();
   });
 
   it('refuses more than 3 registers per request (budget)', async () => {
@@ -303,6 +378,104 @@ describe('POST /api/attendance/sync', () => {
   });
 });
 
+describe('scope', () => {
+  /** Two subjects in 5-A; Mr Ahmad teaches only maths there (not a class teacher). */
+  async function withSubjectTeacher(s: S) {
+    await s.api('POST', '/api/subjects/seed-pk');
+    const subj = await s.db.all<{ id: string }>(sql`SELECT id FROM subject ORDER BY name LIMIT 2`);
+    const ahmad = await signedInAs(s.db, ['teacher']);
+    const ahmadStaff = newId();
+    await s.db.insert(staff).values({ id: ahmadStaff, userId: ahmad.userId, name: 'Mr Ahmad' });
+    const put = await s.api('PUT', `/api/groups/${s.g5a.id}/subjects`, {
+      subjects: [{ subject_id: subj[0]?.id, teacher_id: ahmadStaff }, { subject_id: subj[1]?.id }],
+    });
+    expect(put.status, put.text).toBe(200);
+    const gs = await s.db.all<{ id: string; teacher_id: string | null }>(
+      sql`SELECT id, teacher_id FROM grp_subject WHERE grp_id = ${s.g5a.id}`,
+    );
+    const mine = gs.find((g) => g.teacher_id === ahmadStaff)?.id ?? '';
+    const other = gs.find((g) => g.teacher_id !== ahmadStaff)?.id ?? '';
+    return { ahmadApi: client(s.request, ahmad.cookie), mine, other };
+  }
+
+  it('a subject teacher submits only their own subject register, and lists only that', async () => {
+    const s = await setup();
+    const { ahmadApi, mine, other } = await withSubjectTeacher(s);
+    // Daily mode: the whole-day register belongs to the class teacher.
+    const [daily] = await sync(ahmadApi, [submission(s)]);
+    expect([daily?.status, daily?.error]).toEqual(['rejected', 'forbidden']);
+    expect((await ahmadApi<TodayResponse>('GET', '/api/attendance/today')).body.items).toEqual([]);
+    await s.api('PUT', '/api/school/attendance', {
+      attendance_mode: 'per_subject',
+      weekly_off: [],
+    });
+    const [own, notOwn] = await sync(ahmadApi, [
+      submission(s, { grp_subject_id: mine }),
+      submission(s, { grp_subject_id: other }),
+    ]);
+    expect(own?.status).toBe('applied');
+    expect([notOwn?.status, notOwn?.error]).toEqual(['rejected', 'forbidden']);
+    const list = await ahmadApi<TodayResponse>('GET', '/api/attendance/today');
+    expect(list.body.items.map((i) => i.grp_subject_id)).toEqual([mine]);
+    // The class teacher still takes any register of their group.
+    const [ct] = await sync(s.tApi, [submission(s, { grp_subject_id: other })]);
+    expect(ct?.status).toBe('applied');
+    // Student days: the subject teacher sees only their subject's register.
+    const days = await ahmadApi<StudentAttendanceResponse>(
+      'GET',
+      `/api/attendance/student/${s.ali.student_id}?from=${today}&to=${today}`,
+    );
+    expect(days.body.days.map((d) => d.grp_subject_id)).toEqual([mine]);
+  });
+
+  it("student days leave out groups outside the teacher's scope", async () => {
+    const s = await setup();
+    // Ali also sits in 5-B (say, an evening batch) that the teacher does not teach.
+    await s.db.run(
+      sql`INSERT INTO enrolment (id, student_id, grp_id, is_primary, start_date)
+          VALUES (${newId()}, ${s.ali.student_id}, ${s.g5b.id}, 0, ${s.start})`,
+    );
+    await sync(s.aApi, [
+      submission(s, {
+        grp_id: s.g5b.id,
+        date: daysAgo(1),
+        marks: [{ student_id: s.ali.student_id, status: 'A' }],
+      }),
+    ]);
+    await sync(s.tApi, [submission(s, { date: daysAgo(2) })]);
+    const mine = await s.tApi<StudentAttendanceResponse>(
+      'GET',
+      `/api/attendance/student/${s.ali.student_id}?from=${daysAgo(5)}&to=${today}`,
+    );
+    expect(mine.body.days.map((d) => d.grp_id)).toEqual([s.g5a.id]);
+    expect(mine.body.counts.A).toBe(0);
+    const office = await s.aApi<StudentAttendanceResponse>(
+      'GET',
+      `/api/attendance/student/${s.ali.student_id}?from=${daysAgo(5)}&to=${today}`,
+    );
+    expect(office.body.days.map((d) => d.grp_id).sort()).toEqual([s.g5a.id, s.g5b.id].sort());
+  });
+
+  it('the roster leaves out a student no longer enrolled on that date', async () => {
+    const s = await setup();
+    await sync(s.tApi, [submission(s, { date: daysAgo(3) })]);
+    await s.db.run(
+      sql`UPDATE enrolment SET end_date = ${daysAgo(1)}, status = 'withdrawn'
+          WHERE student_id = ${s.bilal.student_id}`,
+    );
+    const names = async (date: string) =>
+      (
+        await s.tApi<RegisterResponse>(
+          'GET',
+          `/api/attendance/register?grp_id=${s.g5a.id}&date=${date}`,
+        )
+      ).body.rows.map((r) => r.student_id);
+    expect(await names(today)).not.toContain(s.bilal.student_id);
+    expect((await names(today)).length).toBe(2);
+    expect(await names(daysAgo(3))).toContain(s.bilal.student_id);
+  });
+});
+
 describe('absence messages', () => {
   it('queues one message per family per day, across registers, and respects consent', async () => {
     const s = await setup();
@@ -313,13 +486,20 @@ describe('absence messages', () => {
         absent: [s.ali.student_id, s.sara.student_id, s.bilal.student_id],
       }),
     ]);
-    expect(r1).toMatchObject({ status: 'applied', queued_messages: 1 });
+    // Two families: Khan (consent) -> WhatsApp; Ahmed (no consent) -> "call" (PLAN §14.3).
+    expect(r1).toMatchObject({ status: 'applied', queued_messages: 2 });
     const msgs = await s.api<{ items: MessageDto[]; total: number }>(
       'GET',
       '/api/messages?status=queued&template_key=absence',
     );
-    expect(msgs.body.total).toBe(1);
-    const m = msgs.body.items[0];
+    expect(msgs.body.total).toBe(2);
+    const call = msgs.body.items.find((x) => x.family_id === s.bilal.family_id);
+    expect(call).toMatchObject({
+      channel: 'call',
+      guardian_name: 'Tariq',
+      guardian_phone: '923017654321',
+    });
+    const m = msgs.body.items.find((x) => x.family_id === s.ali.family_id);
     expect(m).toMatchObject({
       family_id: s.ali.family_id,
       channel: 'wa_manual',
@@ -339,7 +519,7 @@ describe('absence messages', () => {
       submission(s, { grp_id: s.g5b.id, marks: [{ student_id: s.zain.student_id, status: 'A' }] }),
     ]);
     expect(r3).toMatchObject({ status: 'applied', queued_messages: 0 });
-    expect(await queuedAbsence(s)).toBe(1);
+    expect(await queuedAbsence(s)).toBe(2);
 
     // Past dates never queue (only today's register alerts parents).
     const [past] = await sync(s.tApi, [
@@ -347,7 +527,21 @@ describe('absence messages', () => {
     ]);
     expect(past).toMatchObject({ status: 'applied', queued_messages: 0 });
     // Stale registers do not queue either.
-    expect(await queuedAbsence(s)).toBe(1);
+    expect(await queuedAbsence(s)).toBe(2);
+  });
+
+  it('a consenting guardian with no number is a "call" too', async () => {
+    const s = await setup();
+    await s.db.run(
+      sql`UPDATE guardian SET phone = NULL, whatsapp = NULL WHERE family_id = ${s.ali.family_id}`,
+    );
+    const [r] = await sync(s.tApi, [submission(s, { absent: [s.ali.student_id] })]);
+    expect(r?.queued_messages).toBe(1);
+    const rows = await s.db.all<{ channel: string; guardian_id: string | null }>(
+      sql`SELECT channel, guardian_id FROM message WHERE family_id = ${s.ali.family_id}`,
+    );
+    expect(rows.map((x) => x.channel)).toEqual(['call']);
+    expect(rows[0]?.guardian_id).toBeTruthy();
   });
 
   it('a teacher sees only messages about their own groups', async () => {
@@ -365,9 +559,12 @@ describe('absence messages', () => {
 describe('POST /api/attendance/correct', () => {
   it('needs attendance.correct and a reason, then becomes current with the reason in history', async () => {
     const s = await setup();
-    // A phone with a fast clock: its taken_at is far in the future.
+    // A phone with a fast clock (within the 5 min window, so it is accepted and clamped).
     const [orig] = await sync(s.tApi, [
-      submission(s, { taken_at: '2099-01-01T00:00:00.000Z', absent: [s.ali.student_id] }),
+      submission(s, {
+        taken_at: new Date(Date.now() + 3 * 60_000).toISOString(),
+        absent: [s.ali.student_id],
+      }),
     ]);
     expect(orig?.status).toBe('applied');
     const body = {
@@ -440,7 +637,7 @@ describe('reads', () => {
       ['Ali', '923001234567'],
       ['Bilal', '923017654321'],
     ]);
-    expect(d.body.queued_absence_messages).toBe(1);
+    expect(d.body.queued_absence_messages).toBe(2); // Khan on WhatsApp, Ahmed to call
     const acct = await signedInAs(s.db, ['accountant']);
     expect((await client(s.request, acct.cookie)('GET', '/api/dashboard/today')).status).toBe(403);
   });

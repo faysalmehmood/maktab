@@ -2,7 +2,11 @@ import { check, index, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-
 import { family, guardian } from './academic';
 import { id, integerMoney, nowIso, oneOf, paisa } from './common';
 
-export const MESSAGE_CHANNELS = ['wa_manual', 'wa_api', 'sms', 'push', 'email'] as const;
+/**
+ * 'call': no WhatsApp consent (or no number to message) — the office phones the family instead
+ * (PLAN §14.3, §14.9). Finalised before the pilot (PLAN §15 enum rule).
+ */
+export const MESSAGE_CHANNELS = ['wa_manual', 'wa_api', 'sms', 'push', 'email', 'call'] as const;
 export const MESSAGE_STATUSES = [
   'queued',
   'sent',
