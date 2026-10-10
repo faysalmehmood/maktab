@@ -33,7 +33,7 @@ for deploy, and to test the PWA: the Vite dev server does not serve `/manifest.w
 service worker (they exist only in the production build), so test PWA install against
 `wrangler dev` serving the built `apps/web/dist`.
 
-Checks: `npm run typecheck && npm run lint && npm test && npm run build`.
+Checks: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, and the custom-SQL check `npx tsx packages/db/scripts/sync-custom-sql.ts --check`.
 
 ## Architecture
 

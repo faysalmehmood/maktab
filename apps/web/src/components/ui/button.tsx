@@ -15,11 +15,11 @@ const buttonVariants = cva(
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
       },
-      // Every size is a 44 px touch target on a touch screen (PLAN exp4): default and icon are
-      // 44 px everywhere; sm stays compact only under a mouse (pointer: fine).
+      // Every size is at least a 44 px target, with no pointer media-query exception (PLAN exp4).
+      // sm is lighter through padding and font size only.
       size: {
         default: 'h-11 px-4 py-2 has-[>svg]:px-3',
-        sm: 'h-11 pointer-fine:h-9 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5',
+        sm: 'h-11 min-w-11 rounded-md gap-1.5 px-2.5 text-[13px] has-[>svg]:px-2',
         lg: 'h-12 rounded-md px-6 has-[>svg]:px-4',
         icon: 'size-11',
       },

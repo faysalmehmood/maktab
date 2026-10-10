@@ -2,6 +2,26 @@
 
 Thanks for helping. Maktab is small on purpose; please keep it that way.
 
+## Setup
+
+- Node 22+ (see `.nvmrc`).
+- `npm ci --ignore-scripts` (what CI uses) or `npm install`.
+- `cp apps/api/.dev.vars.example apps/api/.dev.vars`
+- `npm run db:migrate:local`
+- `npm run db:seed` (optional sample data)
+- `npm run dev` starts web (:5173) and API (:8787); `npm run dev -w @maktab/api` starts the API only.
+
+wrangler reads `.dev.vars` only at start: restart it after editing the file.
+
+curl `POST`/`PUT` to `/api/*` must send `Origin: http://localhost:5173`, or the CSRF check against
+`APP_ORIGIN` refuses them:
+
+```sh
+curl -X POST localhost:8787/api/<route> -H "Origin: http://localhost:5173" \
+  -H "Content-Type: application/json" -H "Cookie: $(npm run -s dev:session -w @maktab/api -- owner@example.com)" \
+  -d '{}'
+```
+
 - Read [docs/PLAN.md](docs/PLAN.md) first. Larger changes start as an issue or an ADR in `docs/ADR/`.
 - Before a pull request: `npm run typecheck && npm run lint && npm test && npm run build`.
 - Every new API route goes through `defineRoute(... requires(resource, action) ...)` and gets a row in
