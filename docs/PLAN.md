@@ -36,6 +36,7 @@ Non-goals for now: multi-school SaaS, online payment gateways, LMS/content deliv
 | 2026-10-10 | Sessions are yearly (one year = one step up); English digits everywhere, even in Urdu UI; no Hijri dates; Urdu font only for Urdu text | User's pick |
 | 2026-10-10 | Stack confirmed (§8): TypeScript end to end, Hono on Workers, D1/SQLite via Drizzle, Vite + React + Tailwind + shadcn PWA, Google sign-in, R2, GitHub Actions backups. Go/Rust considered: Go cannot target Workers, Rust/WASM adds a toolchain for no gain at this scale; Go would be first choice for an always-on self-hosted server, and the thin API layer keeps that port feasible later | User: "go with your own judgement" |
 | 2026-10-10 | Build starts: local git repo `~/Homelab/projects/maktab`, AGPL-3.0; GitHub publish deferred until the user says push. Milestone 0 = scaffold (schema + triggers, auth + permission matrix + tests, bilingual PWA shell, backup workflow). Opus writes, Sonnet verifies, Fable reviews | User delegated the decision |
+| 2026-10-10 | **M0 closed** at `8a530c7` after two blind reviews and three clean-clone verifications: 164 tests, 58 triggers, 4 views. Added by review: payer-credit ≥ 0 invariant, allocation sign/release rule per (receipt, charge), reversal shape + single write path `reverseReceipt`, close-only cash sessions with generated variance, frozen payslip lines + salary cap, integer-money CHECKs, fee→fine→waiver two-level tree, `OWNER_EMAIL` bootstrap, matrix rows `attendance.correct` / `expense.void` / `audit.read`, forward-only custom-SQL migrations with manifest, `ledger_consistency` view (nightly alarm in M6). This file (`docs/PLAN.md`) is now canonical; the design-folder copy is a pointer | §15 loop |
 
 ## 3. Who uses it
 
@@ -374,7 +375,7 @@ Stop and ask the user only for: GitHub publish, production deploy to `school.con
 
 | Milestone | Scope (from §14) | Done when |
 |---|---|---|
-| M0 Scaffold | Workspaces, schema + triggers, auth + permission matrix + tests, bilingual PWA shell, outbox module, CI, backup workflow, docs | clean-clone verify green |
+| M0 Scaffold | Workspaces, schema + triggers, auth + permission matrix + tests, bilingual PWA shell, outbox module, CI, backup workflow, docs | **Done 2026-10-10** (`8a530c7`); carried forward to M7: 547 KB web chunk (code-split / zod-mini), README "Checks" line to mention the custom-SQL check |
 | M1 Foundation | Setup wizard (14.1), staff invites/roles, families/guardians/students CRUD + admission flow + enrolment (14.2), programmes/groups/sessions, CSV import, audit log writes | admission of a sibling family end-to-end on a 360 px screen |
 | M2 Attendance | Register screen (14.3), offline outbox wired, corrections with reason, "registers not taken", absentee list feeding the message outbox | airplane-mode submit → sync → absentee queue |
 | M3 Fees | Fee heads/rates, monthly generation (cron + button), fee counter family view, receipts (series, print HTML), allocations, reversals, concessions, sponsorships, late fines + waivers, defaulters, cash sessions, transfers (14.4–14.7) | race test + exp1 scenario pass in the real app; receipt prints in ur/en |
