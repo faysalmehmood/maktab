@@ -1,14 +1,27 @@
 # Maktab · مکتب
 
-Free, open-source school and academy management for Pakistani community schools: students and
-families, attendance that works offline, batch-style fees with an append-only ledger, WhatsApp send
-queue, Urdu + English (RTL), and **$0/month** hosting on Cloudflare's free tier.
+**Status: pre-pilot.** Milestones 0–4 complete (scaffold, foundation, attendance, fees ledger + screens, money-out & reports); M5 messaging, M6 settings/backup, M7 hardening/pilot pending — see [docs/PLAN.md](docs/PLAN.md) §15.
 
-**Status: milestone 0** — a runnable, tested skeleton. Schema, ledger triggers, Google sign-in,
-permission matrix, bilingual PWA shell and the backup workflow exist; no business screens yet.
-The full design lives in [docs/PLAN.md](docs/PLAN.md).
+> **Not ready for production yet.** Maktab has not run in a real school. Do not use it for real
+> students' records or money until the pilot milestone is done.
 
-Licence: [AGPL-3.0](LICENSE).
+## What it is
+
+Maktab is free, open-source software for running a community school or academy in Pakistan:
+admitting students and keeping family details, taking daily attendance (it keeps working without
+internet and syncs later), charging fees and issuing receipts with a tamper-proof ledger, and
+sending reminders through a WhatsApp send-queue. It works in Urdu and English, and runs on
+Cloudflare's free tier, so hosting costs nothing per month.
+
+## How it was built
+
+Planned and reviewed in a loop of implementer, blind reviewer and clean-clone verifier agents,
+directed by a human. Every milestone's findings are recorded in [docs/PLAN.md](docs/PLAN.md).
+
+## License and contributing
+
+License: [AGPL-3.0](LICENSE). Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and
+[SECURITY.md](SECURITY.md).
 
 ## Quick start
 
@@ -80,5 +93,3 @@ tier changes (PLAN §8).
 
 - The web bundle is ~170 KB gzipped (full zod, no code-splitting yet); trimming it is scheduled
   for M7.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).

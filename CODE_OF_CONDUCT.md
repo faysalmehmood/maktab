@@ -13,6 +13,6 @@ Unacceptable behaviour includes harassment, insulting or derogatory comments, pe
 attacks, publishing others' private information, and other conduct that would be inappropriate in a
 professional setting.
 
-Report incidents to the maintainers at conduct@REPLACE-WITH-PROJECT-DOMAIN (placeholder). All
+Report incidents to the maintainers at opening a confidential issue via the Security tab, or contacting the maintainer through GitHub. All
 reports are reviewed promptly and kept confidential. Maintainers may remove contributions or ban
 contributors who violate this code, following the Covenant's enforcement guidelines.
