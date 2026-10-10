@@ -85,6 +85,8 @@ export const en = {
     invalid_body: 'Some fields are not valid',
     photo_too_big: 'Photo is too large',
     photo_failed: 'Could not read this photo',
+    unsupported_type: 'Only JPEG, PNG or WebP images',
+    length_required: 'Upload failed (no file size sent). Try again.',
   },
   dashboard: {
     welcome: 'Welcome, {{name}}',
@@ -305,6 +307,8 @@ export const en = {
     successTitle: 'Admitted',
     admitSibling: 'Admit a sibling',
     viewStudent: 'View student',
+    groupFullWarning:
+      'This group is at or over its capacity. You can still admit; capacity is for planning.',
   },
   enrolment: {
     statuses: {
@@ -313,10 +317,21 @@ export const en = {
       retained: 'Retained',
       completed: 'Completed',
       withdrawn: 'Withdrawn',
+      transferred: 'Transferred',
     },
     start: 'From',
     end: 'To',
     empty: 'Not enrolled in any group.',
+    endAction: 'End',
+    transferAction: 'Transfer',
+    endTitle: 'End enrolment',
+    transferTitle: 'Transfer to another group',
+    outcome: 'Outcome',
+    date: 'Date',
+    reason: 'Reason',
+    toGroup: 'New group',
+    ended: 'Enrolment ended',
+    moved: 'Transferred',
   },
   import: {
     title: 'Import students',
@@ -333,6 +348,9 @@ export const en = {
     summary:
       'Students: {{students}}, families: {{families}}, skipped: {{skipped}}, errors: {{errors}}',
     committed: 'Import finished',
+    progress: 'Importing… {{done}} of {{total}} rows',
+    resume:
+      'The import stopped part-way. Rows already imported are kept; choose the same file and import again to continue.',
   },
   settings: {
     title: 'Settings',
@@ -437,6 +455,8 @@ export const ur: Messages = {
     invalid_body: 'کچھ خانے درست نہیں',
     photo_too_big: 'تصویر بہت بڑی ہے',
     photo_failed: 'یہ تصویر پڑھی نہیں جا سکی',
+    unsupported_type: 'صرف JPEG، PNG یا WebP تصاویر',
+    length_required: 'اپ لوڈ ناکام (فائل کا سائز نہیں بھیجا گیا)۔ دوبارہ کوشش کریں۔',
   },
   dashboard: {
     welcome: 'خوش آمدید، {{name}}',
@@ -659,6 +679,8 @@ export const ur: Messages = {
     successTitle: 'داخلہ ہو گیا',
     admitSibling: 'بہن/بھائی کا داخلہ',
     viewStudent: 'طالب علم دیکھیں',
+    groupFullWarning:
+      'یہ گروپ اپنی گنجائش تک بھر چکا ہے۔ داخلہ پھر بھی ہو سکتا ہے؛ گنجائش صرف منصوبہ بندی کے لیے ہے۔',
   },
   enrolment: {
     statuses: {
@@ -667,10 +689,21 @@ export const ur: Messages = {
       retained: 'اسی جماعت میں',
       completed: 'مکمل',
       withdrawn: 'خارج',
+      transferred: 'منتقل',
     },
     start: 'سے',
     end: 'تک',
     empty: 'کسی گروپ میں داخل نہیں۔',
+    endAction: 'ختم کریں',
+    transferAction: 'منتقل کریں',
+    endTitle: 'داخلہ ختم کریں',
+    transferTitle: 'دوسرے گروپ میں منتقل کریں',
+    outcome: 'نتیجہ',
+    date: 'تاریخ',
+    reason: 'وجہ',
+    toGroup: 'نیا گروپ',
+    ended: 'داخلہ ختم ہو گیا',
+    moved: 'منتقل ہو گیا',
   },
   import: {
     title: 'طلبہ درآمد کریں',
@@ -686,6 +719,9 @@ export const ur: Messages = {
     warnings: 'انتباہ',
     summary: 'طلبہ: {{students}}، خاندان: {{families}}، چھوڑے گئے: {{skipped}}، غلطیاں: {{errors}}',
     committed: 'درآمد مکمل',
+    progress: 'درآمد جاری… {{total}} میں سے {{done}} سطریں',
+    resume:
+      'درآمد درمیان میں رک گئی۔ جو سطریں درآمد ہو چکی ہیں وہ محفوظ ہیں؛ وہی فائل دوبارہ منتخب کر کے درآمد کریں۔',
   },
   settings: {
     title: 'ترتیبات',

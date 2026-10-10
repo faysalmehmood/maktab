@@ -1,4 +1,5 @@
 -- Partial unique indexes: Drizzle's SQLite generator does not emit WHERE clauses we can rely on.
+-- Re-emitted after migration 0004 rebuilt `enrolment` (SQLite drops a table's indexes with it).
 
 -- PLAN §4 "the one rule": at most one active primary enrolment (the school class) per student.
 CREATE UNIQUE INDEX one_primary ON enrolment(student_id) WHERE is_primary = 1 AND status = 'active';

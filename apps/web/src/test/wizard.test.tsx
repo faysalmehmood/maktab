@@ -1,8 +1,8 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { initI18n, setLanguage } from '@/i18n';
 import { SetupWizard } from '@/pages/Setup';
-import { mockApi, renderAt } from './api-mock';
+import { mockApi, renderAt, session } from './api-mock';
 
 const saved = (body: { name: string; mode: string }) => ({
   school: {
@@ -15,7 +15,7 @@ const saved = (body: { name: string; mode: string }) => ({
     default_lang: 'ur',
     receipt_prefix: null,
     has_logo: false,
-    setup_completed_at: null,
+    setup_completed_at: null as string | null,
   },
 });
 
@@ -67,5 +67,37 @@ describe('setup wizard', () => {
     const modePut = api.calls.filter((c) => c.method === 'PUT').at(-1);
     expect(modePut?.body).toMatchObject({ mode: 'academy', name: 'Al-Noor' });
     // ↑ the mode step must not blank the profile saved in step 1.
+  });
+
+  it('finishes with POST /api/school/complete-setup, not a profile save', async () => {
+    let school = saved({ name: 'Al-Noor', mode: 'both' });
+    const api = mockApi({
+      'GET /api/school': () => school,
+      'PUT /api/school': (_url: URL, init: RequestInit) => {
+        school = saved(JSON.parse(String(init.body)) as { name: string; mode: string });
+        return school;
+      },
+      'POST /api/school/complete-setup': () => {
+        school = { school: { ...school.school, setup_completed_at: '2026-10-10T00:00:00Z' } };
+        return school;
+      },
+      'GET /api/sessions': { items: [session] },
+      'GET /api/programmes': { items: [] },
+      'GET /api/subjects': { items: [] },
+      'GET /api/groups': { items: [] },
+      'GET /api/staff': { items: [] },
+    });
+    renderAt('/setup', '/setup', <SetupWizard />);
+    for (let step = 1; step <= 6; step++) {
+      expect(await screen.findByText(`Step ${step} of 7`)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    }
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Maktab' }));
+    await waitFor(() =>
+      expect(api.calls.some((c) => c.path === '/api/school/complete-setup')).toBe(true),
+    );
+    // No PUT carried a completion flag.
+    for (const c of api.calls.filter((x) => x.method === 'PUT'))
+      expect(c.body).not.toHaveProperty('setup_completed');
   });
 });

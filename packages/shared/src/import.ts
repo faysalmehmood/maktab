@@ -25,10 +25,16 @@ export const IMPORT_COLUMNS = [
 
 export type ImportColumnKey = (typeof IMPORT_COLUMNS)[number]['key'];
 
-/** Rows per D1 batch on commit (each row is ~6 statements' worth of json_each rows). */
-export const IMPORT_CHUNK_ROWS = 25;
-/** One upload; bigger schools split the file. */
+/**
+ * Rows per commit request. The free Worker allows 50 subrequests and 10 ms CPU per request (PLAN
+ * §8), so a commit is one D1 batch (one json_each statement per table) over at most this many rows;
+ * the web page sends a file in chunks of this size, in order, and shows progress. Every row is
+ * keyed by its hash, so a dropped chunk is resumed by sending the file again.
+ */
+export const IMPORT_COMMIT_ROWS = 200;
+/** One file (the dry run reads it whole); bigger schools split it. */
 export const IMPORT_MAX_ROWS = 2000;
+export const IMPORT_MAX_BYTES = 1024 * 1024;
 
 /** `Student_Name (طالب علم کا نام)` → `student_name`. */
 export function importHeaderKey(cell: string): string {

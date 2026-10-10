@@ -8,7 +8,8 @@
  *   npm run db:migrate:local && npm run dev -w @maktab/api      # terminal 1
  *   npm run smoke:m1 -w @maktab/api                              # terminal 2
  *
- * SMOKE_BASE (default http://localhost:8787) and SMOKE_EMAIL (default owner@example.com) override.
+ * SMOKE_BASE (default http://localhost:$API_PORT, 8787), SMOKE_ORIGIN (default
+ * http://localhost:$PORT, 5173) and SMOKE_EMAIL (default owner@example.com) override.
  * Re-runnable: names, emails and phones get a random suffix per run.
  */
 import type {
@@ -27,10 +28,10 @@ import type {
 } from '@maktab/shared';
 import { mintDevSession } from './dev-session';
 
-const BASE = process.env.SMOKE_BASE ?? 'http://localhost:8787';
+const BASE = process.env.SMOKE_BASE ?? `http://localhost:${process.env.API_PORT ?? '8787'}`;
 const EMAIL = process.env.SMOKE_EMAIL ?? 'owner@example.com';
 // The Worker's CSRF guard compares Origin with APP_ORIGIN for form posts; browsers always send it.
-const ORIGIN = process.env.SMOKE_ORIGIN ?? 'http://localhost:5173';
+const ORIGIN = process.env.SMOKE_ORIGIN ?? `http://localhost:${process.env.PORT ?? '5173'}`;
 const run = Math.random().toString(36).slice(2, 7);
 const phoneDigits = String(Math.floor(1_000_000 + Math.random() * 8_999_999));
 
@@ -168,13 +169,15 @@ async function main() {
     );
   });
 
-  await step('wizard 7: done (setup_completed)', async () => {
-    const r = await api<SchoolResponse>('PUT', '/api/school', {
+  await step('wizard 7: done (POST /api/school/complete-setup)', async () => {
+    const stale = await api('PUT', '/api/school', {
       name: 'Smoke Test School',
       mode: 'both',
       default_lang: 'ur',
       setup_completed: true,
     });
+    expectOk(stale.status === 400, stale);
+    const r = await api<SchoolResponse>('POST', '/api/school/complete-setup');
     expectOk(r.status === 200 && r.body.school?.setup_completed_at, r);
   });
 
@@ -278,12 +281,16 @@ async function main() {
     const header =
       'student_name (طالب علم کا نام),group,guardian_name,guardian_phone,consent_whatsapp';
     const csv = `\uFEFF${header}\r\nCsv A ${run},5-${run},Asma,0302-${phoneDigits},yes\r\nCsv B ${run},5-${run},Asma,+92 302 ${phoneDigits},yes\r\nBad ${run},nope,X,123,yes\r\n`;
+    // Commit as the web page does: one chunk (≤ 200 rows) with its offset in the file.
     const post = async (dry: boolean) => {
-      const res = await fetch(`${BASE}/api/imports/students${dry ? '?dry_run=1' : ''}`, {
-        method: 'POST',
-        headers: { cookie, origin: ORIGIN, 'content-type': 'text/csv' },
-        body: csv,
-      });
+      const res = await fetch(
+        `${BASE}/api/imports/students?${dry ? 'dry_run=1' : 'offset=0&total=3'}`,
+        {
+          method: 'POST',
+          headers: { cookie, origin: ORIGIN, 'content-type': 'text/csv' },
+          body: csv,
+        },
+      );
       return { status: res.status, body: (await res.json()) as ImportReport };
     };
     const dry = await post(true);

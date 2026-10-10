@@ -33,7 +33,7 @@ import { and, asc, desc, eq, inArray, like, or, type SQL, sql } from 'drizzle-or
 import type { Context, Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
-import { bucket, readImageUpload, serveObject } from '../lib/files';
+import { bucket, deleteReplaced, readImageUpload, serveObject } from '../lib/files';
 import { idParam, jsonBody, notFoundError, queryParams, userId } from '../lib/http';
 import { auditSql, changed, tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
@@ -575,6 +575,7 @@ export function peopleRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           after: { photo_key: key, bytes: bytes.byteLength },
         }),
       ]);
+      await deleteReplaced(files, before.photoKey, key);
       return c.json({ has_photo: true });
     },
   );
@@ -595,21 +596,33 @@ export function peopleRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       // Leaving ends every live enrolment on the same date (fees stop there in M3).
       const endStatus = input.status === 'left' ? 'withdrawn' : 'completed';
       await tx(db, [
+        // Audit first: it lists the enrolments the UPDATE below is about to end, read in-batch.
+        auditSql(
+          {
+            id: newId(),
+            userId: userId(c),
+            entity: 'student',
+            entityId: id,
+            action: 'status',
+            before: { status: before.status },
+            after: {
+              status: input.status,
+              date: input.date,
+              reason: input.reason,
+              enrolment_status: endStatus,
+            },
+          },
+          {
+            ended_enrolment_ids: sql`json((SELECT json_group_array(id) FROM enrolment
+                                           WHERE student_id = ${id} AND status = 'active'))`,
+          },
+        ),
         sql`UPDATE enrolment SET status = ${endStatus}, end_date = ${input.date}, end_reason = ${input.reason}
             WHERE student_id = ${id} AND status = 'active'`,
         db
           .update(student)
           .set({ status: input.status, leftDate: input.date, leftReason: input.reason })
           .where(eq(student.id, id)),
-        auditSql({
-          id: newId(),
-          userId: userId(c),
-          entity: 'student',
-          entityId: id,
-          action: 'status',
-          before: { status: before.status },
-          after: { status: input.status, date: input.date, reason: input.reason },
-        }),
       ]);
       return c.json(await studentDetail(db, id, true));
     },

@@ -18,7 +18,7 @@ import { and, asc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
-import { bucket, readImageUpload, serveObject } from '../lib/files';
+import { bucket, deleteReplaced, readImageUpload, serveObject } from '../lib/files';
 import { idParam, jsonBody, notFoundError, userId } from '../lib/http';
 import { auditSql, changed, tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
@@ -94,9 +94,6 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       phone: input.phone ?? null,
       defaultLang: input.default_lang,
       receiptPrefix: input.receipt_prefix ?? null,
-      ...(input.setup_completed
-        ? { setupCompletedAt: existing?.setupCompletedAt ?? new Date().toISOString() }
-        : {}),
     };
     const auditId = newId();
     if (existing) {
@@ -132,6 +129,38 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     return c.json({ school: row ? schoolDto(row) : null });
   });
 
+  /**
+   * The wizard's last step. Owner-only (role.manage is the owner's grant): finishing setup hands
+   * the installation over to daily use. Idempotent; the first completion time is kept.
+   */
+  defineRoute(
+    app,
+    table,
+    { method: 'POST', path: '/api/school/complete-setup', access: requires('role', 'manage') },
+    async (c) => {
+      const db = c.get('db');
+      const existing = await currentSchool(c);
+      if (!existing) throw new ApiError(409, 'no_school', 'Save the school profile first');
+      if (!existing.setupCompletedAt) {
+        const at = new Date().toISOString();
+        await tx(db, [
+          db.update(school).set({ setupCompletedAt: at }).where(eq(school.id, existing.id)),
+          auditSql({
+            id: newId(),
+            userId: userId(c),
+            entity: 'school',
+            entityId: existing.id,
+            action: 'complete_setup',
+            before: { setup_completed_at: null },
+            after: { setup_completed_at: at },
+          }),
+        ]);
+      }
+      const row = await currentSchool(c);
+      return c.json({ school: row ? schoolDto(row) : null });
+    },
+  );
+
   defineRoute(app, table, { method: 'GET', path: '/api/school/logo', access: read }, async (c) => {
     const row = await currentSchool(c);
     return serveObject(c, row?.logoKey ?? null);
@@ -146,7 +175,7 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const existing = await currentSchool(c);
       if (!existing) throw new ApiError(409, 'no_school', 'Save the school profile first');
       const { bytes, type } = await readImageUpload(c, MAX_LOGO_BYTES);
-      // A new key per upload: no stale cached logo, and the old object stays until a cleanup job.
+      // A new key per upload: no stale cached logo; the old object is deleted once the swap commits.
       const key = `school/logo-${newId()}`;
       await files.put(key, bytes, { httpMetadata: { contentType: type } });
       const db = c.get('db');
@@ -162,6 +191,7 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           after: { logo_key: key },
         }),
       ]);
+      await deleteReplaced(files, existing.logoKey, key);
       const row = await currentSchool(c);
       return c.json({ school: row ? schoolDto(row) : null });
     },
@@ -258,6 +288,10 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const [row] = await db.select().from(session).where(eq(session.id, id));
       if (!row) throw notFoundError('Session');
       if (!row.isCurrent) {
+        const [prev] = await db
+          .select({ id: session.id, name: session.name })
+          .from(session)
+          .where(eq(session.isCurrent, true));
         await tx(db, [
           ...makeCurrent(id),
           auditSql({
@@ -266,6 +300,8 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
             entity: 'session',
             entityId: id,
             action: 'set_current',
+            before: { is_current: false, current_session_id: prev?.id ?? null },
+            after: { is_current: true, current_session_id: id },
           }),
         ]);
       }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   admissionInputSchema,
+  csvRecords,
   formatPkPhone,
   importHeaderKey,
   normalizePkMobile,
@@ -86,6 +87,22 @@ describe('CSV', () => {
   it('round-trips through toCsvLine', () => {
     const cells = ['plain', 'a,b', 'q"uote', 'line\nbreak', ''];
     expect(parseCsv(toCsvLine(cells))).toEqual([cells]);
+  });
+
+  it('splits raw records for chunked upload, matching parseCsv rows', () => {
+    const text = '﻿a,b\r\n"multi\nline",2\r\n\r\n , \n+92 300,"x,""y"""\n';
+    const recs = csvRecords(text);
+    expect(recs).toEqual(['a,b', '"multi\nline",2', '+92 300,"x,""y"""']);
+    expect(parseCsv(recs.join('\r\n'))).toEqual(parseCsv(text));
+  });
+
+  it('neutralises spreadsheet formulas in exported cells', () => {
+    const cells = ['=1+1', '+92300', '-2', '@SUM(A1)', '\tx', '\ry', 'ok=1', 'علی'];
+    expect(parseCsv(toCsvLine(cells))).toEqual([
+      ["'=1+1", "'+92300", "'-2", "'@SUM(A1)", "'\tx", "'\ry", 'ok=1', 'علی'],
+    ]);
+    // A real number is data, not a formula.
+    expect(toCsvLine([-5, 3])).toBe('-5,3');
   });
 
   it('import helpers', () => {

@@ -15,6 +15,14 @@
       "files": {
         "40_foundation.sql": "0d2ff4b166dde42cadaca03f90063baf40ac256f8030da08811265928b35da37"
       }
+    },
+    {
+      "migration": "0005_enrolment_rules",
+      "sha256": "fd7b24a37b3164070c8302e5fd562ae22c0d94961adb98a0278b598423c6bbda",
+      "files": {
+        "10_indexes.sql": "58a378a7429ce687c51d307e7d2536cad6f7757e53984ab64e5a7f8e55be84f2",
+        "40_foundation.sql": "cd7f5e7a1254dcdf55bdfe2ed4d5c9cff9c6aeca0b0c064a91d0a982a14bd41c"
+      }
     }
   ]
 }

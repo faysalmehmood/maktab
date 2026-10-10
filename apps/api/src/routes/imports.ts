@@ -1,9 +1,21 @@
-import { type AppDb, customField, grp, guardian, programme, session, student } from '@maktab/db';
+import {
+  type AppDb,
+  customField,
+  enrolment,
+  grp,
+  guardian,
+  importRun,
+  programme,
+  session,
+  student,
+} from '@maktab/db';
 import {
   customValueError,
-  IMPORT_CHUNK_ROWS,
   IMPORT_COLUMNS,
+  IMPORT_COMMIT_ROWS,
+  IMPORT_MAX_BYTES,
   IMPORT_MAX_ROWS,
+  type ImportCommitResult,
   type ImportReport,
   type ImportRowReport,
   importHeaderKey,
@@ -17,17 +29,15 @@ import {
   parseYesNo,
   toCsvLine,
 } from '@maktab/shared';
-import { asc, eq, ne, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, type SQL, sql } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { b64urlEncode, utf8 } from '../lib/b64';
 import { ApiError, dbConflict } from '../lib/errors';
-import { todayPk, userId } from '../lib/http';
+import { notFoundError, todayPk, userId } from '../lib/http';
 import { auditSql, tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
 import { bumpAdmissionSeries } from './admissions';
-
-const MAX_CSV_BYTES = 2 * 1024 * 1024;
 
 type Extra = Record<string, string | number | boolean | null>;
 
@@ -41,6 +51,8 @@ type Planned = {
   address: string | null;
   area: string | null;
   guardian_id: string;
+  family_audit_id: string;
+  guardian_audit_id: string;
   g_name: string;
   g_relation: string | null;
   g_phone: string;
@@ -73,20 +85,23 @@ async function sha256(text: string): Promise<string> {
 
 const norm = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
 
+const TOO_LARGE = `CSV must be at most ${IMPORT_MAX_BYTES / 1024 / 1024} MB`;
+
 async function readCsvText(c: Context<AppEnv>): Promise<{ text: string; fileName: string | null }> {
   const declared = Number(c.req.header('content-length') ?? '0');
-  if (declared > MAX_CSV_BYTES) throw new ApiError(413, 'too_large', 'CSV must be at most 2 MB');
+  // Multipart framing adds a little; the file itself is checked below.
+  if (declared > IMPORT_MAX_BYTES + 16 * 1024) throw new ApiError(413, 'too_large', TOO_LARGE);
   const type = c.req.header('content-type') ?? '';
   if (type.startsWith('multipart/form-data')) {
     const form = await c.req.parseBody().catch(() => null);
     const file = form?.file;
     if (!(file instanceof File))
       throw new ApiError(400, 'invalid', 'Expected a multipart field "file"');
-    if (file.size > MAX_CSV_BYTES) throw new ApiError(413, 'too_large', 'CSV must be at most 2 MB');
+    if (file.size > IMPORT_MAX_BYTES) throw new ApiError(413, 'too_large', TOO_LARGE);
     return { text: await file.text(), fileName: file.name || null };
   }
   const text = await c.req.text();
-  if (text.length > MAX_CSV_BYTES) throw new ApiError(413, 'too_large', 'CSV must be at most 2 MB');
+  if (utf8(text).byteLength > IMPORT_MAX_BYTES) throw new ApiError(413, 'too_large', TOO_LARGE);
   return { text, fileName: null };
 }
 
@@ -119,8 +134,11 @@ async function groupIndex(db: AppDb) {
   return index;
 }
 
-/** Validates every row and plans what commit would do. Pure reads; dry run stops here. */
-async function plan(db: AppDb, text: string) {
+/**
+ * Validates every row and plans what commit would do. Pure reads; dry run stops here.
+ * `rowOffset` numbers the rows of a commit chunk as they are numbered in the whole file.
+ */
+async function plan(db: AppDb, text: string, rowOffset = 0) {
   const table = parseCsv(text);
   const [header, ...body] = table;
   if (!header) throw new ApiError(400, 'invalid', 'The CSV is empty');
@@ -152,11 +170,12 @@ async function plan(db: AppDb, text: string) {
   type Draft = {
     report: ImportRowReport;
     planned?: Omit<Planned, 'family_id' | 'new_family' | 'n' | 'k' | 'roll_k'>;
+    capacity?: number | null;
   };
   const drafts: Draft[] = [];
 
   for (const [i, cells] of body.entries()) {
-    const rowNo = i + 1;
+    const rowNo = rowOffset + i + 1;
     const get = (k: string) => (cells[keys.indexOf(k)] ?? '').trim();
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -175,7 +194,8 @@ async function plan(db: AppDb, text: string) {
       return v;
     };
     const dob = dateCell('dob');
-    const admissionDate = dateCell('admission_date') ?? today;
+    const admissionDateCell = dateCell('admission_date');
+    const admissionDate = admissionDateCell ?? today;
     const bForm = get('b_form_no').replace(/-/g, '');
     if (bForm && !/^\d{13}$/.test(bForm)) errors.push('b_form_no: 13 digits');
     const admissionNo = get('admission_no') || null;
@@ -229,7 +249,8 @@ async function plan(db: AppDb, text: string) {
       drafts.push({ report });
       continue;
     }
-    if (g.capacity != null) warnings.push('check group capacity after import');
+    // The row's identity is what the file says, normalised; never a value defaulted at upload time
+    // (an empty admission_date becomes "today", which would make a re-upload tomorrow a new row).
     const normalized = {
       name,
       fatherName,
@@ -237,7 +258,7 @@ async function plan(db: AppDb, text: string) {
       dob,
       bForm: bForm || null,
       admissionNo,
-      admissionDate,
+      admissionDate: admissionDateCell,
       grp: g.id,
       roll: get('roll_no') || null,
       family: get('family_name'),
@@ -260,6 +281,7 @@ async function plan(db: AppDb, text: string) {
     seenHashes.add(hash);
     drafts.push({
       report,
+      capacity: g.capacity,
       planned: {
         hash,
         row_no: rowNo,
@@ -267,6 +289,8 @@ async function plan(db: AppDb, text: string) {
         address: normalized.address,
         area: normalized.area,
         guardian_id: newId(),
+        family_audit_id: newId(),
+        guardian_audit_id: newId(),
         g_name: gName,
         g_relation: normalized.gRelation,
         g_phone: phone.number,
@@ -291,8 +315,8 @@ async function plan(db: AppDb, text: string) {
     });
   }
 
-  // What already exists: imported hashes, admission numbers, families by guardian phone,
-  // same-name students (a warning, never a block). Looked up in bulk via json_each.
+  // What already exists: imported hashes, admission numbers, families by guardian phone, students
+  // already on file. Looked up in bulk via json_each (one bound parameter each, PLAN §8).
   const planned = drafts.flatMap((d) => (d.planned ? [d.planned] : []));
   const asJson = (xs: string[]) => JSON.stringify([...new Set(xs)]);
   const imported = new Set(
@@ -311,14 +335,27 @@ async function plan(db: AppDb, text: string) {
   );
   const phones = planned.map((p) => p.g_phone);
   const famByPhone = new Map<string, string>();
+  // name|father|phone of students already in a family reachable by one of the file's phones.
+  const onFile = new Set<string>();
+  const personKey = (name: string, father: string | null, phone: string) =>
+    `${norm(name)}|${norm(father ?? '')}|${phone}`;
   if (phones.length) {
     const rows = await db
-      .select({ phone: guardian.phone, familyId: guardian.familyId })
+      .select({
+        phone: guardian.phone,
+        familyId: guardian.familyId,
+        name: student.name,
+        father: student.fatherName,
+      })
       .from(guardian)
+      .leftJoin(student, eq(student.familyId, guardian.familyId))
       .where(sql`${guardian.phone} IN (SELECT value FROM json_each(${asJson(phones)}))`)
       .orderBy(asc(guardian.createdAt));
-    for (const r of rows)
-      if (r.phone && !famByPhone.has(r.phone)) famByPhone.set(r.phone, r.familyId);
+    for (const r of rows) {
+      if (!r.phone) continue;
+      if (!famByPhone.has(r.phone)) famByPhone.set(r.phone, r.familyId);
+      if (r.name) onFile.add(personKey(r.name, r.father, r.phone));
+    }
   }
   const names = await db
     .select({ name: student.name, father: student.fatherName })
@@ -326,9 +363,20 @@ async function plan(db: AppDb, text: string) {
     .where(
       sql`lower(${student.name}) IN (SELECT value FROM json_each(${asJson(planned.map((p) => p.name.toLowerCase()))}))`,
     );
-  const sameName = new Set(
-    names.map((n) => `${n.name.toLowerCase()}|${(n.father ?? '').toLowerCase()}`),
-  );
+  const sameName = new Set(names.map((n) => `${norm(n.name)}|${norm(n.father ?? '')}`));
+  // Capacity is a planning number (never enforced): warn once the file would fill a group past it.
+  const grpIds = [
+    ...new Set(drafts.flatMap((d) => (d.capacity != null && d.planned ? [d.planned.grp_id] : []))),
+  ];
+  const seated = new Map<string, number>();
+  if (grpIds.length) {
+    const counts = await db
+      .select({ grpId: enrolment.grpId, n: sql<number>`count(*)` })
+      .from(enrolment)
+      .where(and(inArray(enrolment.grpId, grpIds), eq(enrolment.status, 'active')))
+      .groupBy(enrolment.grpId);
+    for (const r of counts) seated.set(r.grpId, Number(r.n));
+  }
 
   const ready: Planned[] = [];
   const newFamilyByPhone = new Map<string, string>();
@@ -340,13 +388,23 @@ async function plan(db: AppDb, text: string) {
       d.report.warnings.push('already imported');
       continue;
     }
+    if (onFile.has(personKey(p.name, p.father_name, p.g_phone))) {
+      d.report.action = 'skip';
+      d.report.warnings.push('already a student: same name, father name and guardian phone');
+      continue;
+    }
     if (p.admission_no && takenNos.has(p.admission_no)) {
       d.report.action = 'error';
       d.report.errors.push('admission_no: already used');
       continue;
     }
-    if (sameName.has(`${p.name.toLowerCase()}|${(p.father_name ?? '').toLowerCase()}`)) {
+    if (sameName.has(`${norm(p.name)}|${norm(p.father_name ?? '')}`)) {
       d.report.warnings.push('a student with this name and father name exists');
+    }
+    if (d.capacity != null) {
+      const n = (seated.get(p.grp_id) ?? 0) + 1;
+      seated.set(p.grp_id, n);
+      if (n > d.capacity) d.report.warnings.push(`group over capacity: ${n} of ${d.capacity}`);
     }
     // Siblings: same guardian phone → same family, whether the family is old or earlier in the file.
     const existing = famByPhone.get(p.g_phone);
@@ -368,7 +426,7 @@ async function plan(db: AppDb, text: string) {
     ready.push({ ...p, family_id: familyId, new_family: isNew, n: 0, k: 0, roll_k: 0 });
   }
   const reports = drafts.map((d) => d.report);
-  return { reports, ready };
+  return { reports, ready, rows: body.length };
 }
 
 function summarize(reports: ImportRowReport[], ready: Planned[]): ImportReport['summary'] {
@@ -385,7 +443,11 @@ function summarize(reports: ImportRowReport[], ready: Planned[]): ImportReport['
 const j = (k: string) => sql.raw(`json_extract(j.value, '$.${k}')`);
 const notImported = sql`NOT EXISTS (SELECT 1 FROM import_row r WHERE r.row_hash = ${j('hash')})`;
 
-/** One chunk = one D1 batch: every table filled from one json_each parameter (PLAN §8). */
+/**
+ * A whole commit chunk as ONE D1 batch: one json_each statement per table, each with one JSON
+ * parameter (PLAN §8: 100 bound parameters, 50 subrequests per request). Every insert filters on
+ * the row's hash not being recorded yet and import_row is written last, so a replay is a no-op.
+ */
 function chunkStatements(rows: Planned[], uid: string, runId: string): SQL[] {
   const years = new Map<string, number>();
   const rolls = new Map<string, number>();
@@ -404,17 +466,17 @@ function chunkStatements(rows: Planned[], uid: string, runId: string): SQL[] {
   for (const p of rows) if (!p.admission_no) p.n = years.get(p.year) ?? 0;
   const data = JSON.stringify(rows);
   const src = sql`FROM json_each(${data}) j`;
+  const newFamily = sql`${j('new_family')} = 1 AND ${notImported}`;
   return [
     ...[...years].map(([year, n]) => bumpAdmissionSeries(year, n)),
     sql`INSERT INTO family (id, name, address, area, created_by)
         SELECT ${j('family_id')}, ${j('family_name')}, ${j('address')}, ${j('area')}, ${uid} ${src}
-        WHERE ${j('new_family')} = 1 AND ${notImported}
-          AND NOT EXISTS (SELECT 1 FROM family f WHERE f.id = ${j('family_id')})`,
+        WHERE ${newFamily} AND NOT EXISTS (SELECT 1 FROM family f WHERE f.id = ${j('family_id')})`,
     sql`INSERT INTO guardian (id, family_id, name, relation, phone, whatsapp, priority,
           consent_whatsapp, consent_sms, lang, created_by)
         SELECT ${j('guardian_id')}, ${j('family_id')}, ${j('g_name')}, ${j('g_relation')}, ${j('g_phone')},
           ${j('g_whatsapp')}, 1, ${j('g_consent')}, 0, 'ur', ${uid} ${src}
-        WHERE ${j('new_family')} = 1 AND ${notImported}`,
+        WHERE ${newFamily}`,
     sql`INSERT INTO student (id, family_id, admission_no, name, father_name, dob, gender, b_form_no,
           admission_date, status, extra, created_by)
         SELECT ${j('student_id')}, ${j('family_id')},
@@ -432,10 +494,27 @@ function chunkStatements(rows: Planned[], uid: string, runId: string): SQL[] {
           ${j('admission_date')}, 'active', ${uid} ${src}
         JOIN grp g ON g.id = ${j('grp_id')}
         WHERE ${notImported}`,
+    // Audit (PLAN §5.4) for every row created: families and guardians of new families, students
+    // with the numbers they were actually given (read back from the rows inserted above).
+    sql`INSERT INTO audit (id, user_id, entity, entity_id, action, diff)
+        SELECT ${j('family_audit_id')}, ${uid}, 'family', ${j('family_id')}, 'import',
+          json_object('before', NULL, 'after', json_object('run_id', ${runId}, 'row', ${j('row_no')},
+            'name', ${j('family_name')}, 'address', ${j('address')}, 'area', ${j('area')})) ${src}
+        WHERE ${newFamily}`,
+    sql`INSERT INTO audit (id, user_id, entity, entity_id, action, diff)
+        SELECT ${j('guardian_audit_id')}, ${uid}, 'guardian', ${j('guardian_id')}, 'import',
+          json_object('before', NULL, 'after', json_object('run_id', ${runId}, 'row', ${j('row_no')},
+            'family_id', ${j('family_id')}, 'name', ${j('g_name')}, 'relation', ${j('g_relation')},
+            'phone', ${j('g_phone')}, 'whatsapp', ${j('g_whatsapp')},
+            'consent_whatsapp', ${j('g_consent')})) ${src}
+        WHERE ${newFamily}`,
     sql`INSERT INTO audit (id, user_id, entity, entity_id, action, diff)
         SELECT ${j('audit_id')}, ${uid}, 'student', ${j('student_id')}, 'import',
           json_object('before', NULL, 'after', json_object('run_id', ${runId}, 'row', ${j('row_no')},
-            'family_id', ${j('family_id')}, 'grp_id', ${j('grp_id')}, 'name', ${j('name')})) ${src}
+            'family_id', ${j('family_id')}, 'grp_id', ${j('grp_id')}, 'name', ${j('name')},
+            'enrolment_id', ${j('enrolment_id')},
+            'admission_no', (SELECT s.admission_no FROM student s WHERE s.id = ${j('student_id')}),
+            'roll_no', (SELECT e.roll_no FROM enrolment e WHERE e.id = ${j('enrolment_id')}))) ${src}
         WHERE ${notImported}`,
     // Last: every statement above filters on the hash not being recorded yet.
     sql`INSERT INTO import_row (id, run_id, row_no, row_hash, student_id, created_by)
@@ -443,6 +522,13 @@ function chunkStatements(rows: Planned[], uid: string, runId: string): SQL[] {
         WHERE ${notImported}`,
   ];
 }
+
+const intParam = (v: string | undefined, name: string): number | null => {
+  if (v === undefined || v === '') return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0) throw new ApiError(400, 'invalid', `${name}: whole number`);
+  return n;
+};
 
 export function importRoutes(app: Hono<AppEnv>, table: RouteTable): void {
   const write = requires('student', 'write');
@@ -467,9 +553,13 @@ export function importRoutes(app: Hono<AppEnv>, table: RouteTable): void {
   );
 
   /**
-   * `?dry_run=1` validates and reports what would happen; without it the valid rows are written in
-   * chunks of ≤ 25 rows per batch. Idempotent: a row whose hash was imported before is skipped, so
-   * a re-upload or a retry after a failed chunk never duplicates anyone.
+   * `?dry_run=1`: validates the whole file (≤ 2,000 rows, 1 MB; reads only) and reports.
+   *
+   * Commit: the body is one chunk of the file (header + ≤ IMPORT_COMMIT_ROWS rows), written as one
+   * D1 batch, so a request stays inside the free Worker's per-request limits (PLAN §8). The web
+   * page sends the chunks in order with `offset` (rows before this chunk), `total` (rows in the
+   * file) and, after the first, the `run_id` it got back. Idempotent by row hash: a re-sent chunk or
+   * a re-uploaded file skips what is already in, so an interrupted import resumes by sending again.
    */
   defineRoute(
     app,
@@ -480,11 +570,12 @@ export function importRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const db = c.get('db');
       const uid = userId(c);
       const { text, fileName } = await readCsvText(c);
-      const { reports, ready } = await plan(db, text);
+      const offset = dryRun ? 0 : (intParam(c.req.query('offset'), 'offset') ?? 0);
+      const { reports, ready, rows } = await plan(db, text, offset);
       const summary = summarize(reports, ready);
-      if (dryRun || ready.length === 0) {
+      if (dryRun) {
         const body: ImportReport = {
-          dry_run: dryRun,
+          dry_run: true,
           run_id: null,
           total: reports.length,
           summary,
@@ -492,51 +583,75 @@ export function importRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         };
         return c.json(body);
       }
-      const runId = newId();
-      await tx(db, [
-        sql`INSERT INTO import_run (id, kind, file_name, status, total, created_by)
-            VALUES (${runId}, 'students', ${fileName}, 'running', ${reports.length}, ${uid})`,
-        auditSql({
-          id: newId(),
-          userId: uid,
-          entity: 'import_run',
-          entityId: runId,
-          action: 'create',
-          after: { file_name: fileName, total: reports.length },
-        }),
-      ]);
-      let done = 0;
-      try {
-        for (let i = 0; i < ready.length; i += IMPORT_CHUNK_ROWS) {
-          const chunk = ready.slice(i, i + IMPORT_CHUNK_ROWS);
-          await tx(db, chunkStatements(chunk, uid, runId));
-          done += chunk.length;
-        }
-      } catch (err) {
-        await db.run(
-          sql`UPDATE import_run SET status = 'failed', created = ${done} WHERE id = ${runId}`,
+      if (rows > IMPORT_COMMIT_ROWS) {
+        throw new ApiError(
+          413,
+          'too_many_rows',
+          `Send at most ${IMPORT_COMMIT_ROWS} rows per commit request (this one has ${rows})`,
         );
-        const rowsFrom = ready[done]?.row_no ?? 0;
+      }
+      const total = Math.max(intParam(c.req.query('total'), 'total') ?? 0, offset + rows);
+      const remaining = total - offset - rows;
+      const status = remaining === 0 ? 'committed' : 'running';
+
+      const givenRun = c.req.query('run_id');
+      const runId = givenRun ?? newId();
+      const runSql: SQL[] = [];
+      if (givenRun) {
+        const [run] = await db.select().from(importRun).where(eq(importRun.id, givenRun));
+        if (!run) throw notFoundError('Import run');
+      } else {
+        runSql.push(
+          sql`INSERT INTO import_run (id, kind, file_name, status, total, created_by)
+              VALUES (${runId}, 'students', ${fileName}, 'running', ${total}, ${uid})`,
+          auditSql({
+            id: newId(),
+            userId: uid,
+            entity: 'import_run',
+            entityId: runId,
+            action: 'create',
+            after: { file_name: fileName, total },
+          }),
+        );
+      }
+      // Progress is counted from import_row inside the same batch, so it is right even on replay.
+      const progress = sql`UPDATE import_run SET status = ${status},
+            created = (SELECT count(*) FROM import_row WHERE run_id = ${runId}),
+            skipped = skipped + ${summary.skipped},
+            report = ${remaining === 0 ? JSON.stringify(summary) : null}
+          WHERE id = ${runId}`;
+      try {
+        await tx(db, [
+          ...runSql,
+          ...(ready.length ? chunkStatements(ready, uid, runId) : []),
+          progress,
+        ]);
+      } catch (err) {
         const reason = dbConflict(err)?.message;
         if (!reason) console.error(err);
-        // Rows before the failing chunk are in; re-uploading the same file resumes safely.
+        if (givenRun) {
+          try {
+            await db.run(sql`UPDATE import_run SET status = 'failed' WHERE id = ${runId}`);
+          } catch {
+            // Best effort: the error below is what the user needs.
+          }
+        }
+        // Nothing of this chunk is in (one batch); earlier chunks are, and are skipped on resume.
         throw new ApiError(
           409,
           'import_failed',
-          `Stopped at row ${rowsFrom} (${reason ?? 'database error'}); ${done} rows were imported. Fix the file and upload it again.`,
+          `Rows ${offset + 1}–${offset + rows} were not imported (${reason ?? 'database error'}); rows before them are in. Fix the file and upload it again to continue.`,
         );
       }
-      const body: ImportReport = {
+      const body: ImportCommitResult = {
         dry_run: false,
         run_id: runId,
         total: reports.length,
         summary,
         rows: reports,
+        applied: ready.length,
+        remaining,
       };
-      await db.run(
-        sql`UPDATE import_run SET status = 'committed', created = ${done}, skipped = ${summary.skipped},
-              report = ${JSON.stringify(summary)} WHERE id = ${runId}`,
-      );
       return c.json(body, 201);
     },
   );

@@ -167,7 +167,7 @@ export type EnrolmentDto = {
   roll_no: string | null;
   start_date: string;
   end_date: string | null;
-  status: 'active' | 'promoted' | 'retained' | 'completed' | 'withdrawn';
+  status: 'active' | 'promoted' | 'retained' | 'completed' | 'withdrawn' | 'transferred';
   end_reason: string | null;
   prev_enrolment_id: string | null;
 };
@@ -243,4 +243,13 @@ export type ImportReport = {
     errors: number;
   };
   rows: ImportRowReport[];
+};
+
+/** One commit chunk (≤ IMPORT_COMMIT_ROWS rows): its report plus the run's progress. */
+export type ImportCommitResult = ImportReport & {
+  run_id: string;
+  /** Rows of this chunk written now. */
+  applied: number;
+  /** Rows of the file after this chunk (`total` − `offset` − chunk rows); 0 = the run is done. */
+  remaining: number;
 };

@@ -7,7 +7,7 @@ import { ErrorNote, Num } from '@/components/form';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { GroupsEditor } from '@/components/setup/groups';
 import { ProgrammesEditor, SeedLadderButton, SubjectsEditor } from '@/components/setup/programmes';
-import { LogoUpload, SchoolForm, schoolToInput, useSaveSchool } from '@/components/setup/school';
+import { LogoUpload, SchoolForm, useCompleteSetup } from '@/components/setup/school';
 import { SessionForm, SessionsList } from '@/components/setup/sessions';
 import { InviteForm, StaffList } from '@/components/setup/staff';
 import { Button } from '@/components/ui/button';
@@ -44,7 +44,7 @@ export function SetupWizard() {
   const step: Step = WIZARD_STEPS[index] ?? 'school';
   const next = () => setIndex((i) => Math.min(i + 1, WIZARD_STEPS.length - 1));
   const back = () => setIndex((i) => Math.max(i - 1, 0));
-  const finish = useSaveSchool();
+  const finish = useCompleteSetup();
 
   if (!roles.includes('owner')) {
     return <p className="p-6">{t('setup.ownerOnly')}</p>;
@@ -142,10 +142,7 @@ export function SetupWizard() {
                 size="lg"
                 disabled={finish.isPending || !dto}
                 onClick={() =>
-                  finish.mutate(
-                    { ...schoolToInput(dto), setup_completed: true },
-                    { onSuccess: () => navigate('/', { replace: true }) },
-                  )
+                  finish.mutate(undefined, { onSuccess: () => navigate('/', { replace: true }) })
                 }
               >
                 {t('setup.finish')}

@@ -6,6 +6,7 @@ CREATE UNIQUE INDEX session_one_current ON session(is_current) WHERE is_current 
 --> statement-breakpoint
 
 -- A roll number is unique among the active enrolments of a group (auto = max + 1, or typed by hand).
+-- (Re-emitted after migration 0004 rebuilt `enrolment`, which dropped this index with the table.)
 CREATE UNIQUE INDEX enrolment_roll_once ON enrolment(grp_id, roll_no) WHERE status = 'active' AND roll_no IS NOT NULL;
 --> statement-breakpoint
 

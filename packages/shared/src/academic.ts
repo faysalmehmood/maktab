@@ -86,8 +86,13 @@ export const schoolInputSchema = z.object({
     .transform((s) => (s === '' ? null : s))
     .nullable()
     .optional(),
-  /** The wizard's last step sets this; Settings can re-enter the wizard any time. */
-  setup_completed: z.boolean().optional(),
+  /**
+   * Finishing setup is its own action (POST /api/school/complete-setup, owner), never a side
+   * effect of saving the profile; a PUT that still carries this flag is refused, not ignored.
+   */
+  setup_completed: z
+    .never({ message: 'use POST /api/school/complete-setup to finish setup' })
+    .optional(),
 });
 export type SchoolInput = z.input<typeof schoolInputSchema>;
 

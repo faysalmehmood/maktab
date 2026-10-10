@@ -217,6 +217,9 @@ export const ENROLMENT_STATUSES = [
   'retained',
   'completed',
   'withdrawn',
+  // Moved to another group mid-session (the next row links back via prev_enrolment_id); distinct
+  // from withdrawn, which means the student left the school.
+  'transferred',
 ] as const;
 
 /** The one-active-primary rule is a partial unique index in sql/10_indexes.sql. */

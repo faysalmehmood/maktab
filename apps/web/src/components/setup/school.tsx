@@ -38,6 +38,15 @@ export function useSaveSchool() {
   });
 }
 
+/** The wizard's last step: an explicit owner action, separate from saving the profile. */
+export function useCompleteSetup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => sendJson<SchoolResponse>('POST', '/api/school/complete-setup'),
+    onSuccess: (data) => qc.setQueryData(['school'], data),
+  });
+}
+
 /**
  * School profile (`part="profile"`), school/academy mode (`part="mode"`) or both. Always PUTs the
  * whole profile, starting from what the server has, so one part never blanks the other.

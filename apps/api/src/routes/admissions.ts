@@ -7,18 +7,21 @@ import {
   enrolmentTransferSchema,
   newId,
 } from '@maktab/shared';
-import { and, eq, type SQL, sql } from 'drizzle-orm';
+import { eq, type SQL, sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
 import { idParam, jsonBody, notFoundError, todayPk, userId } from '../lib/http';
-import { auditSql, tx } from '../lib/tx';
+import { auditSql, readBack, tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
 import { enrolmentDto, guardianValues, nextPrioritySql, validateExtra } from './people';
 
 type GroupRow = typeof grp.$inferSelect & { sessionStart: string | null };
 
-/** The group to enrol into: must exist, not be closed, and have a seat (PLAN §4 capacity). */
+/**
+ * The group to enrol into: must exist and not be closed. Capacity is a planning number, never
+ * enforced (a school squeezes in one more child); the admission form shows seats left and warns.
+ */
 export async function openGroup(db: AppDb, id: string): Promise<GroupRow> {
   const [row] = await db
     .select({ g: grp, sessionStart: session.startDate })
@@ -27,17 +30,6 @@ export async function openGroup(db: AppDb, id: string): Promise<GroupRow> {
     .where(eq(grp.id, id));
   if (!row) throw new ApiError(400, 'invalid', 'Unknown group');
   if (row.g.status === 'closed') throw new ApiError(409, 'group_closed', 'This group is closed');
-  if (row.g.capacity != null) {
-    const [n] = await db
-      .select({ n: sql<number>`count(*)` })
-      .from(enrolment)
-      .where(and(eq(enrolment.grpId, id), eq(enrolment.status, 'active')));
-    // Checked before the batch, so two last-seat admissions can both pass: capacity is a planning
-    // number, not an invariant worth a trigger.
-    if (Number(n?.n ?? 0) >= row.g.capacity) {
-      throw new ApiError(409, 'group_full', 'No seats left in this group');
-    }
-  }
   return { ...row.g, sessionStart: row.sessionStart };
 }
 
@@ -185,20 +177,23 @@ export function admissionRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           roll: input.enrolment.roll_no,
           by: uid,
         }),
-        auditSql({
-          id: newId(),
-          userId: uid,
-          entity: 'student',
-          entityId: sid,
-          action: 'readmit',
-          before: { status: s.status, left_date: s.leftDate, left_reason: s.leftReason },
-          after: {
-            status: 'active',
-            enrolment_id: enrolmentId,
-            grp_id: g.id,
-            start_date: startDate,
+        auditSql(
+          {
+            id: newId(),
+            userId: uid,
+            entity: 'student',
+            entityId: sid,
+            action: 'readmit',
+            before: { status: s.status, left_date: s.leftDate, left_reason: s.leftReason },
+            after: {
+              status: 'active',
+              enrolment_id: enrolmentId,
+              grp_id: g.id,
+              start_date: startDate,
+            },
           },
-        }),
+          { roll_no: readBack('enrolment', 'roll_no', enrolmentId) },
+        ),
       ]);
       return c.json(await admissionResult(db, enrolmentId, [], true), 201);
     }
@@ -280,23 +275,29 @@ export function admissionRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         roll: input.enrolment.roll_no,
         by: uid,
       }),
-      auditSql({
-        id: newId(),
-        userId: uid,
-        entity: 'student',
-        entityId: studentId,
-        action: 'admit',
-        after: {
-          family_id: familyId,
-          name: st.name,
-          father_name: st.father_name ?? null,
-          admission_no: st.admission_no ?? 'auto',
-          admission_date: admissionDate,
-          enrolment_id: enrolmentId,
-          grp_id: g.id,
-          is_primary: g.isPrimary,
+      // Written after the inserts, so the numbers allocated inside the batch are read back.
+      auditSql(
+        {
+          id: newId(),
+          userId: uid,
+          entity: 'student',
+          entityId: studentId,
+          action: 'admit',
+          after: {
+            family_id: familyId,
+            name: st.name,
+            father_name: st.father_name ?? null,
+            admission_date: admissionDate,
+            enrolment_id: enrolmentId,
+            grp_id: g.id,
+            is_primary: g.isPrimary,
+          },
         },
-      }),
+        {
+          admission_no: readBack('student', 'admission_no', studentId),
+          roll_no: readBack('enrolment', 'roll_no', enrolmentId),
+        },
+      ),
     );
     await tx(db, items);
     return c.json(await admissionResult(db, enrolmentId, guardianIds, false), 201);
@@ -323,19 +324,22 @@ export function admissionRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         roll: input.roll_no,
         by: uid,
       }),
-      auditSql({
-        id: newId(),
-        userId: uid,
-        entity: 'enrolment',
-        entityId: id,
-        action: 'create',
-        after: {
-          student_id: s.id,
-          grp_id: g.id,
-          is_primary: g.isPrimary,
-          start_date: input.start_date,
+      auditSql(
+        {
+          id: newId(),
+          userId: uid,
+          entity: 'enrolment',
+          entityId: id,
+          action: 'create',
+          after: {
+            student_id: s.id,
+            grp_id: g.id,
+            is_primary: g.isPrimary,
+            start_date: input.start_date,
+          },
         },
-      }),
+        { roll_no: readBack('enrolment', 'roll_no', id) },
+      ),
     ]);
     return c.json(await enrolmentOut(db, id), 201);
   });
@@ -371,7 +375,10 @@ export function admissionRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     },
   );
 
-  /** Section change mid-year: end the old row and open the new one in one batch, linked. */
+  /**
+   * Section change mid-year: the old row becomes `transferred` (not `withdrawn`, which means the
+   * student left) and the new one links back to it, in one batch.
+   */
   defineRoute(
     app,
     table,
@@ -391,7 +398,7 @@ export function admissionRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const newEnrolmentId = input.new_id ?? newId();
       await tx(db, [
         // Ending first frees the one-active-primary slot for the new row in the same batch.
-        sql`UPDATE enrolment SET status = 'withdrawn', end_date = ${input.date},
+        sql`UPDATE enrolment SET status = 'transferred', end_date = ${input.date},
               end_reason = ${input.reason} WHERE id = ${id} AND status = 'active'`,
         insertEnrolment({
           id: newEnrolmentId,
@@ -402,20 +409,24 @@ export function admissionRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           prevId: id,
           by: uid,
         }),
-        auditSql({
-          id: newId(),
-          userId: uid,
-          entity: 'enrolment',
-          entityId: id,
-          action: 'transfer',
-          before: { grp_id: e.grpId },
-          after: {
-            grp_id: g.id,
-            new_enrolment_id: newEnrolmentId,
-            date: input.date,
-            reason: input.reason,
+        auditSql(
+          {
+            id: newId(),
+            userId: uid,
+            entity: 'enrolment',
+            entityId: id,
+            action: 'transfer',
+            before: { grp_id: e.grpId, status: e.status, roll_no: e.rollNo },
+            after: {
+              status: 'transferred',
+              grp_id: g.id,
+              new_enrolment_id: newEnrolmentId,
+              date: input.date,
+              reason: input.reason,
+            },
           },
-        }),
+          { roll_no: readBack('enrolment', 'roll_no', newEnrolmentId) },
+        ),
       ]);
       return c.json(await enrolmentOut(db, newEnrolmentId), 201);
     },

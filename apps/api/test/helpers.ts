@@ -120,6 +120,9 @@ export function fakeR2() {
       objects.set(key, { bytes: value, contentType: opts?.httpMetadata?.contentType });
       return {};
     },
+    async delete(key: string) {
+      objects.delete(key);
+    },
     async get(key: string) {
       const o = objects.get(key);
       if (!o) return null;

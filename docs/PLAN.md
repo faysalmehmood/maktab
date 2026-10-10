@@ -56,7 +56,7 @@ Studied: Gibbon, RosarioSIS, Frappe Education (v15 and develop), skuul. The unif
 
 - **Programme** — what is taught: "Class 5" (kind=grade, points to next programme "Class 6") or "FSc Pre-Medical" (kind=course, duration).
 - **Group** — where students sit: "5-B in session 2026-27" or "Morning batch, Mon–Fri 08:00–12:00, capacity 40". Has class teacher, optional subjects each with a teacher, optional next-group pointer for promotion.
-- **Enrolment** — dated link student→group with status `active | promoted | retained | completed | withdrawn` and reason. History = chain of rows.
+- **Enrolment** — dated link student→group with status `active | promoted | retained | completed | withdrawn | transferred` and reason (`transferred` = moved to another group, the new row links back; `withdrawn` = left the school). History = chain of rows.
 - **The one rule:** at most one *active primary* enrolment per student (the school class); any number of non-primary (batches, short courses). Enforced by a partial unique index.
 - **Family** — siblings share guardians, one dues view, one receipt per visit, one message per household.
 
@@ -81,7 +81,8 @@ subject(id, name, short_name)
 grp(id, programme_id, session_id NULL, name, is_primary, class_teacher_id, start_date, end_date,
     capacity, days, start_time, end_time, room, next_grp_id, status 'open'|'running'|'closed')
 grp_subject(id, grp_id, subject_id, teacher_id)
-enrolment(id, student_id, grp_id, is_primary, roll_no, start_date, end_date, status, end_reason, prev_enrolment_id)
+enrolment(id, student_id, grp_id, is_primary, roll_no, start_date, end_date,
+          status 'active'|'promoted'|'retained'|'completed'|'withdrawn'|'transferred', end_reason, prev_enrolment_id)
   UNIQUE one_primary ON enrolment(student_id) WHERE is_primary=1 AND status='active'
 family(id, name, address, area)
 guardian(id, family_id, name, relation, cnic, phone, whatsapp, priority, consent_whatsapp, consent_sms, lang)
