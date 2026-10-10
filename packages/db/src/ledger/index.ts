@@ -1,5 +1,5 @@
 import { newId } from '@maktab/shared';
-import { type SQL, sql } from 'drizzle-orm';
+import { isSQLWrapper, type SQL, sql } from 'drizzle-orm';
 import { type AppDb, atomic, rawStatement } from '../client';
 import type { PAYER_TYPES, PAYMENT_METHODS } from '../schema';
 
@@ -28,7 +28,8 @@ export type NewReceipt = {
   collectorId: string;
   businessDate: string;
   series: SeriesKey;
-  cashSessionId?: string | null;
+  /** An id, or SQL resolving it inside the batch (a session opened by an earlier statement). */
+  cashSessionId?: string | SQL | null;
   accountId?: string | null;
   reference?: string | null;
   note?: string | null;
@@ -37,7 +38,7 @@ export type NewReceipt = {
 
 export class LedgerError extends Error {
   constructor(
-    readonly code: 'not_found' | 'not_a_payment' | 'reason_required',
+    readonly code: 'not_found' | 'not_a_payment' | 'reason_required' | 'already_reversed',
     message: string,
   ) {
     super(message);
@@ -45,8 +46,16 @@ export class LedgerError extends Error {
   }
 }
 
-const bumpSeries = (s: SeriesKey) =>
+export const bumpSeries = (s: SeriesKey) =>
   sql`UPDATE receipt_series SET next_no = next_no + 1 WHERE series = ${s.series} AND year = ${s.year}`;
+
+/** A series row for a new year (or prefix) is created on first use, inside the receipt batch. */
+export const ensureSeries = (s: SeriesKey) =>
+  sql`INSERT INTO receipt_series (series, year, next_no) VALUES (${s.series}, ${s.year}, 1)
+      ON CONFLICT (series, year) DO NOTHING`;
+
+const sessionValue = (v: string | SQL | null | undefined) =>
+  v == null ? null : isSQLWrapper(v) ? v : sql`${v}`;
 
 /** Numbered from the series row bumped just before, in the same batch. A missing series row makes
  *  receipt_no NULL, so the insert fails (NOT NULL) instead of silently inserting nothing. */
@@ -62,7 +71,7 @@ const insertReceipt = (r: {
   businessDate: string;
   idempotencyKey: string;
   series: SeriesKey;
-  cashSessionId?: string | null;
+  cashSessionId?: string | SQL | null;
   accountId?: string | null;
   reference?: string | null;
   note?: string | null;
@@ -73,7 +82,7 @@ const insertReceipt = (r: {
           (SELECT series || '-' || year || '-' || printf('%05d', next_no - 1) FROM receipt_series
            WHERE series = ${r.series.series} AND year = ${r.series.year}),
           ${r.kind}, ${r.reversesId}, ${r.payerType}, ${r.payerId}, ${r.amount}, ${r.method},
-          ${r.accountId ?? null}, ${r.collectorId}, ${r.cashSessionId ?? null}, ${r.businessDate},
+          ${r.accountId ?? null}, ${r.collectorId}, ${sessionValue(r.cashSessionId)}, ${r.businessDate},
           ${r.idempotencyKey}, ${r.reference ?? null}, ${r.note ?? null}, ${r.collectorId})`;
 
 /** Idempotent on `id`: a retried allocation inserts nothing (and so fires no trigger). */
@@ -82,7 +91,7 @@ export const allocationStatement = (receiptId: string, a: AllocationInput): SQL 
   SELECT ${a.id}, ${receiptId}, ${a.chargeId}, ${a.amount}
   WHERE NOT EXISTS (SELECT 1 FROM receipt_allocation WHERE id = ${a.id})`;
 
-function receiptStatements(r: NewReceipt): SQL[] {
+export function receiptStatements(r: NewReceipt): SQL[] {
   return [
     bumpSeries(r.series),
     insertReceipt({ ...r, kind: r.kind ?? 'payment', reversesId: null }),
@@ -123,7 +132,9 @@ export type ReverseReceiptInput = {
   reversalId?: string;
   idempotencyKey?: string;
   businessDate?: string;
-  cashSessionId?: string | null;
+  cashSessionId?: string | SQL | null;
+  /** Statements run first in the same batch (e.g. ensure the series row, open the session). */
+  prelude?: SQL[];
   /** The corrected payment, same payer; written in the same batch after the unwinds. */
   reenter?: {
     id?: string;
@@ -170,6 +181,7 @@ export async function reverseReceipt(
   const reversalId = input.reversalId ?? newId();
   const businessDate = input.businessDate ?? karachiToday();
   const stmts: SQL[] = [
+    ...(input.prelude ?? []),
     bumpSeries(input.series),
     insertReceipt({
       id: reversalId,
@@ -224,3 +236,14 @@ export async function reverseReceipt(
   await run(db, stmts);
   return { reversalId, reentryId };
 }
+
+export * from './alloc';
+export * from './cash';
+export * from './collect';
+export * from './concessions';
+export * from './cron';
+export * from './fines';
+export * from './generate';
+export * from './opening';
+export * from './reports';
+export * from './util';
