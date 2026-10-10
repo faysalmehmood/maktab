@@ -1,7 +1,8 @@
-import type { I18nKey } from '@maktab/shared';
+import { type I18nKey, STAFF_ROLES, type StaffRole } from '@maktab/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   CalendarCheck,
+  Layers,
   LayoutDashboard,
   LogOut,
   type LucideIcon,
@@ -22,24 +23,42 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { logout } from '@/lib/api';
+import { isTeacherOnly, useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 import { LanguageToggle } from './LanguageToggle';
 
-type NavItem = { to: string; label: I18nKey; icon: LucideIcon };
+type NavItem = { to: string; label: I18nKey; icon: LucideIcon; roles: readonly StaffRole[] };
 
+const OFFICE = ['owner', 'admin'] as const;
+
+/** PLAN §3: owner/admin see everything; a teacher sees their groups; an accountant students. */
 export const NAV: NavItem[] = [
-  { to: '/', label: 'nav.dashboard', icon: LayoutDashboard },
-  { to: '/students', label: 'nav.students', icon: Users },
-  { to: '/attendance', label: 'nav.attendance', icon: CalendarCheck },
-  { to: '/fees', label: 'nav.fees', icon: Wallet },
-  { to: '/settings', label: 'nav.settings', icon: Settings },
+  { to: '/', label: 'nav.dashboard', icon: LayoutDashboard, roles: STAFF_ROLES },
+  {
+    to: '/students',
+    label: 'nav.students',
+    icon: Users,
+    roles: ['owner', 'admin', 'accountant', 'teacher'],
+  },
+  { to: '/groups', label: 'nav.groups', icon: Layers, roles: [...OFFICE, 'teacher'] },
+  { to: '/attendance', label: 'nav.attendance', icon: CalendarCheck, roles: OFFICE },
+  { to: '/fees', label: 'nav.fees', icon: Wallet, roles: OFFICE },
+  { to: '/settings', label: 'nav.settings', icon: Settings, roles: [...OFFICE, 'accountant'] },
 ];
+
+/** The menu for a set of roles; teachers (only) see "My groups" instead of "Groups". */
+export function navFor(roles: readonly StaffRole[]): NavItem[] {
+  return NAV.filter((item) => item.roles.some((r) => roles.includes(r))).map((item) =>
+    item.to === '/groups' && isTeacherOnly(roles) ? { ...item, label: 'nav.myGroups' } : item,
+  );
+}
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
+  const roles = useRoles();
   return (
     <nav className="flex flex-col gap-1 p-2">
-      {NAV.map(({ to, label, icon: Icon }) => (
+      {navFor(roles).map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
           to={to}

@@ -38,3 +38,24 @@ export function useMe() {
 }
 
 export const logout = () => apiFetch('/api/auth/logout', { method: 'POST' });
+
+/** Typed GET; the shapes are the hand-written contract in @maktab/shared (dto.ts). */
+export const getJson = <T>(path: string): Promise<T> => apiFetch(path) as Promise<T>;
+
+export const sendJson = <T>(
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  path: string,
+  body?: unknown,
+): Promise<T> =>
+  apiFetch(path, {
+    method,
+    headers: body === undefined ? {} : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }) as Promise<T>;
+
+/** Multipart upload in field `file` (photos, logo, CSV). */
+export function uploadFile<T>(path: string, file: Blob, filename = 'upload'): Promise<T> {
+  const form = new FormData();
+  form.append('file', file, filename);
+  return apiFetch(path, { method: 'POST', body: form }) as Promise<T>;
+}

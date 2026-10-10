@@ -1,14 +1,22 @@
-import type { Language } from '@maktab/shared';
+import type { Language, MeResponse, StaffRole } from '@maktab/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { AppShell } from '@/components/AppShell';
+import { AppShell, navFor } from '@/components/AppShell';
 import { initI18n, setLanguage } from '@/i18n';
 
-function renderShell() {
+export const meAs = (roles: StaffRole[]): MeResponse => ({
+  user: { id: '01JABCDEFGHJKMNPQRSTVWXYZ0', email: 'o@example.com', name: 'O', status: 'active' },
+  roles,
+});
+
+/** The nav depends on /api/me; seed it instead of fetching (no network in tests). */
+function renderShell(roles: StaffRole[] = ['owner']) {
+  const client = new QueryClient();
+  client.setQueryData(['me'], meAs(roles));
   return render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/']}>
         <Routes>
           <Route element={<AppShell />}>
@@ -46,5 +54,22 @@ describe('app shell', () => {
     const label = screen.getByText('اردو');
     expect(label.getAttribute('lang')).toBe('ur');
     expect(label.classList.contains('font-system')).toBe(true);
+  });
+
+  it('shows each role only what it can use', () => {
+    const paths = (roles: StaffRole[]) => navFor(roles).map((n) => n.to);
+    expect(paths(['owner'])).toEqual([
+      '/',
+      '/students',
+      '/groups',
+      '/attendance',
+      '/fees',
+      '/settings',
+    ]);
+    expect(paths(['admin'])).toEqual(paths(['owner']));
+    expect(paths(['teacher'])).toEqual(['/', '/students', '/groups']);
+    expect(navFor(['teacher']).find((n) => n.to === '/groups')?.label).toBe('nav.myGroups');
+    expect(paths(['accountant'])).toEqual(['/', '/students', '/settings']);
+    expect(paths([])).toEqual([]);
   });
 });
