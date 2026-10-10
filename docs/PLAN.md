@@ -374,10 +374,26 @@ Rules: one message per family; staff without consent flag see "call instead"; ev
 6. **Record & commit** — Fable records outcome here and in `docs/PLAN.md`, one commit per milestone (attribution line per session rules).
 Stop and ask the user only for: GitHub publish, production deploy to `school.conceptlix.com`, anything with a cost, or a design change that contradicts the decision log.
 
+**Standing rules learned in M0–M1**
+- Every multi-statement write goes through `atomic()`/`tx()`; D1 behaviour is proven by `d1-atomic.test.ts` on workerd and by the per-milestone smoke script, never by better-sqlite3 alone.
+- Per-request budget on the free tier (50 subrequests, 10 ms CPU, 100 bound params): bulk work is ≤ 200 rows per request via `json_each`, with a client-side loop; never loop batches inside one request.
+- **Schema enums:** adding a value to a CHECK column forces a full table rebuild, which fails under D1's always-on foreign keys once rows exist (seen in migration 0004). Finalise status enums on data-bearing tables (`enrolment`, `charge`, `receipt`, `payslip`, `message`) before the pilot; afterwards, new states go in lookup tables, not CHECK edits.
+- Migrations are forward-only from `8a530c7`; custom SQL changes emit a new numbered migration via the sync script with its manifest.
+- Tap targets 44 px everywhere, no pointer media-query exceptions; data-derived names in mixed-direction text are wrapped in `<bdi>`.
+- Exports use the formula-safe CSV writer in `@maktab/shared`.
+
+**M3 must remember (from the M1 review)**
+- Admission has two write paths (new student, re-admission); fee charges must be added to both inside the same batch.
+- Transfers now end the old enrolment with status `transferred` (not `withdrawn`); generation must treat only `withdrawn`/`completed` as leaving.
+- Imported enrolments may start years ago: never backfill charges from `start_date`; use `opening_balance` for carry-in.
+- Receipt numbering uses the same in-batch series bump as `admission_series`; `school.receipt_prefix` exists.
+- A reversal and its unwind allocations are one batch via `reverseReceipt`; `ledger_consistency` must stay empty in every test.
+- Leave date is not validated against enrolment start; pro-rating must clamp.
+
 | Milestone | Scope (from §14) | Done when |
 |---|---|---|
 | M0 Scaffold | Workspaces, schema + triggers, auth + permission matrix + tests, bilingual PWA shell, outbox module, CI, backup workflow, docs | **Done 2026-10-10** (`8a530c7`); carried forward to M7: 547 KB web chunk (code-split / zod-mini), README "Checks" line to mention the custom-SQL check |
-| M1 Foundation | Setup wizard (14.1), staff invites/roles, families/guardians/students CRUD + admission flow + enrolment (14.2), programmes/groups/sessions, CSV import, audit log writes | admission of a sibling family end-to-end on a 360 px screen |
+| M1 Foundation | Setup wizard (14.1), staff invites/roles, families/guardians/students CRUD + admission flow + enrolment (14.2), programmes/groups/sessions, CSV import, audit log writes | **Done 2026-10-10** (`82e96cf`; 243 tests; smoke `smoke:m1` green; teacher scope verified over HTTP; 360 px screens verified in en/ur). Found and fixed on the way: Drizzle D1 `batch()` could not bind params for raw SQL (M0 bug, now covered by `d1-atomic.test.ts` on workerd); CSV import hash included a defaulted date; import commit capped at 200 rows/request with a client loop. Carried to later: capacity is a planning number (not enforced); R2 orphan cleanup is best-effort; web bundle splitting (M7) |
 | M2 Attendance | Register screen (14.3), offline outbox wired, corrections with reason, "registers not taken", absentee list feeding the message outbox | airplane-mode submit → sync → absentee queue |
 | M3 Fees | Fee heads/rates, monthly generation (cron + button), fee counter family view, receipts (series, print HTML), allocations, reversals, concessions, sponsorships, late fines + waivers, defaulters, cash sessions, transfers (14.4–14.7) | race test + exp1 scenario pass in the real app; receipt prints in ur/en |
 | M4 Money out & reports | Expenses, payslips/advances/salary payments (14.8), income vs expense, dashboard (14.11), report pack (print + CSV) | P&L reconciles to account movements on seed data |
