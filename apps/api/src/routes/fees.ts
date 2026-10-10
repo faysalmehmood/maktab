@@ -8,12 +8,15 @@ import {
   feeRegister,
   feeSettings,
   generateCharges,
+  generateChunkOrLog,
   generationCursor,
+  netOfCredit,
   nextGroup,
   recordOpeningBalance,
   regenerateForStudent,
   school,
   sponsorStatement,
+  voidCharge,
   waiveFine,
 } from '@maktab/db';
 import {
@@ -43,6 +46,7 @@ import {
   sponsorshipEndSchema,
   sponsorshipInputSchema,
   toCsvLine,
+  voidChargeSchema,
   waiveInputSchema,
 } from '@maktab/shared';
 import { asc, eq, sql } from 'drizzle-orm';
@@ -411,6 +415,20 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       if (!ok?.s || !ok.st) throw new ApiError(400, 'invalid', 'Unknown sponsor or student');
       if (input.valid_to && input.valid_to < input.valid_from)
         throw new ApiError(400, 'invalid', 'valid_to: before valid_from');
+      // One sponsor, one student, one head (a NULL head covers every head): validity may not overlap.
+      // End the old row and add a new one to change a share (PLAN §14.7).
+      const [clash] = await db.all<{ id: string }>(sql`SELECT id FROM sponsorship
+        WHERE sponsor_id = ${input.sponsor_id} AND student_id = ${input.student_id}
+          AND (fee_head_id IS NULL OR ${input.fee_head_id ?? null} IS NULL OR fee_head_id = ${input.fee_head_id ?? null})
+          AND valid_from <= ${input.valid_to ?? '9999-12-31'}
+          AND (valid_to IS NULL OR valid_to >= ${input.valid_from})
+        LIMIT 1`);
+      if (clash)
+        throw new ApiError(
+          409,
+          'sponsorship_overlap',
+          'This sponsor already covers this student for these dates; end that sponsorship first',
+        );
       const id = input.id ?? newId();
       const after = {
         sponsor_id: input.sponsor_id,
@@ -536,6 +554,33 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         return c.json(body);
       }
       const g = grpId;
+      if (!input.dry_run) {
+        // A group that cannot be billed is logged (GET /api/fees/runs) and skipped, never a wall.
+        const out = await withD1Retry(() =>
+          generateChunkOrLog(db, {
+            period: input.period,
+            grpId: g,
+            afterStudentId: after,
+            by: userId(c),
+            proRata: input.pro_rata,
+          }),
+        );
+        if (!out.ok) {
+          const nextGrp = await nextGroup(db, input.period, g);
+          const body: GenerateResultDto = {
+            period: input.period,
+            grp_id: g,
+            dry_run: false,
+            planned: [],
+            counts: { fees: 0, concessions: 0, sponsored: 0, allocations: 0 },
+            group_done: false,
+            next: nextGrp ? { grp_id: nextGrp, after_student_id: null } : null,
+            done: nextGrp === null,
+            failed: { grp_id: g, code: out.code, message: out.message },
+          };
+          return c.json(body);
+        }
+      }
       const r = await withD1Retry(() =>
         generateCharges(db, {
           period: input.period,
@@ -572,13 +617,31 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     async (c) => {
       const q = queryParams(c, z.object({ period: periodSchema }));
       const db = c.get('db');
-      const chunks =
-        await db.all(sql`SELECT k.id, k.kind, k.grp_id, k.student_id, k.next_student_id, k.done,
+      const chunks = await db.all<{
+        id: string;
+        grp_id: string | null;
+        status: string;
+        error_code: string | null;
+        error_message: string | null;
+        created_at: string;
+      }>(sql`SELECT k.id, k.kind, k.grp_id, k.student_id, k.next_student_id, k.done, k.status,
+        k.error_code, k.error_message,
         k.fees, k.concessions, k.sponsored, k.fines, k.allocations, k.created_at, k.created_by
       FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id WHERE r.period_key = ${q.period}
       ORDER BY k.created_at, k.id`);
       const cursor = await generationCursor(db, q.period);
-      return c.json({ period: q.period, complete: cursor === null, cursor, chunks });
+      // Groups whose latest chunk failed: still to be billed (the cron retries them every tick).
+      const latest = new Map<string, (typeof chunks)[number]>();
+      for (const k of chunks) if (k.grp_id) latest.set(k.grp_id, k);
+      const failing = [...latest.values()]
+        .filter((k) => k.status === 'failed')
+        .map((k) => ({
+          grp_id: k.grp_id,
+          error_code: k.error_code,
+          error_message: k.error_message,
+          at: k.created_at,
+        }));
+      return c.json({ period: q.period, complete: cursor === null, cursor, failing, chunks });
     },
   );
 
@@ -612,6 +675,24 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         amount: input.amount,
         by: userId(c),
       });
+      return c.json(r, 201);
+    },
+  );
+
+  /**
+   * Void a charge billed by mistake (PLAN §14.5): a `reversal` line zeroes the fee (or what is left
+   * of a fine), with a required reason; paid money is released first and becomes credit, which is
+   * then applied to the payer's other dues.
+   */
+  defineRoute(
+    app,
+    table,
+    { method: 'POST', path: '/api/charges/:id/void', access: manage },
+    async (c) => {
+      const input = await jsonBody(c, voidChargeSchema);
+      const r = await withD1Retry(() =>
+        voidCharge(c.get('db'), { chargeId: idParam(c), reason: input.reason, by: userId(c) }),
+      );
       return c.json(r, 201);
     },
   );
@@ -723,6 +804,26 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           WHERE cs.payer_type = 'family' AND cs.due > 0 AND cs.due_date >= ${today} AND ${studentScope}
             ${input.grp_id ? sql`AND st.id IN (SELECT student_id FROM enrolment WHERE grp_id = ${input.grp_id} AND status = 'active')` : sql``}
           GROUP BY st.id ORDER BY st.family_id LIMIT 5000`);
+      }
+      if (input.template === 'fee_due' && rows.length) {
+        // What is due is net of the family's unallocated credit (defaulters() already nets).
+        const credits = new Map(
+          (
+            await db.all<{
+              payer_id: string;
+              credit: number;
+            }>(sql`SELECT payer_id, credit FROM payer_credit
+              WHERE payer_type = 'family' AND credit > 0
+                AND payer_id IN (SELECT value FROM json_each(${JSON.stringify([...new Set(rows.map((r) => r.family_id))])}))`)
+          ).map((r) => [r.payer_id, r.credit]),
+        );
+        rows = rows
+          .map((r) => {
+            const left = credits.get(r.family_id) ?? 0;
+            credits.set(r.family_id, Math.max(0, left - r.due));
+            return { ...r, due: netOfCredit(r.due, left) };
+          })
+          .filter((r) => r.due > 0);
       }
       const byFamily = new Map<string, typeof rows>();
       for (const r of rows) byFamily.set(r.family_id, [...(byFamily.get(r.family_id) ?? []), r]);

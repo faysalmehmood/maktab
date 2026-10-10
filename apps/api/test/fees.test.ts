@@ -534,3 +534,239 @@ describe('the fee counter over HTTP', () => {
     ).toBe(403);
   });
 });
+
+describe('M3a fix pass over HTTP', () => {
+  async function family() {
+    const s = await setup();
+    const a = await admitNew(s.api, s.g5a.id, 'Ali');
+    const b = await admitNew(s.api, s.g5b.id, 'Sara', { familyId: a.body.family_id });
+    return { ...s, fam: a.body.family_id, ali: a.body.student_id, sara: b.body.student_id };
+  }
+  const yesterday = (() => {
+    const d = new Date(`${today}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  it('an overlapping sponsorship (same sponsor, student, head) is 409 sponsorship_overlap', async () => {
+    const s = await family();
+    const sp = await s.api<{ sponsor: { id: string } }>('POST', '/api/fees/sponsors', {
+      name: 'Trust',
+    });
+    const base = { sponsor_id: sp.body.sponsor.id, student_id: s.ali, fee_head_id: null };
+    const first = await s.api('POST', '/api/fees/sponsorships', {
+      ...base,
+      share_pct: 50,
+      valid_from: `${prevPeriod}-01`,
+    });
+    expect(first.status).toBe(201);
+    for (const clash of [
+      { ...base, share_pct: 60, valid_from: `${period}-01` },
+      { ...base, fee_head_id: s.tui.id, share_pct: 10, valid_from: `${period}-01` },
+    ]) {
+      const r = await s.api<{ error: { code: string } }>('POST', '/api/fees/sponsorships', clash);
+      expect([r.status, r.body.error.code]).toEqual([409, 'sponsorship_overlap']);
+    }
+    // After ending it, a new row from the next day is fine.
+    const id = (first.body as { sponsorship: { id: string } }).sponsorship.id;
+    expect(
+      (
+        await s.api('POST', `/api/fees/sponsorships/${id}/end`, {
+          valid_to: `${prevPeriod}-28`,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await s.api('POST', '/api/fees/sponsorships', {
+          ...base,
+          share_pct: 25,
+          valid_from: `${period}-01`,
+        })
+      ).status,
+    ).toBe(201);
+  });
+
+  it('business_date: today by default; yesterday for owner/admin with a reason (audited); else 400', async () => {
+    const s = await family();
+    const acct = client(s.request, (await signedInAs(s.db, ['accountant'])).cookie);
+    const pay = (api: ReturnType<typeof client>, extra: Record<string, unknown>) =>
+      api<{ error?: { code: string }; receipt?: { id: string; receipt_no: string } }>(
+        'POST',
+        '/api/receipts',
+        { idempotency_key: newId(), payer_id: s.fam, amount: RS(10), method: 'cash', ...extra },
+      );
+    for (const [api, extra] of [
+      [acct, { business_date: yesterday, backdate_reason: 'late' }],
+      [s.api, { business_date: yesterday }],
+      [s.api, { business_date: '2025-12-31', backdate_reason: 'reviewer repro' }],
+    ] as const) {
+      const r = await pay(api, extra);
+      expect([r.status, r.body.error?.code]).toEqual([400, 'bad_business_date']);
+    }
+    expect(await s.db.all(sql`SELECT * FROM cash_session`)).toEqual([]);
+    const ok = await pay(s.api, { business_date: yesterday, backdate_reason: 'forgot' });
+    expect(ok.status).toBe(201);
+    const [row] = await s.db.all<{ bd: string; sd: string }>(sql`SELECT r.business_date AS bd,
+      s.business_date AS sd FROM receipt r JOIN cash_session s ON s.id = r.cash_session_id`);
+    expect(row).toEqual({ bd: yesterday, sd: today });
+    expect(ok.body.receipt?.receipt_no.slice(3, 7)).toBe(today.slice(0, 4));
+    expect(
+      await s.db.all(sql`SELECT json_extract(diff, '$.reason') AS reason FROM audit
+        WHERE action = 'backdate' AND entity_id = ${ok.body.receipt?.id as string}`),
+    ).toEqual([{ reason: 'forgot' }]);
+    // A drawer is never opened for a past day.
+    const open = await acct<{ error: { code: string } }>('POST', '/api/cash/sessions', {
+      business_date: yesterday,
+    });
+    expect([open.status, open.body.error.code]).toEqual([400, 'bad_business_date']);
+  });
+
+  it('dues hash: a stale view is 409 stale_dues; idempotency is per user; non-cash picks an account', async () => {
+    const s = await family();
+    const st = await s.api<FamilyStatementDto>('GET', `/api/fees/family/${s.fam}`);
+    expect(st.body.dues_hash).toMatch(/^[0-9a-f]{16}$/);
+    const key = newId();
+    const first = await s.api<CollectResultDto>('POST', '/api/receipts', {
+      idempotency_key: key,
+      payer_id: s.fam,
+      amount: RS(100),
+      method: 'cash',
+      expected_due_hash: st.body.dues_hash,
+    });
+    expect(first.status).toBe(201);
+    const stale = await s.api<{ error: { code: string } }>('POST', '/api/receipts', {
+      idempotency_key: newId(),
+      payer_id: s.fam,
+      amount: RS(100),
+      method: 'cash',
+      expected_due_hash: st.body.dues_hash,
+    });
+    expect([stale.status, stale.body.error.code]).toEqual([409, 'stale_dues']);
+    const admin = client(s.request, (await signedInAs(s.db, ['admin'])).cookie);
+    const other = await admin<{ error: { code: string } }>('POST', '/api/receipts', {
+      idempotency_key: key,
+      payer_id: s.fam,
+      amount: RS(100),
+      method: 'cash',
+    });
+    expect([other.status, other.body.error.code]).toEqual([409, 'idempotency_conflict']);
+    expect(
+      await s.db.all(sql`SELECT action, json_extract(diff, '$.receipt_no') AS no FROM audit
+        WHERE entity = 'receipt' AND entity_id = ${first.body.receipt.id}`),
+    ).toEqual([{ action: 'collect', no: first.body.receipt.receipt_no }]);
+    // Bank money: no account yet → 400 account_required; once one exists it is used, no drawer.
+    const bankPay = () =>
+      s.api<CollectResultDto & { error?: { code: string } }>('POST', '/api/receipts', {
+        idempotency_key: newId(),
+        payer_id: s.fam,
+        amount: RS(100),
+        method: 'cheque',
+        reference: 'CHQ 1234',
+      });
+    const none = await bankPay();
+    expect([none.status, none.body.error?.code]).toEqual([400, 'account_required']);
+    const bank = (
+      await s.api<{ account: { id: string } }>('POST', '/api/accounts', {
+        name: 'HBL',
+        kind: 'bank',
+      })
+    ).body.account.id;
+    const ok = await bankPay();
+    expect(ok.status).toBe(201);
+    expect(ok.body.receipt).toMatchObject({
+      method: 'cheque',
+      account_id: bank,
+      cash_session_id: null,
+    });
+    expect(await s.db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
+  });
+
+  it('void a charge: reason required; paid money becomes credit and pays the next due', async () => {
+    const s = await family();
+    const [adm] = await s.db.all<{ id: string; net: number }>(sql`SELECT c.id, n.net FROM charge c
+      JOIN charge_net n ON n.id = c.id WHERE c.student_id = ${s.ali} AND c.fee_head_id = ${s.adm.id}`);
+    const pay = await s.api<CollectResultDto>('POST', '/api/receipts', {
+      idempotency_key: newId(),
+      payer_id: s.fam,
+      amount: adm?.net,
+      method: 'cash',
+      directed: [{ charge_id: adm?.id, amount: adm?.net }],
+    });
+    expect(pay.status).toBe(201);
+    const bad = await s.api<{ error: { code: string } }>(
+      'POST',
+      `/api/charges/${adm?.id}/void`,
+      {},
+    );
+    expect(bad.status).toBe(400);
+    const v = await s.api<{ amount: number; released: number; credit_applied: number }>(
+      'POST',
+      `/api/charges/${adm?.id}/void`,
+      { reason: 'admission fee waived by the owner' },
+    );
+    expect(v.status).toBe(201);
+    expect(v.body).toMatchObject({ amount: adm?.net, released: adm?.net });
+    expect(v.body.credit_applied).toBeGreaterThan(0);
+    const again = await s.api<{ error: { code: string } }>('POST', `/api/charges/${adm?.id}/void`, {
+      reason: 'again',
+    });
+    expect([again.status, again.body.error.code]).toEqual([409, 'already_void']);
+    const acct = client(s.request, (await signedInAs(s.db, ['accountant'])).cookie);
+    expect((await acct('POST', `/api/charges/${adm?.id}/void`, { reason: 'x' })).status).toBe(403);
+    expect(await s.db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
+  });
+
+  it('a failing group is logged and skipped by "Generate"; GET /api/fees/runs shows it; a late student is billed by regenerate', async () => {
+    const s = await family();
+    await s.db.run(
+      sql.raw(
+        `CREATE TRIGGER test_boom BEFORE INSERT ON charge WHEN NEW.student_id = '${s.sara}' AND NEW.period_key = '${prevPeriod}' BEGIN SELECT RAISE(ABORT, 'boom'); END`,
+      ),
+    );
+    const seen: GenerateResultDto[] = [];
+    let next: GenerateResultDto['next'] | undefined;
+    do {
+      const g = await s.api<GenerateResultDto>('POST', '/api/fees/generate', {
+        period: prevPeriod,
+        ...(next ? { grp_id: next.grp_id, after_student_id: next.after_student_id } : {}),
+      });
+      expect(g.status).toBe(200);
+      seen.push(g.body);
+      next = g.body.next;
+    } while (next && seen.length < 5);
+    expect(seen.map((x) => x.failed?.grp_id ?? null).filter(Boolean)).toEqual([s.g5b.id]);
+    expect(seen.at(-1)?.done).toBe(true);
+    const runs = await s.api<{
+      complete: boolean;
+      failing: { grp_id: string; error_code: string }[];
+      chunks: { status: string; error_message: string | null }[];
+    }>('GET', `/api/fees/runs?period=${prevPeriod}`);
+    expect(runs.body.complete).toBe(false);
+    expect(runs.body.failing).toEqual([
+      expect.objectContaining({ grp_id: s.g5b.id, error_code: 'constraint' }),
+    ]);
+    expect(runs.body.chunks.find((k) => k.status === 'failed')?.error_message).toMatch(/boom/);
+    await s.db.run(sql`DROP TRIGGER test_boom`);
+    const retry = await s.api<GenerateResultDto>('POST', '/api/fees/generate', {
+      period: prevPeriod,
+    });
+    expect([retry.body.grp_id, retry.body.failed, retry.body.done]).toEqual([s.g5b.id, null, true]);
+    // A student enrolled after the group's chunk completed: generation skips the finished group…
+    const late = await admitNew(s.api, s.g5a.id, 'Late', {
+      start: `${prevPeriod}-01`,
+      fees: { charge: false },
+    });
+    expect(late.status).toBe(201);
+    const g = await s.api<GenerateResultDto>('POST', '/api/fees/generate', { period: prevPeriod });
+    expect([g.body.grp_id, g.body.done]).toEqual([null, true]);
+    // …and POST /api/fees/regenerate bills them.
+    const rg = await s.api<{ counts: { fees: number } }>('POST', '/api/fees/regenerate', {
+      student_id: late.body.student_id,
+      period: prevPeriod,
+    });
+    expect(rg.status).toBe(200);
+    expect(rg.body.counts.fees).toBe(2);
+    expect(await s.db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
+  });
+});

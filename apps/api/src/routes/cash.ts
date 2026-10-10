@@ -4,6 +4,7 @@ import {
   recordTransfer,
   reopenSession,
   type SessionRow,
+  sessionFor,
 } from '@maktab/db';
 import {
   accountInputSchema,
@@ -68,6 +69,9 @@ export function cashRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const input = await jsonBody(c, sessionOpenSchema);
       const date = input.business_date ?? todayPk();
       if (date > todayPk()) throw new ApiError(400, 'invalid', 'business_date: in the future');
+      // A drawer is never opened for a past day (M3 fix pass); an existing one is returned as is.
+      if (date < todayPk() && !(await sessionFor(c.get('db'), userId(c), date)))
+        throw new ApiError(400, 'bad_business_date', 'A cash session can only be opened for today');
       const s = await openSession(c.get('db'), {
         collectorId: userId(c),
         businessDate: date,

@@ -187,6 +187,7 @@ GET    /api/fees/runs                            D A A D D D
 POST   /api/fees/fines/apply                     D A A D D D
 POST   /api/fees/fines/:id/waive                 D A A D D D
 POST   /api/fees/regenerate                      D A A D D D
+POST   /api/charges/:id/void                     D A A D D D
 GET    /api/fees/defaulters                      D A A A A D
 POST   /api/fees/defaulters/remind               D A A A A D
 GET    /api/fees/register                        D A A A D D

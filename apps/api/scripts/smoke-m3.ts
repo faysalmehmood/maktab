@@ -81,6 +81,8 @@ async function generate(p: string, dryRun = false): Promise<GenerateResultDto[]>
       },
     );
     expectOk(r.status === 200, r);
+    // A failed group is logged and skipped (M3 fix pass); in the smoke nothing may fail.
+    expectOk(!r.body.failed, r);
     out.push(r.body);
     next = r.body.next;
     if (!next) return out;

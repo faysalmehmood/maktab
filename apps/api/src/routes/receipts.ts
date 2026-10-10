@@ -28,9 +28,10 @@ import {
 import { sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { z } from 'zod';
+import type { Principal } from '../auth/principal';
 import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
-import { familyMessageStatements, receiptPrint } from '../lib/fees';
+import { defaultAccount, familyMessageStatements, receiptPrint } from '../lib/fees';
 import { idParam, jsonBody, notFoundError, queryParams, todayPk, userId } from '../lib/http';
 import { withD1Retry } from '../lib/retry';
 import { tx } from '../lib/tx';
@@ -51,11 +52,29 @@ async function payerExists(
   if (!row) throw new ApiError(400, 'invalid', `Unknown ${type}`);
 }
 
-function businessDate(input: string | undefined): string {
-  const today = todayPk();
-  const d = input ?? today;
-  if (d > today) throw new ApiError(400, 'invalid', 'business_date: in the future');
-  return d;
+/** Owner/admin may enter a receipt for yesterday (with a reason); everyone else, today only. */
+const mayBackdate = (c: { get: (k: 'principal') => Principal | null | undefined }) =>
+  !!c.get('principal')?.roles.some((r) => r === 'owner' || r === 'admin');
+
+async function accountFor(
+  db: import('@maktab/db').AppDb,
+  method: string,
+  given: string | null | undefined,
+): Promise<string | null> {
+  if (method === 'cash') return null;
+  if (given) {
+    const [a] = await db.all(sql`SELECT id FROM account WHERE id = ${given}`);
+    if (!a) throw new ApiError(400, 'invalid', 'Unknown account');
+    return given;
+  }
+  const id = await defaultAccount(db, method);
+  if (!id)
+    throw new ApiError(
+      400,
+      'account_required',
+      'Add a bank or wallet account (Settings) or name account_id for a non-cash payment',
+    );
+  return id;
 }
 
 export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
@@ -84,8 +103,11 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
 
   /**
    * The fee counter (PLAN §14.4): one receipt per visit, oldest dues first across the family (or
-   * `directed`), remainder as credit; the collector's cash session opens on the first receipt.
-   * Retry-safe: the same idempotency_key returns the same receipt (`replayed: true`).
+   * `directed`), remainder as credit; the collector's cash session (today's) opens on the first cash
+   * receipt. business_date: today, or yesterday for an owner/admin with `backdate_reason` (audited);
+   * else 400 bad_business_date. `expected_due_hash` (the family view's dues_hash) turns a changed
+   * family into 409 stale_dues. Retry-safe: the same user's idempotency_key returns the same receipt
+   * (`replayed: true`); another user's is 409 idempotency_conflict.
    */
   defineRoute(
     app,
@@ -96,6 +118,7 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const db = c.get('db');
       await payerExists(c, input.payer_type, input.payer_id);
       const receiptId = newId();
+      const accountId = await accountFor(db, input.method, input.account_id);
       const r = await withD1Retry(() =>
         collect(db, {
           receiptId,
@@ -104,12 +127,16 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           amount: input.amount,
           method: input.method,
           reference: input.reference ?? null,
-          accountId: input.account_id ?? null,
+          accountId,
           note: input.note ?? null,
-          businessDate: businessDate(input.business_date),
+          businessDate: input.business_date,
+          today: todayPk(),
+          allowYesterday: mayBackdate(c),
+          backdateReason: input.backdate_reason ?? null,
           collectorId: userId(c),
           idempotencyKey: input.idempotency_key,
           directed: input.directed?.map((d) => ({ chargeId: d.charge_id, amount: d.amount })),
+          expectedDueHash: input.expected_due_hash ?? null,
         }),
       );
       const receipt = (await receiptDetail(db, r.receipt_id)) as ReceiptDetailDto;
@@ -158,7 +185,9 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         throw new ApiError(409, 'not_a_payment', 'Only a payment can be reversed');
       if (orig.reversed_by) throw new ApiError(409, 'already_reversed', 'Already reversed');
       const today = todayPk();
-      await assertSessionOpen(db, uid, today);
+      const reenterMethod = input.reenter ? (input.reenter.method ?? orig.method) : null;
+      const touchesDrawer = orig.method === 'cash' || reenterMethod === 'cash';
+      if (touchesDrawer) await assertSessionOpen(db, uid, today);
       const settings = await feeSettings(db);
       const series = seriesFor(settings.receiptPrefix, today);
       let reenter: Parameters<typeof reverseReceipt>[1]['reenter'];
@@ -178,6 +207,10 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         reenter = {
           amount: re.amount,
           method: re.method,
+          accountId:
+            reenterMethod && reenterMethod !== orig.method
+              ? await accountFor(db, reenterMethod, null)
+              : undefined,
           reference: re.reference ?? null,
           allocations: rows.map((r) => ({ id: newId(), chargeId: r.chargeId, amount: r.amount })),
         };
@@ -192,8 +225,11 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           series,
           reversalId,
           businessDate: today,
-          prelude: [ensureSeries(series), ensureSessionStatement(uid, today)],
-          cashSessionId: sessionIdFor(uid, today),
+          prelude: [
+            ensureSeries(series),
+            ...(touchesDrawer ? [ensureSessionStatement(uid, today)] : []),
+          ],
+          cashSessionId: touchesDrawer ? sessionIdFor(uid, today) : null,
           reenter: reenter ? { ...reenter, id: reentryId } : undefined,
         }),
       );
@@ -217,6 +253,7 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const db = c.get('db');
       await payerExists(c, input.payer_type, input.payer_id);
       const id = newId();
+      const accountId = await accountFor(db, input.method, null);
       const r = await withD1Retry(() =>
         refund(db, {
           id,
@@ -224,6 +261,7 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           payerId: input.payer_id,
           amount: input.amount,
           method: input.method,
+          accountId,
           reason: input.reason,
           reference: input.reference ?? null,
           by: userId(c),

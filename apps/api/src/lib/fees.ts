@@ -192,6 +192,27 @@ export async function planAdmissionFees(
   };
 }
 
+/**
+ * The account a non-cash payment landed in when the counter did not name one: the first account of
+ * the matching kind (bank and cheque → bank; JazzCash/EasyPaisa → wallet; other → bank, then wallet).
+ */
+export async function defaultAccount(db: AppDb, method: string): Promise<string | null> {
+  if (method === 'cash') return null;
+  const kinds =
+    method === 'jazzcash' || method === 'easypaisa'
+      ? ['wallet']
+      : method === 'other'
+        ? ['bank', 'wallet']
+        : ['bank'];
+  for (const k of kinds) {
+    const [row] = await db.all<{ id: string }>(
+      sql`SELECT id FROM account WHERE kind = ${k} ORDER BY created_at, id LIMIT 1`,
+    );
+    if (row) return row.id;
+  }
+  return null;
+}
+
 /** Sessions with live figures: an open session's expected is computed now. */
 export async function sessionDtos(db: AppDb, rows: SessionRow[]): Promise<CashSessionDto[]> {
   const out: CashSessionDto[] = [];
