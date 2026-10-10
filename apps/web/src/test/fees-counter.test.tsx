@@ -1,11 +1,13 @@
 import { en, ur } from '@maktab/shared';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ErrorNote } from '@/components/form';
+import { toast } from '@/components/ui/sonner';
 import { initI18n, setLanguage } from '@/i18n';
 import { ApiError } from '@/lib/api';
 import {
-  AttemptKey,
+  balanceAfter,
   FEE_ERROR_CODES,
   formatRupeeInput,
   openDuesInOrder,
@@ -23,6 +25,9 @@ beforeAll(async () => {
   await initI18n('en');
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
+  sessionStorage.clear();
+  focusManager.setFocused(undefined);
   vi.unstubAllGlobals();
   await act(() => setLanguage('en'));
 });
@@ -39,6 +44,30 @@ describe('amounts: Rs ↔ paisa', () => {
     expect(rupeesToPaisa('abc')).toBeNull();
     expect(rupeesToPaisa('5.123')).toBeNull();
     expect(rupeesToPaisa('-5')).toBeNull();
+  });
+
+  it('decimal marks: "٫" and a single "," are decimals; bad grouping, >2 decimals, >9 digits fail', () => {
+    expect(rupeesToPaisa('12٫50')).toBe(1250);
+    expect(rupeesToPaisa('۱۲٫۵')).toBe(1250);
+    expect(rupeesToPaisa('12,50')).toBe(1250);
+    expect(rupeesToPaisa('12,5')).toBe(1250);
+    expect(rupeesToPaisa('1,250')).toBe(125000);
+    expect(rupeesToPaisa('1,250,000.75')).toBe(125000075);
+    expect(rupeesToPaisa('1,2,3')).toBeNull();
+    expect(rupeesToPaisa('12,5000')).toBeNull();
+    expect(rupeesToPaisa('12,505')).toBe(1250500);
+    expect(rupeesToPaisa('12٫505')).toBeNull();
+    expect(rupeesToPaisa('12,50.5')).toBeNull();
+    expect(rupeesToPaisa('999999999')).toBe(99999999900);
+    expect(rupeesToPaisa('1000000000')).toBeNull();
+    expect(rupeesToPaisa('1,000,000,000')).toBeNull();
+  });
+
+  it('the amount box keeps a typed "٫" or trailing "," as the decimal point', () => {
+    expect(formatRupeeInput('12٫5')).toBe('12.5');
+    expect(formatRupeeInput('1250,')).toBe('1,250.');
+    expect(formatRupeeInput('1,250.')).toBe('1,250.');
+    expect(formatRupeeInput('1,2500')).toBe('12,500');
   });
 
   it('shows typed amounts grouped by thousands in Latin digits, whatever the keyboard', () => {
@@ -83,14 +112,15 @@ describe('allocation preview matches the server (oldest first; due date, period,
     expect(previewDirected(familyLines, new Set(['C-ALI-09']), RS(4000)).credit).toBe(RS(1800));
   });
 
-  it('one idempotency key per attempt; a changed attempt gets a new key', () => {
-    const k = new AttemptKey();
-    const a = k.for('sig-1');
-    expect(k.for('sig-1')).toBe(a);
-    const b = k.for('sig-2');
-    expect(b).not.toBe(a);
-    k.reset();
-    expect(k.for('sig-2')).not.toBe(b);
+  it('balance after is credit-aware: max(0, after − (existing credit + new credit))', () => {
+    const total = openDuesInOrder(familyLines).reduce((a, l) => a + l.due, 0);
+    const p = previewOldestFirst(familyLines, RS(7000));
+    expect(balanceAfter(p, RS(500))).toBe(total - RS(7000) - RS(500));
+    // Directed: the ticked line is paid, the rest becomes credit that also offsets what is left.
+    const d = previewDirected(familyLines, new Set(['C-ALI-09']), RS(4000));
+    expect(d.credit).toBe(RS(1800));
+    expect(balanceAfter(d, RS(500))).toBe(total - RS(2200) - RS(500) - RS(1800));
+    expect(balanceAfter(previewOldestFirst(familyLines, total), RS(500))).toBe(0);
   });
 });
 
@@ -345,5 +375,321 @@ describe('fee counter', () => {
     expect(net?.querySelector('bdi.num')).toBeTruthy();
     await typeAmount('۵۰۰۰');
     expect((document.getElementById('counter-amount') as HTMLInputElement).value).toBe('5,000');
+  });
+});
+
+const click = (id: string) => fireEvent.click(document.getElementById(id) as HTMLElement);
+const familyGets = (calls: Call[]) =>
+  calls.filter((c) => c.method === 'GET' && c.path === `/api/fees/family/${fam}`).length;
+/** react-query's window-focus refetch: the family view reloads (as after switching apps). */
+const refocus = () =>
+  act(() => {
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+  });
+const replayed = () =>
+  new Response(JSON.stringify({ receipt: { id: receiptId }, replayed: true }), { status: 200 });
+
+describe('counter idempotency: one key per attempt, independent of the dues hash', () => {
+  it('network error → family refetch (new hash) → retry sends the same key and body; the replay returns the original receipt', async () => {
+    const info = vi.spyOn(toast, 'info');
+    let fetches = 0;
+    let n = 0;
+    const keys = new Set<unknown>();
+    const api = setupCounter({
+      [`GET /api/fees/family/${fam}`]: () => {
+        fetches++;
+        // The first POST did commit: the dues (and the hash) changed under the collector.
+        return familyStatement({ dues_hash: fetches === 1 ? 'hash-1' : 'hash-2' });
+      },
+      'POST /api/receipts': (_u: URL, init: RequestInit) => {
+        n++;
+        const body = JSON.parse(String(init.body)) as { idempotency_key: string };
+        if (n === 1) {
+          keys.add(body.idempotency_key);
+          throw new TypeError('Failed to fetch');
+        }
+        return keys.has(body.idempotency_key) ? replayed() : ok();
+      },
+    });
+    await typeAmount('7,000');
+    click('counter-confirm');
+    fireEvent.click(await issueButton());
+    expect(await screen.findByText(en.errors.network)).toBeTruthy();
+    // The attempt is pending: banner shown, inputs locked.
+    expect(document.getElementById('counter-pending')).toBeTruthy();
+    expect(document.getElementById('counter-amount')?.matches(':disabled')).toBe(true);
+    await refocus();
+    await waitFor(() => expect(fetches).toBeGreaterThanOrEqual(2));
+    click('counter-retry');
+    await waitFor(() => expect(posts(api.calls)).toHaveLength(2));
+    const [a, b] = posts(api.calls);
+    expect(b?.idempotency_key).toBe(a?.idempotency_key);
+    expect(b).toEqual(a);
+    expect(b?.expected_due_hash).toBe('hash-1');
+    await waitFor(() => expect(info).toHaveBeenCalledWith(en.fee.counter.replayed));
+    await waitFor(() => expect(sessionStorage.length).toBe(0));
+  });
+
+  it('back online: the pending attempt is replayed (same key) before the family reloads', async () => {
+    let n = 0;
+    const api = setupCounter({
+      'POST /api/receipts': () => {
+        n++;
+        if (n === 1) throw new TypeError('Failed to fetch');
+        return replayed();
+      },
+    });
+    await typeAmount('2,000');
+    click('counter-confirm');
+    fireEvent.click(await issueButton());
+    expect(await screen.findByText(en.errors.network)).toBeTruthy();
+    const getsBefore = familyGets(api.calls);
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() => expect(posts(api.calls)).toHaveLength(2));
+    const [a, b] = posts(api.calls);
+    expect(b?.idempotency_key).toBe(a?.idempotency_key);
+    const order = api.calls.slice(
+      api.calls.indexOf(api.calls.filter((c) => c.method === 'POST')[0] as Call) + 1,
+    );
+    const firstPost = order.findIndex((c) => c.method === 'POST');
+    const firstFamily = order.findIndex(
+      (c) => c.method === 'GET' && c.path === `/api/fees/family/${fam}`,
+    );
+    expect(firstPost).toBeGreaterThanOrEqual(0);
+    if (firstFamily >= 0) expect(firstPost).toBeLessThan(firstFamily);
+    expect(familyGets(api.calls)).toBeGreaterThanOrEqual(getsBefore);
+  });
+
+  it('the pending attempt survives a reload of the page (same key from session storage)', async () => {
+    let n = 0;
+    const api = setupCounter({
+      'POST /api/receipts': () => {
+        n++;
+        if (n === 1) throw new TypeError('Failed to fetch');
+        return replayed();
+      },
+    });
+    await typeAmount('1,500');
+    click('counter-confirm');
+    fireEvent.click(await issueButton());
+    expect(await screen.findByText(en.errors.network)).toBeTruthy();
+    const first = posts(api.calls)[0];
+    // A fresh mount (page reload) restores the locked attempt.
+    cleanup();
+    const again = setupCounter({ 'POST /api/receipts': () => replayed() });
+    await waitFor(() => expect(document.getElementById('counter-pending')).toBeTruthy());
+    expect((document.getElementById('counter-amount') as HTMLInputElement).value).toBe('1,500');
+    click('counter-retry');
+    await waitFor(() => expect(posts(again.calls)).toHaveLength(1));
+    expect(posts(again.calls)[0]?.idempotency_key).toBe(first?.idempotency_key);
+  });
+
+  it('stale_dues: the attempt ends; no new key is sent until the collector confirms again', async () => {
+    let fetches = 0;
+    let n = 0;
+    const api = setupCounter({
+      [`GET /api/fees/family/${fam}`]: () => {
+        fetches++;
+        return familyStatement({ dues_hash: fetches === 1 ? 'hash-1' : 'hash-2' });
+      },
+      'POST /api/receipts': () => {
+        n++;
+        return n === 1 ? conflict('stale_dues') : ok();
+      },
+    });
+    await typeAmount('3000');
+    click('counter-confirm');
+    fireEvent.click(await issueButton());
+    expect(await screen.findByText(en.errors.stale_dues)).toBeTruthy();
+    await waitFor(() => expect(fetches).toBeGreaterThanOrEqual(2));
+    // Nothing is retried on its own, and nothing is locked.
+    expect(posts(api.calls)).toHaveLength(1);
+    expect(document.getElementById('counter-pending')).toBeNull();
+    expect(document.getElementById('counter-retry')).toBeNull();
+    expect(sessionStorage.length).toBe(0);
+    click('counter-confirm');
+    fireEvent.click(await issueButton());
+    await waitFor(() => expect(posts(api.calls)).toHaveLength(2));
+    const [a, b] = posts(api.calls);
+    expect(b?.idempotency_key).not.toBe(a?.idempotency_key);
+    expect(b?.expected_due_hash).toBe('hash-2');
+  });
+
+  it('Start over unlocks the form and the next attempt gets a new key', async () => {
+    let n = 0;
+    const api = setupCounter({
+      'POST /api/receipts': () => {
+        n++;
+        if (n === 1) throw new TypeError('Failed to fetch');
+        return ok();
+      },
+    });
+    await typeAmount('1000');
+    click('counter-confirm');
+    fireEvent.click(await issueButton());
+    expect(await screen.findByText(en.errors.network)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    click('counter-start-over');
+    expect(document.getElementById('counter-pending')).toBeNull();
+    expect(document.getElementById('counter-amount')?.matches(':disabled')).toBe(false);
+    await typeAmount('1200');
+    click('counter-confirm');
+    fireEvent.click(await issueButton());
+    await waitFor(() => expect(posts(api.calls)).toHaveLength(2));
+    const [a, b] = posts(api.calls);
+    expect(b?.idempotency_key).not.toBe(a?.idempotency_key);
+    expect(b?.amount).toBe(RS(1200));
+  });
+
+  it('a definite refusal (400) ends the attempt: nothing stays locked', async () => {
+    setupCounter({
+      'POST /api/receipts': () =>
+        new Response(JSON.stringify({ error: { code: 'bad_business_date', message: 'x' } }), {
+          status: 400,
+        }),
+    });
+    await typeAmount('1000');
+    click('counter-confirm');
+    fireEvent.click(await issueButton());
+    expect(await screen.findByText(en.errors.bad_business_date)).toBeTruthy();
+    expect(document.getElementById('counter-pending')).toBeNull();
+  });
+});
+
+describe('counter: choose lines, confirm details, warnings, fines', () => {
+  it('"Choose lines" with nothing ticked: Confirm disabled with a hint; a tick enables it', async () => {
+    setupCounter();
+    await typeAmount('2,000');
+    click('alloc-direct');
+    const confirm = document.getElementById('counter-confirm') as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    expect(document.getElementById('alloc-direct-empty')?.textContent).toBe(
+      en.fee.counter.directEmpty,
+    );
+    click('direct-C-ALI-09');
+    expect(confirm.disabled).toBe(false);
+    expect(document.getElementById('alloc-direct-empty')).toBeNull();
+  });
+
+  it('after a reload, ticks on lines no longer due are dropped; none left → oldest first', async () => {
+    let fetches = 0;
+    setupCounter({
+      [`GET /api/fees/family/${fam}`]: () => {
+        fetches++;
+        return fetches === 1
+          ? familyStatement()
+          : familyStatement({
+              charges: familyLines.map((l) =>
+                l.id === 'C-SARA-10' ? { ...l, paid: l.net, due: 0, status: 'paid' as const } : l,
+              ),
+              dues_hash: 'hash-2',
+            });
+      },
+    });
+    await typeAmount('2,000');
+    click('alloc-direct');
+    click('direct-C-SARA-10');
+    await refocus();
+    await waitFor(() =>
+      expect(document.getElementById('alloc-oldest')?.getAttribute('aria-pressed')).toBe('true'),
+    );
+    expect(document.getElementById('alloc-direct-empty')).toBeNull();
+    expect((document.getElementById('counter-confirm') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('confirm lists child · period · head · amount, the account, the date and the credit remainder', async () => {
+    setupCounter({ 'POST /api/receipts': () => ok() });
+    await typeAmount('7,000');
+    click('method-bank');
+    fireEvent.change(document.getElementById('counter-account') as HTMLElement, {
+      target: { value: bankAcc },
+    });
+    click('counter-confirm');
+    await issueButton();
+    const rows = [...document.querySelectorAll('[data-confirm-row]')].map((r) => r.textContent);
+    expect(rows).toEqual([
+      'Ali·2026-09·TuitionPKR 2,200',
+      'Sara·2026-09·TuitionPKR 3,150',
+      'Ali·2026-10·AdmissionPKR 1,650',
+    ]);
+    expect(document.getElementById('confirm-account')?.textContent).toBe('HBL current');
+    expect(document.getElementById('confirm-date')?.textContent).toContain('(Today)');
+    expect(document.getElementById('confirm-credit')?.textContent).toBe('PKR 0');
+    // 16,500 open − 7,000 − 500 advance.
+    expect(document.getElementById('confirm-after')?.textContent).toBe('PKR 9,000');
+    expect(document.getElementById('confirm-yesterday')).toBeNull();
+  });
+
+  it('a yesterday receipt is flagged prominently in the confirm dialog', async () => {
+    setupCounter();
+    await typeAmount('1,000');
+    click('method-bank');
+    fireEvent.change(document.getElementById('counter-account') as HTMLElement, {
+      target: { value: bankAcc },
+    });
+    click('counter-yesterday');
+    fireEvent.change(document.getElementById('counter-backdate-reason') as HTMLElement, {
+      target: { value: 'statement late' },
+    });
+    click('counter-confirm');
+    await issueButton();
+    const warn = document.getElementById('confirm-yesterday');
+    expect(warn?.getAttribute('role')).toBe('alert');
+    expect(warn?.textContent).toContain('YESTERDAY');
+  });
+
+  it('more than 3× the net due warns but does not block; the preview balance is credit-aware', async () => {
+    const api = setupCounter({ 'POST /api/receipts': () => ok() });
+    await typeAmount('7,000');
+    expect(document.getElementById('counter-amount-high')).toBeNull();
+    expect(document.getElementById('allocation-after')?.textContent).toContain('PKR 9,000');
+    await typeAmount('48,001');
+    expect(document.getElementById('counter-amount-high')?.textContent).toContain('PKR 16,000');
+    click('counter-confirm');
+    fireEvent.click(await issueButton());
+    await waitFor(() => expect(posts(api.calls)).toHaveLength(1));
+  });
+
+  it('a fined line offers "Waive fine" to owner/admin → reason → POST /fines/:id/waive', async () => {
+    const api = setupCounter({ 'POST /api/fees/fines/F-ALI-09/waive': { waiver_id: 'W1' } });
+    await screen.findByText('Raza family');
+    click('waive-F-ALI-09');
+    fireEvent.change(document.getElementById('waive-reason') as HTMLElement, {
+      target: { value: 'first time' },
+    });
+    click('waive-confirm');
+    await waitFor(() =>
+      expect(
+        api.calls.find((c) => c.method === 'POST' && c.path === '/api/fees/fines/F-ALI-09/waive')
+          ?.body,
+      ).toEqual({ reason: 'first time' }),
+    );
+  });
+
+  it('an accountant sees no Waive; a waived fine shows its waived state', async () => {
+    setupCounter(
+      {
+        [`GET /api/fees/family/${fam}`]: familyStatement({
+          fines: [
+            {
+              id: 'F-ALI-09',
+              root_id: 'C-ALI-09',
+              student_id: 'x',
+              period_key: '2026-09',
+              amount: RS(200),
+              waived: RS(200),
+              left: 0,
+            },
+          ],
+        }),
+      },
+      ['accountant'],
+    );
+    await screen.findByText('Raza family');
+    expect(document.getElementById('waive-F-ALI-09')).toBeNull();
+    expect(document.querySelector('[data-waived="F-ALI-09"]')?.textContent).toBe('Fine waived');
   });
 });

@@ -225,8 +225,8 @@ export const feeEn = {
     format: 'Paper',
     language: 'Receipt language',
     share: 'Share',
-    shareText: 'Receipt {{no}}: {{amount}} received. {{school}}',
-    copied: 'Link copied',
+    shareText: '{{school}}: receipt {{no}}, {{amount}} received on {{date}}.',
+    copied: 'Receipt text copied',
     reverse: 'Reverse',
     reverseTitle: 'Reverse this receipt',
     reverseBody:
@@ -695,8 +695,8 @@ export const feeUr: Shape<typeof feeEn> = {
     format: 'کاغذ',
     language: 'رسید کی زبان',
     share: 'شیئر',
-    shareText: 'رسید {{no}}: {{amount}} وصول ہوئے۔ {{school}}',
-    copied: 'لنک کاپی ہو گیا',
+    shareText: '{{school}}: رسید {{no}}، {{amount}} وصول، بتاریخ {{date}}۔',
+    copied: 'رسید کا متن کاپی ہو گیا',
     reverse: 'منسوخ کریں',
     reverseTitle: 'یہ رسید منسوخ کریں',
     reverseBody:

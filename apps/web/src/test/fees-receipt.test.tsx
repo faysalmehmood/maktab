@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { initI18n, setLanguage } from '@/i18n';
-import { printWhenReady, ReceiptPage, shareMode } from '@/pages/fees/Receipt';
+import { printWhenReady, ReceiptPage, shareMode, shareText } from '@/pages/fees/Receipt';
 import { mockApi, renderAt } from './api-mock';
 import { receiptId, receiptPrint } from './fee-fixtures';
 
@@ -65,6 +67,46 @@ describe('receipt view', () => {
     expect(style?.textContent).toMatch(
       /@page receipt-thermal \{ size: 58mm \d+mm; margin: 2mm; \}/,
     );
+  });
+
+  it('58 mm: the child name / admission no. row is a td row that print does not hide', async () => {
+    open('?fmt=thermal&lang=en');
+    const p = await paper();
+    const child = p.querySelector('tr.receipt-child');
+    expect(child?.textContent).toContain('Ali');
+    expect(child?.textContent).toContain('A-1');
+    expect(child?.querySelector('th')).toBeNull();
+    expect(child?.querySelector('td')?.getAttribute('colspan')).toBe('3');
+    expect(child?.classList.contains('receipt-cols')).toBe(false);
+    // Print CSS hides exactly the column-label row.
+    const css = readFileSync(resolve(__dirname, '../styles.css'), 'utf8');
+    const hidden = /\.receipt-thermal\s+([^{]+)\{\s*display:\s*none/.exec(css)?.[1]?.trim();
+    expect(hidden).toBe('.receipt-cols');
+    expect(p.querySelector(hidden as string)?.textContent).toContain('Amount');
+    // The signature line is part of the thermal receipt (and not print-hidden).
+    expect(p.querySelector('.receipt-foot')?.textContent).toContain('Signature');
+    expect(css).not.toMatch(/\.receipt-foot[^{]*\{[^}]*display:\s*none/);
+    expect(css).toMatch(/\.receipt \.num,[^{]*\{[^}]*white-space:\s*nowrap/);
+  });
+
+  it('58 mm: the page height is measured again when the language changes and after fonts load', async () => {
+    let release: () => void = () => undefined;
+    const ready = new Promise<void>((r) => {
+      release = r;
+    });
+    Object.defineProperty(document, 'fonts', { value: { ready }, configurable: true });
+    const h = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(400);
+    open('?fmt=thermal&lang=en');
+    await paper();
+    const css = () => document.querySelector('style[data-receipt-page="thermal"]')?.textContent;
+    expect(css()).toContain('size: 58mm 112mm');
+    h.mockReturnValue(800);
+    release();
+    await waitFor(() => expect(css()).toContain('size: 58mm 218mm'));
+    h.mockReturnValue(600);
+    fireEvent.click(document.getElementById('receipt-lang-ur') as HTMLElement);
+    await waitFor(() => expect(css()).toContain('size: 58mm 165mm'));
+    expect(document.querySelectorAll('style[data-receipt-page="thermal"]')).toHaveLength(1);
   });
 
   it('defaults to the school language, and the paper toggles change only the receipt', async () => {
@@ -131,39 +173,30 @@ describe('receipt view', () => {
   });
 });
 
-describe('share gating', () => {
-  const file = new File(['x'], 'r.html', { type: 'text/html' });
-  it('no Web Share → copy the text and link', () => {
-    expect(shareMode({} as Navigator, file)).toBe('copy');
+describe('share: text only (no file, no staff URL)', () => {
+  it('no Web Share → copy the text; Web Share → the share sheet with text', () => {
+    expect(shareMode({} as Navigator)).toBe('copy');
+    expect(shareMode({ share: () => Promise.resolve() } as unknown as Navigator)).toBe('text');
   });
-  it('Web Share without file support → text + link', () => {
-    expect(shareMode({ share: () => Promise.resolve() } as unknown as Navigator, file)).toBe(
-      'text',
-    );
-    expect(
-      shareMode(
-        { share: () => Promise.resolve(), canShare: () => false } as unknown as Navigator,
-        file,
-      ),
-    ).toBe('text');
+  it('the text has the school, receipt no., amount and date, and no link', () => {
+    const text = shareText(receiptPrint(), (k, o) => `${k}|${JSON.stringify(o)}`);
+    expect(text).toContain('Al-Noor');
+    expect(text).toContain('AN-2026-00001');
+    expect(text).toContain('PKR 7,000');
+    expect(text).toContain('2026-10-10');
+    expect(text).not.toMatch(/https?:|\/receipts\//);
   });
-  it('canShare({files}) → the receipt file is attached', () => {
-    expect(
-      shareMode(
-        { share: () => Promise.resolve(), canShare: () => true } as unknown as Navigator,
-        file,
-      ),
-    ).toBe('files');
-  });
-  it('the Share button calls navigator.share with the receipt text and link', async () => {
+  it('the Share button calls navigator.share with text only', async () => {
     const share = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { ...navigator, share, onLine: true, language: 'en' });
     open('?lang=en');
     await paper();
     fireEvent.click(screen.getByRole('button', { name: 'Share' }));
     await waitFor(() => expect(share).toHaveBeenCalledOnce());
-    const arg = share.mock.calls[0]?.[0] as { text: string; url: string };
-    expect(arg.url).toContain(`/receipts/${receiptId}`);
-    expect(arg.text).toContain('AN-2026-00001');
+    const arg = share.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(Object.keys(arg)).toEqual(['text']);
+    expect(arg.text).toBe(
+      'Al-Noor: receipt \u2068AN-2026-00001\u2069, \u2068PKR 7,000\u2069 received on \u20682026-10-10\u2069.',
+    );
   });
 });

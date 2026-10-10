@@ -169,6 +169,8 @@ bdi {
   font-family: var(--font-sans);
   line-height: 1.3;
   display: inline-block;
+  /* "PKR 1,000" never breaks across lines, even in the 58 mm amount column. */
+  white-space: nowrap;
 }
 /* Urdu names inside the receipt keep Nastaliq (bdi is for isolation, not the font). */
 .receipt[lang="ur"] bdi:not(.num) {
@@ -246,6 +248,15 @@ bdi {
 }
 .receipt-lines .end {
   text-align: end;
+  white-space: nowrap;
+  width: 1%;
+}
+.receipt-lines .receipt-child td {
+  font-weight: 600;
+}
+.receipt-lines .receipt-cols th {
+  font-size: 0.85em;
+  font-weight: 500;
 }
 .receipt-lines .total td {
   border-top: 2px solid #000;
@@ -256,6 +267,12 @@ bdi {
   border-top: 1px solid #999;
   padding-top: 0.3em;
   font-size: 0.9em;
+}
+/* 58 mm: the signature line keeps its own row and room to sign (it is inside the measured height). */
+.receipt-thermal .receipt-foot {
+  padding-top: 1.2em;
+  padding-bottom: 0.6em;
+  overflow-wrap: anywhere;
 }
 .receipt-banner {
   border: 2px solid #b91c1c;
@@ -287,7 +304,8 @@ bdi {
     page: receipt-thermal;
     border: 0;
   }
-  .receipt-thermal th {
+  /* Column labels only: the child's name / admission no. row (.receipt-child) always prints. */
+  .receipt-thermal .receipt-cols {
     display: none;
   }
 }

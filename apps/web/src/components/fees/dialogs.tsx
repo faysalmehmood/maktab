@@ -2,14 +2,19 @@ import {
   CONCESSION_REASONS,
   concessionInputSchema,
   type FeeLineDto,
+  type FineDto,
   type Paged,
+  type ReceiptDetailDto,
+  type RefundInput,
   type SponsorListItemDto,
+  type StudentFeesDto,
   type StudentListItem,
 } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AmountInput, Money, ReasonDialog } from '@/components/fees/common';
+import { useNavigate } from 'react-router';
+import { AmountInput, MethodChips, Money, ReasonDialog } from '@/components/fees/common';
 import { ErrorNote, Field, Num } from '@/components/form';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,7 +30,19 @@ import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { getJson, sendJson } from '@/lib/api';
-import { headLabel, karachiToday, rupeesToPaisa, useFeeHeads } from '@/lib/fees';
+import {
+  accountsFor,
+  headLabel,
+  karachiToday,
+  mintAttemptKey,
+  money,
+  needsAccount,
+  outcomeUnknown,
+  type PaymentMethod,
+  rupeesToPaisa,
+  useAccounts,
+  useFeeHeads,
+} from '@/lib/fees';
 import { type FieldErrors, issuesToErrors } from '@/lib/form';
 
 /** After any fee-changing action: every fee view refreshes (family, student tab, counter, lists). */
@@ -103,6 +120,18 @@ function FormDialog({
   );
 }
 
+/**
+ * The first day a concession takes effect: the first month starting on or after its from-date
+ * (a mid-month date starts next month; PLAN §14.7).
+ */
+export function concessionStartMonth(from: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return from;
+  if (from.endsWith('-01')) return from;
+  const [y, m] = from.split('-').map(Number) as [number, number];
+  const n = y * 12 + m; // next month, 0-based month + 1
+  return `${Math.floor(n / 12)}-${String((n % 12) + 1).padStart(2, '0')}-01`;
+}
+
 /** PLAN §14.7 "Reduce fee": reason, % or fixed, head, from date; then optionally regenerate. */
 export function ReduceFeeDialog({
   studentId,
@@ -148,12 +177,26 @@ export function ReduceFeeDialog({
       setSaved(true);
     },
   });
+  const applies = concessionStartMonth(d.from);
+  // Months of this student already billed on or after the month the concession starts: those are
+  // the ones a regenerate can update (one request per month, PLAN §15 budget).
+  const studentFees = useQuery({
+    queryKey: ['fee-student', studentId],
+    queryFn: () => getJson<StudentFeesDto>(`/api/fees/student/${studentId}`),
+    enabled: saved,
+  });
+  const billed = [
+    ...new Set(
+      [...(studentFees.data?.lines ?? []), ...(studentFees.data?.sponsored ?? [])]
+        .map((l) => l.period_key)
+        .filter((p) => p >= applies.slice(0, 7) && p <= today.slice(0, 7)),
+    ),
+  ].sort();
   const regen = useMutation({
-    mutationFn: () =>
-      sendJson('POST', '/api/fees/regenerate', {
-        student_id: studentId,
-        period: today.slice(0, 7),
-      }),
+    mutationFn: async () => {
+      for (const period of billed)
+        await sendJson('POST', '/api/fees/regenerate', { student_id: studentId, period });
+    },
     onSuccess: async () => {
       await invalidate();
       toast.success(t('fee.concession.regenerated'));
@@ -179,18 +222,28 @@ export function ReduceFeeDialog({
             <DialogTitle>{t('fee.concession.saved')}</DialogTitle>
             <DialogDescription>{t('fee.concession.explain')}</DialogDescription>
           </DialogHeader>
+          <p className="text-sm font-medium" id="concession-applies">
+            {t('fee.concession.appliesFrom', { date: `\u2068${applies}\u2069` })}
+          </p>
+          {studentFees.data && billed.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t('fee.concession.nothingBilled')}</p>
+          )}
           <ErrorNote error={regen.error} />
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               {t('common.close')}
             </Button>
-            <Button
-              id="concession-regenerate"
-              disabled={regen.isPending}
-              onClick={() => regen.mutate()}
-            >
-              {t('fee.concession.regenerate')}
-            </Button>
+            {billed.length > 0 && (
+              <Button
+                id="concession-regenerate"
+                disabled={regen.isPending}
+                onClick={() => regen.mutate()}
+              >
+                {t('fee.concession.regenerateFrom', {
+                  date: `\u2068${billed[0]}-01\u2069`,
+                })}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -205,6 +258,11 @@ export function ReduceFeeDialog({
         <>
           <bdi className="font-medium">{studentName}</bdi>
           <p className="mt-1 text-xs">{t('fee.concession.explain')}</p>
+          <p className="mt-1 text-xs font-medium" id="concession-applies-hint">
+            {t('fee.concession.appliesFrom', {
+              date: `\u2068${concessionStartMonth(d.from)}\u2069`,
+            })}
+          </p>
         </>
       }
       onSubmit={submit}
@@ -709,3 +767,192 @@ export const voidUnit = (line: FeeLineDto, all: readonly FeeLineDto[]) =>
           l.fee_head_id === line.fee_head_id &&
           l.period_key === line.period_key,
       );
+
+/** Waive a late fine (admin/owner, reason): POST /api/fees/fines/:id/waive; the waiver is audited. */
+export function WaiveFineDialog({
+  fine,
+  line,
+  open,
+  onOpenChange,
+}: {
+  fine: FineDto;
+  line?: FeeLineDto | undefined;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const invalidate = useFeeInvalidate();
+  const w = useMutation({
+    mutationFn: (reason: string) =>
+      sendJson('POST', `/api/fees/fines/${fine.id}/waive`, { reason }),
+    onSuccess: async () => {
+      await invalidate();
+      toast.success(t('fee.family.waived'));
+      onOpenChange(false);
+    },
+  });
+  return (
+    <ReasonDialog
+      id="waive"
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('fee.family.waiveTitle')}
+      body={t('fee.family.waiveBody')}
+      confirmLabel={t('fee.counter.waiveFine')}
+      pending={w.isPending}
+      error={w.error}
+      onConfirm={(r) => w.mutate(r)}
+    >
+      <p className="flex flex-wrap gap-2 text-sm" id="waive-line">
+        {line && <bdi>{line.student_name}</bdi>}
+        <Num>{fine.period_key}</Num>
+        {line && <bdi>{headLabel(line, i18n.language)}</bdi>}
+        <span className="ms-auto">
+          <Money paisa={fine.left} />
+        </span>
+      </p>
+    </ReasonDialog>
+  );
+}
+
+/** The body POST /api/refunds gets from the refund dialog (exported for tests). */
+export function refundBody(o: {
+  key: string;
+  payerType: 'family' | 'sponsor';
+  payerId: string;
+  amount: number;
+  method: PaymentMethod;
+  account: string;
+  reason: string;
+}): RefundInput {
+  return {
+    idempotency_key: o.key,
+    payer_type: o.payerType,
+    payer_id: o.payerId,
+    amount: o.amount,
+    method: o.method,
+    ...(needsAccount(o.method) ? { account_id: o.account } : {}),
+    reason: o.reason,
+  };
+}
+
+/**
+ * Refund from the payer's advance (admin/owner; today only). Amount ≤ credit, method, account for
+ * non-cash, reason. One idempotency key per attempt, kept while the outcome is unknown (a retry
+ * after a lost answer replays the same refund). Success opens the refund receipt.
+ */
+export function RefundDialog({
+  payerType = 'family',
+  payerId,
+  credit,
+  open,
+  onOpenChange,
+}: {
+  payerType?: 'family' | 'sponsor';
+  payerId: string;
+  credit: number;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const invalidate = useFeeInvalidate();
+  const accounts = useAccounts().data?.accounts ?? [];
+  const [amountText, setAmountText] = useState('');
+  const [method, setMethod] = useState<PaymentMethod>('cash');
+  const [account, setAccount] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState<RefundInput | null>(null);
+  const choices = accountsFor(method, accounts);
+  const r = useMutation({
+    mutationFn: (body: RefundInput) =>
+      sendJson<{ receipt: ReceiptDetailDto; replayed: boolean }>('POST', '/api/refunds', body),
+    onSuccess: async (res) => {
+      setPending(null);
+      await invalidate();
+      toast.success(t('fee.family.refundDone'));
+      onOpenChange(false);
+      navigate(`/receipts/${res.receipt.id}`);
+    },
+    onError: (err) => {
+      if (!outcomeUnknown(err)) setPending(null);
+    },
+  });
+  const locked = pending !== null;
+  return (
+    <ReasonDialog
+      id="refund"
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('fee.family.refundTitle')}
+      body={t('fee.family.refundBody')}
+      confirmLabel={t('fee.family.refund')}
+      pending={r.isPending}
+      error={r.error}
+      onConfirm={(reason) => {
+        if (pending) return r.mutate(pending);
+        const amount = rupeesToPaisa(amountText);
+        const e: Record<string, string> = {};
+        if (!amountText.trim()) e.amount = 'amount_required';
+        else if (!amount) e.amount = 'amount_invalid';
+        else if (amount > credit) e.amount = 'exceeds_credit';
+        if (needsAccount(method) && !account) e.account = 'account_required';
+        setErrors(e);
+        if (Object.keys(e).length || !amount) return;
+        const body = refundBody({
+          key: mintAttemptKey('rfd'),
+          payerType,
+          payerId,
+          amount,
+          method,
+          account,
+          reason,
+        });
+        setPending(body);
+        r.mutate(body);
+      }}
+    >
+      <Field
+        id="refund-amount"
+        label="fee.cash.amount"
+        required
+        error={errors.amount}
+        hint={t('fee.family.refundMax', { max: `\u2068${money(credit)}\u2069` })}
+      >
+        <fieldset disabled={locked} className="contents">
+          <AmountInput id="refund-amount" value={amountText} onChange={setAmountText} />
+        </fieldset>
+      </Field>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">{t('fee.family.refundMethod')}</span>
+        <fieldset disabled={locked} className="contents">
+          <MethodChips
+            name="refund-method"
+            value={method}
+            onChange={(m) => {
+              setMethod(m);
+              setAccount('');
+            }}
+          />
+        </fieldset>
+      </div>
+      {needsAccount(method) && (
+        <Field id="refund-account" label="fee.family.refundAccount" required error={errors.account}>
+          <Select
+            id="refund-account"
+            value={account}
+            disabled={locked}
+            onChange={(e) => setAccount(e.target.value)}
+          >
+            <option value="">{t('fee.counter.chooseAccount')}</option>
+            {choices.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+    </ReasonDialog>
+  );
+}

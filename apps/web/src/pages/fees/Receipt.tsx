@@ -23,21 +23,37 @@ export async function printWhenReady(): Promise<void> {
   window.print();
 }
 
-type ShareMode = 'files' | 'text' | 'copy';
+type ShareMode = 'text' | 'copy';
 
-/** What "Share" can do here: a file (if the browser can share files), text + link, or copy. */
-export function shareMode(nav: Navigator = navigator, file?: File): ShareMode {
-  if (typeof nav.share !== 'function') return 'copy';
-  if (file && typeof nav.canShare === 'function' && nav.canShare({ files: [file] })) return 'files';
-  return 'text';
+/** What "Share" can do here: the share sheet with text, or copy the text. Never a file or URL. */
+export function shareMode(nav: Navigator = navigator): ShareMode {
+  return typeof nav.share === 'function' ? 'text' : 'copy';
 }
 
-function receiptFile(p: ReceiptPrintDto): File | undefined {
-  if (typeof File === 'undefined') return undefined;
-  const paper = document.getElementById('receipt-paper');
-  const css = [...document.querySelectorAll('style')].map((s) => s.textContent).join('\n');
-  const html = `<!doctype html><html lang="${paper?.getAttribute('lang') ?? 'en'}"><head><meta charset="utf-8"><title>${p.receipt.receipt_no}</title><style>${css}</style></head><body>${paper?.outerHTML ?? ''}</body></html>`;
-  return new File([html], `receipt-${p.receipt.receipt_no}.html`, { type: 'text/html' });
+/**
+ * The link a guardian may open for this receipt. Staff URLs (/receipts/:id) need a staff session,
+ * so nothing is shared until the parent page exists.
+ * TODO(M5): return the parent magic-link page for this receipt (PLAN §14.10) and append it below.
+ */
+export const parentReceiptLink = (_r: ReceiptPrintDto['receipt']): string | null => null;
+
+/** The text "Share" sends: school, receipt no., amount and date (plus the M5 parent link). */
+export function shareText(
+  data: ReceiptPrintDto,
+  t: (
+    k: 'fee.receipt.shareText',
+    o: { school: string; no: string; amount: string; date: string },
+  ) => string,
+): string {
+  const r = data.receipt;
+  const text = t('fee.receipt.shareText', {
+    school: data.school.name,
+    no: `\u2068${r.receipt_no}\u2069`,
+    amount: `\u2068${money(r.amount)}\u2069`,
+    date: `\u2068${r.business_date}\u2069`,
+  });
+  const link = parentReceiptLink(r);
+  return link ? `${text}\n${link}` : text;
 }
 
 function ReverseDialog({
@@ -142,19 +158,11 @@ export function ReceiptPage() {
   if (!data) return <ErrorNote error={q.error} />;
   const r = data.receipt;
   const share = async () => {
-    const url = `${location.origin}/receipts/${r.id}`;
-    const text = t('fee.receipt.shareText', {
-      no: `⁨${r.receipt_no}⁩`,
-      amount: `⁨${money(r.amount)}⁩`,
-      school: data.school.name,
-    });
-    const file = receiptFile(data);
-    const mode = shareMode(navigator, file);
+    const text = shareText(data, (k, o) => t(k, o));
     try {
-      if (mode === 'files' && file) await navigator.share({ text, url, files: [file] });
-      else if (mode === 'text') await navigator.share({ text, url });
+      if (shareMode(navigator) === 'text') await navigator.share({ text });
       else {
-        await navigator.clipboard?.writeText(`${text}\n${url}`);
+        await navigator.clipboard?.writeText(text);
         toast.success(t('fee.receipt.copied'));
       }
     } catch {
@@ -182,7 +190,10 @@ export function ReceiptPage() {
             {r.reversed_by && (
               <>
                 {' · '}
-                <Link className="underline" to={`/receipts/${r.reversed_by}`}>
+                <Link
+                  className="inline-flex min-h-11 items-center underline"
+                  to={`/receipts/${r.reversed_by}`}
+                >
                   {t('fee.receipt.reversedBy')}
                 </Link>
               </>
@@ -190,7 +201,10 @@ export function ReceiptPage() {
           </p>
         )}
         {r.reverses_id && (
-          <Link className="text-sm underline" to={`/receipts/${r.reverses_id}`}>
+          <Link
+            className="inline-flex min-h-11 items-center self-start text-sm underline"
+            to={`/receipts/${r.reverses_id}`}
+          >
             {t('fee.receipt.original')}
           </Link>
         )}

@@ -4,14 +4,16 @@ import type {
   FamilyHitDto,
   FamilyStatementDto,
   FeeLineDto,
+  FineDto,
   SponsorStatementDto,
 } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calculator, Search } from 'lucide-react';
-import { type FormEvent, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Calculator, Search } from 'lucide-react';
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { AmountInput, Figure, MethodChips, Money, StatusBadge } from '@/components/fees/common';
+import { WaiveFineDialog } from '@/components/fees/dialogs';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,23 +32,30 @@ import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
 import { ApiError, getJson, sendJson } from '@/lib/api';
 import {
-  AttemptKey,
+  type AllocationPreview,
   accountsFor,
   addDaysIso,
+  balanceAfter,
+  canConcession,
   familyKey,
+  fineOf,
+  formatRupeeInput,
   headLabel,
   karachiToday,
   mayBackdate,
+  mintAttemptKey,
   money,
   needsAccount,
   openDuesInOrder,
+  outcomeUnknown,
   type PaymentMethod,
+  paisaToRupeeText,
   previewDirected,
   previewOldestFirst,
   rupeesToPaisa,
   useAccounts,
 } from '@/lib/fees';
-import { useRoles } from '@/lib/roles';
+import { canManageSettings, useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 
 /** What the counter collects against: a family (normal) or a sponsor (their billed share). */
@@ -61,6 +70,8 @@ export type Payer = {
   dues_hash: string;
   due_before_credit: number;
   net_due: number;
+  /** Late fines on the payer's roots (family only; sponsors are never fined). */
+  fines: FineDto[];
 };
 
 export const payerFromFamily = (f: FamilyStatementDto): Payer => ({
@@ -74,6 +85,7 @@ export const payerFromFamily = (f: FamilyStatementDto): Payer => ({
   dues_hash: f.dues_hash,
   due_before_credit: f.totals.due_before_credit,
   net_due: f.totals.due,
+  fines: f.fines ?? [],
 });
 
 export const payerFromSponsor = (s: SponsorStatementDto): Payer => {
@@ -89,6 +101,7 @@ export const payerFromSponsor = (s: SponsorStatementDto): Payer => {
     dues_hash: s.dues_hash,
     due_before_credit: due,
     net_due: Math.max(0, due - s.credit),
+    fines: [],
   };
 };
 
@@ -103,6 +116,8 @@ function usePayer(family: string | null, sponsor: string | null) {
         : payerFromFamily(await getJson<FamilyStatementDto>(`/api/fees/family/${family}`)),
     enabled: !!(family || sponsor),
     staleTime: 0,
+    // On reconnect the counter first replays a pending attempt, then reloads (CollectForm).
+    refetchOnReconnect: false,
   });
 }
 
@@ -185,12 +200,18 @@ function LineRow({
   checked,
   onToggle,
   allocated,
+  fine,
+  onWaive,
+  disabled,
 }: {
   line: FeeLineDto;
+  disabled?: boolean | undefined;
   selectable?: boolean;
   checked?: boolean;
   onToggle?: () => void;
   allocated?: number;
+  fine?: FineDto | undefined;
+  onWaive?: (() => void) | undefined;
 }) {
   const { t, i18n } = useTranslation();
   const head = (
@@ -207,6 +228,7 @@ function LineRow({
           <Checkbox
             id={`direct-${line.id}`}
             checked={!!checked}
+            disabled={disabled}
             onChange={onToggle}
             label={head}
             className="flex-1"
@@ -247,6 +269,25 @@ function LineRow({
           </span>
         )}
       </dl>
+      {fine && (
+        <div className="flex flex-wrap items-center gap-2">
+          {fine.left > 0 && onWaive ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              id={`waive-${fine.id}`}
+              onClick={onWaive}
+            >
+              {t('fee.counter.waiveFine')}
+            </Button>
+          ) : fine.left <= 0 ? (
+            <Badge variant="outline" data-waived={fine.id}>
+              {t('fee.counter.fineWaived')}
+            </Badge>
+          ) : null}
+        </div>
+      )}
     </li>
   );
 }
@@ -258,12 +299,18 @@ export function PayerCard({
   direct,
   chosen,
   onToggle,
+  onWaive,
+  locked,
 }: {
   payer: Payer;
+  /** An unresolved attempt is pending: the ticks are frozen with it. */
+  locked?: boolean;
   allocation?: Map<string, number>;
   direct?: boolean;
   chosen?: ReadonlySet<string>;
   onToggle?: (id: string) => void;
+  /** Present for owner/admin (fee.concession): a fined line offers "Waive fine". */
+  onWaive?: (fine: FineDto, line: FeeLineDto) => void;
 }) {
   const { t } = useTranslation();
   const open = openDuesInOrder(payer.lines);
@@ -317,8 +364,11 @@ export function PayerCard({
                     line={l}
                     selectable={direct}
                     checked={chosen?.has(l.id)}
+                    disabled={locked}
                     onToggle={() => onToggle?.(l.id)}
                     allocated={allocation?.get(l.id)}
+                    fine={fineOf(payer.fines, l.id)}
+                    onWaive={onWaive && (() => onWaive(fineOf(payer.fines, l.id) as FineDto, l))}
                   />
                 ))}
               </ul>
@@ -381,25 +431,108 @@ export function collectBody(payer: Payer, a: Attempt, key: string, today: string
   };
 }
 
-function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<unknown> }) {
-  const { t } = useTranslation();
+type PreviewRow = {
+  id: string;
+  student_name: string;
+  period_key: string;
+  head_name: string;
+  head_name_ur: string | null;
+  amount: number;
+};
+type PreviewSnapshot = { rows: PreviewRow[]; credit: number; balance: number };
+
+/**
+ * One collection attempt: its key is minted once (amount + method + payer + collector + a nonce,
+ * never the dues hash) and the body is frozen with it. It stays until success, `stale_dues`,
+ * `idempotency_conflict`, a definite refusal, or "Start over"; while it stays, every retry —
+ * including the automatic one on reconnect — re-sends this exact body, so a lost answer replays
+ * the original receipt instead of charging twice.
+ */
+export type PendingAttempt = {
+  key: string;
+  body: CollectInput;
+  attempt: Attempt;
+  preview: PreviewSnapshot;
+};
+
+export const pendingStorageKey = (payer: Pick<Payer, 'type' | 'id'>) =>
+  `maktab.counter.pending.${payer.type}.${payer.id}`;
+
+function loadPending(k: string): PendingAttempt | null {
+  try {
+    const raw = sessionStorage.getItem(k);
+    return raw ? (JSON.parse(raw) as PendingAttempt) : null;
+  } catch {
+    return null;
+  }
+}
+function savePending(k: string, p: PendingAttempt | null): void {
+  try {
+    if (p) sessionStorage.setItem(k, JSON.stringify(p));
+    else sessionStorage.removeItem(k);
+  } catch {
+    // Private mode / storage blocked: the attempt still lives in memory for this page.
+  }
+}
+
+const snapshot = (p: AllocationPreview<FeeLineDto>, payerCredit: number): PreviewSnapshot => ({
+  rows: p.rows.map((r) => ({
+    id: r.line.id,
+    student_name: r.line.student_name,
+    period_key: r.line.period_key,
+    head_name: r.line.head_name,
+    head_name_ur: r.line.head_name_ur,
+    amount: r.amount,
+  })),
+  credit: p.credit,
+  balance: balanceAfter(p, payerCredit),
+});
+
+function CollectForm({
+  payer,
+  onStale,
+  onRefresh,
+}: {
+  payer: Payer;
+  onStale: () => Promise<unknown>;
+  onRefresh: () => Promise<unknown>;
+}) {
+  const { t, i18n } = useTranslation();
   const roles = useRoles();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const accounts = useAccounts().data?.accounts ?? [];
-  const [amountText, setAmountText] = useState('');
+  const storageKey = pendingStorageKey(payer);
+  const restored = useMemo(() => loadPending(storageKey), [storageKey]);
+  const [pending, setPendingState] = useState<PendingAttempt | null>(restored);
+  const pendingRef = useRef(pending);
+  const setPending = useCallback(
+    (p: PendingAttempt | null) => {
+      pendingRef.current = p;
+      setPendingState(p);
+      savePending(storageKey, p);
+    },
+    [storageKey],
+  );
+  const a0 = restored?.attempt;
+  const [amountText, setAmountText] = useState(
+    a0 ? formatRupeeInput(paisaToRupeeText(a0.amount)) : '',
+  );
   const [keypad, setKeypad] = useState(false);
-  const [method, setMethod] = useState<PaymentMethod>('cash');
-  const [account, setAccount] = useState('');
-  const [reference, setReference] = useState('');
-  const [yesterday, setYesterday] = useState(false);
-  const [reason, setReason] = useState('');
-  const [direct, setDirect] = useState(false);
-  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [method, setMethod] = useState<PaymentMethod>(a0?.method ?? 'cash');
+  const [account, setAccount] = useState(a0?.account ?? '');
+  const [reference, setReference] = useState(a0?.reference ?? '');
+  const [yesterday, setYesterday] = useState(a0?.yesterday ?? false);
+  const [reason, setReason] = useState(a0?.reason ?? '');
+  const [direct, setDirect] = useState(!!a0?.directed);
+  const [chosen, setChosen] = useState<Set<string>>(
+    new Set(a0?.directed?.map((d) => d.charge_id) ?? []),
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
-  const attempt = useRef(new AttemptKey());
+  const [waiving, setWaiving] = useState<{ fine: FineDto; line: FeeLineDto } | null>(null);
   const today = karachiToday();
+  const locked = pending !== null;
 
   const amount = rupeesToPaisa(amountText);
   const backdateOk = mayBackdate(roles, method);
@@ -412,6 +545,26 @@ function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<
       : previewOldestFirst(payer.lines, amount);
   }, [amount, direct, chosen, payer.lines]);
   const allocation = new Map(preview?.rows.map((r) => [r.line.id, r.amount]) ?? []);
+  const directEmpty = direct && chosen.size === 0;
+  const amountHigh = !!amount && payer.net_due > 0 && amount > 3 * payer.net_due;
+
+  // After a reload (stale_dues, refocus): ticks on lines that are no longer due are dropped; if
+  // that leaves "Choose lines" with nothing ticked, the mode goes back to oldest-first, so the mode
+  // always matches the ticks. A pending attempt keeps its frozen ticks.
+  const openIds = useMemo(
+    () => new Set(openDuesInOrder(payer.lines).map((l) => l.id)),
+    [payer.lines],
+  );
+  useEffect(() => {
+    if (pending) return;
+    const kept = new Set([...chosen].filter((id) => openIds.has(id)));
+    if (kept.size === chosen.size) return;
+    setChosen(kept);
+    if (kept.size === 0 && direct) {
+      setDirect(false);
+      toast.info(t('fee.counter.directReset'));
+    }
+  }, [openIds, chosen, direct, pending, t]);
 
   const current = (): Attempt | null => {
     const e: Record<string, string> = {};
@@ -420,7 +573,7 @@ function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<
     if (needsAccount(method) && !account) e.account = 'account_required';
     if (isYesterday && !reason.trim()) e.reason = 'backdate_reason_required';
     setErrors(e);
-    if (Object.keys(e).length || !amount || !preview) return null;
+    if (Object.keys(e).length || !amount || !preview || directEmpty) return null;
     return {
       amount,
       method,
@@ -437,14 +590,11 @@ function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<
   };
 
   const collect = useMutation({
-    mutationFn: (a: Attempt) => {
-      const sig = JSON.stringify([payer.type, payer.id, payer.dues_hash, a]);
-      const key = attempt.current.for(sig);
-      return sendJson<CollectResultDto>('POST', '/api/receipts', collectBody(payer, a, key, today));
-    },
+    mutationFn: (p: PendingAttempt) => sendJson<CollectResultDto>('POST', '/api/receipts', p.body),
     onSuccess: async (r) => {
-      attempt.current.reset();
+      setPending(null);
       setConfirming(false);
+      if (r.replayed) toast.info(t('fee.counter.replayed'));
       await qc.invalidateQueries({ queryKey: ['fee-search'] });
       await qc.invalidateQueries({ queryKey: ['fee-dashboard'] });
       await qc.invalidateQueries({ queryKey: familyKey(payer.id) });
@@ -452,38 +602,131 @@ function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<
     },
     onError: async (err) => {
       if (err instanceof ApiError && err.code === 'stale_dues') {
-        attempt.current.reset();
+        // The server refused before writing anything: the attempt is over; a new key is minted
+        // only when the collector confirms again against the reloaded dues.
+        setPending(null);
         setConfirming(false);
-        setChosen(new Set());
         await onStale();
         toast.info(t('fee.counter.reloaded'));
       } else if (err instanceof ApiError && err.code === 'idempotency_conflict') {
-        attempt.current.reset();
+        setPending(null);
+      } else if (!outcomeUnknown(err)) {
+        // A definite refusal (validation, permission, closed drawer): nothing was written.
+        setPending(null);
       }
-      // Anything else (network, 5xx): the key is kept, so "Confirm" again replays this attempt.
+      // Unknown outcome (no answer, 5xx): the attempt stays pending and locked; only the same key
+      // is ever sent for it again.
     },
   });
+  const mutateRef = useRef(collect.mutate);
+  mutateRef.current = collect.mutate;
+  const busyRef = useRef(false);
+  busyRef.current = collect.isPending;
+
+  // Reconnect: replay the pending attempt (same key, same body) before anything else; only then
+  // reload the payer. Without a pending attempt, just reload.
+  useEffect(() => {
+    const onOnline = () => {
+      const p = pendingRef.current;
+      if (p && !busyRef.current) {
+        toast.info(t('fee.counter.backOnline'));
+        mutateRef.current(p, { onSettled: () => void onRefresh() });
+      } else if (!p) void onRefresh();
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [onRefresh, t]);
 
   const open = (e: FormEvent) => {
     e.preventDefault();
     collect.reset();
-    if (current()) setConfirming(true);
+    if (pending || current()) setConfirming(true);
   };
   const issue = () => {
+    if (pendingRef.current) return collect.mutate(pendingRef.current);
     const a = current();
-    if (a) collect.mutate(a);
+    if (!a || !preview) return;
+    const key = mintAttemptKey();
+    const p: PendingAttempt = {
+      key,
+      body: collectBody(payer, a, key, today),
+      attempt: a,
+      preview: snapshot(preview, payer.credit),
+    };
+    setPending(p);
+    collect.mutate(p);
+  };
+  const startOver = () => {
+    setPending(null);
+    collect.reset();
+    setConfirming(false);
   };
   const networkError =
     collect.error && !(collect.error instanceof ApiError) ? new Error('network') : collect.error;
 
+  // What the confirm dialog shows: the frozen attempt when one is pending, else the form.
+  const shown: { a: Attempt; view: PreviewSnapshot } | null = pending
+    ? { a: pending.attempt, view: pending.preview }
+    : amount && preview
+      ? {
+          a: {
+            amount,
+            method,
+            account,
+            reference,
+            yesterday: isYesterday,
+            reason,
+            directed: null,
+          },
+          view: snapshot(preview, payer.credit),
+        }
+      : null;
+  const shownDate = shown?.a.yesterday ? addDaysIso(today, -1) : today;
+  const shownAccount = shown && accounts.find((x) => x.id === shown.a.account);
+
   return (
     <form onSubmit={open} className="flex flex-col gap-4" id="collect-form" noValidate>
+      {pending && (
+        <div
+          role="alert"
+          id="counter-pending"
+          className="flex flex-col gap-2 rounded-md border border-amber-500 bg-amber-50 p-3 text-sm dark:bg-amber-950"
+        >
+          <p className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden />
+            {t('fee.counter.pendingTitle')}
+          </p>
+          <p>{t('fee.counter.pendingBody')}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              id="counter-retry"
+              disabled={collect.isPending}
+              onClick={() => collect.mutate(pending)}
+            >
+              {collect.isPending ? t('fee.counter.confirming') : t('fee.counter.retry')}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              id="counter-start-over"
+              disabled={collect.isPending}
+              onClick={startOver}
+            >
+              {t('fee.counter.startOver')}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('fee.counter.startOverNote')}</p>
+        </div>
+      )}
       <PayerCard
         payer={payer}
         allocation={allocation}
         direct={direct}
         chosen={chosen}
+        locked={locked}
         onToggle={(id) =>
+          !locked &&
           setChosen((s) => {
             const n = new Set(s);
             if (n.has(id)) n.delete(id);
@@ -491,113 +734,138 @@ function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<
             return n;
           })
         }
+        {...(canConcession(roles) && payer.type === 'family'
+          ? { onWaive: (fine: FineDto, line: FeeLineDto) => setWaiving({ fine, line }) }
+          : {})}
       />
       <Card className="gap-3 py-4">
-        <CardContent className="flex flex-col gap-4 px-4">
-          <Field id="counter-amount" label="fee.counter.amount" required error={errors.amount}>
-            <div className="flex flex-col gap-2">
-              <AmountInput
-                id="counter-amount"
-                value={amountText}
-                onChange={setAmountText}
-                keypad={keypad}
-                invalid={!!errors.amount}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="self-start"
-                aria-pressed={keypad}
-                onClick={() => setKeypad((k) => !k)}
-              >
-                <Calculator aria-hidden />
-                {t('fee.counter.keypad')}
-              </Button>
-            </div>
-          </Field>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">{t('fee.counter.method')}</span>
-            <MethodChips
-              value={method}
-              onChange={(m) => {
-                setMethod(m);
-                setAccount('');
-                if (m === 'cash') setYesterday(false);
-              }}
-            />
-          </div>
-          {needsAccount(method) && (
-            <Field id="counter-account" label="fee.counter.account" required error={errors.account}>
-              {choices.length === 0 ? (
-                <p className="text-sm text-destructive">{t('fee.counter.noAccounts')}</p>
-              ) : (
-                <Select
-                  id="counter-account"
-                  value={account}
-                  onChange={(e) => setAccount(e.target.value)}
-                  aria-invalid={!!errors.account || undefined}
+        <CardContent className="px-4">
+          <fieldset disabled={locked} className="flex min-w-0 flex-col gap-4" id="counter-inputs">
+            <Field id="counter-amount" label="fee.counter.amount" required error={errors.amount}>
+              <div className="flex flex-col gap-2">
+                <AmountInput
+                  id="counter-amount"
+                  value={amountText}
+                  onChange={setAmountText}
+                  keypad={keypad && !locked}
+                  invalid={!!errors.amount}
+                />
+                {amountHigh && (
+                  <p
+                    role="status"
+                    id="counter-amount-high"
+                    className="text-sm font-medium text-amber-700 dark:text-amber-400"
+                  >
+                    {t('fee.counter.amountHigh', { due: `⁨${money(payer.net_due)}⁩` })}
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="self-start"
+                  aria-pressed={keypad}
+                  onClick={() => setKeypad((k) => !k)}
                 >
-                  <option value="">{t('fee.counter.chooseAccount')}</option>
-                  {choices.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
+                  <Calculator aria-hidden />
+                  {t('fee.counter.keypad')}
+                </Button>
+              </div>
             </Field>
-          )}
-          {method !== 'cash' && (
-            <Field id="counter-reference" label="fee.counter.reference">
-              <Input
-                id="counter-reference"
-                value={reference}
-                maxLength={60}
-                dir="ltr"
-                onChange={(e) => setReference(e.target.value)}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">{t('fee.counter.method')}</span>
+              <MethodChips
+                value={method}
+                onChange={(m) => {
+                  setMethod(m);
+                  setAccount('');
+                  if (m === 'cash') setYesterday(false);
+                }}
               />
-            </Field>
-          )}
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-medium">{t('fee.counter.date')}</span>
-            <p id="counter-date">
-              <Num>{isYesterday ? addDaysIso(today, -1) : today}</Num>{' '}
-              <span className="text-sm text-muted-foreground">
-                {isYesterday ? '' : `(${t('fee.counter.today')})`}
-              </span>
-            </p>
-            {method === 'cash' ? (
-              <p className="text-xs text-muted-foreground">{t('fee.counter.cashToday')}</p>
-            ) : (
-              backdateOk && (
-                <>
-                  <Checkbox
-                    id="counter-yesterday"
-                    checked={yesterday}
-                    onChange={(e) => setYesterday(e.target.checked)}
-                    label={t('fee.counter.yesterday')}
-                  />
-                  {yesterday && (
-                    <Field
-                      id="counter-backdate-reason"
-                      label="fee.counter.backdateReason"
-                      required
-                      error={errors.reason}
-                      hint={t('fee.counter.yesterdayHint')}
-                    >
-                      <Input
-                        id="counter-backdate-reason"
-                        value={reason}
-                        maxLength={200}
-                        onChange={(e) => setReason(e.target.value)}
-                      />
-                    </Field>
-                  )}
-                </>
-              )
+            </div>
+            {needsAccount(method) && (
+              <Field
+                id="counter-account"
+                label="fee.counter.account"
+                required
+                error={errors.account}
+              >
+                {choices.length === 0 ? (
+                  <p className="text-sm text-destructive" id="counter-no-accounts">
+                    {t(
+                      canManageSettings(roles)
+                        ? 'fee.counter.noAccounts'
+                        : 'fee.counter.noAccountsAsk',
+                    )}
+                  </p>
+                ) : (
+                  <Select
+                    id="counter-account"
+                    value={account}
+                    onChange={(e) => setAccount(e.target.value)}
+                    aria-invalid={!!errors.account || undefined}
+                  >
+                    <option value="">{t('fee.counter.chooseAccount')}</option>
+                    {choices.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
             )}
-          </div>
+            {method !== 'cash' && (
+              <Field id="counter-reference" label="fee.counter.reference">
+                <Input
+                  id="counter-reference"
+                  value={reference}
+                  maxLength={60}
+                  dir="ltr"
+                  onChange={(e) => setReference(e.target.value)}
+                />
+              </Field>
+            )}
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium">{t('fee.counter.date')}</span>
+              <p id="counter-date">
+                <Num>{isYesterday ? addDaysIso(today, -1) : today}</Num>{' '}
+                <span className="text-sm text-muted-foreground">
+                  {isYesterday ? '' : `(${t('fee.counter.today')})`}
+                </span>
+              </p>
+              {method === 'cash' ? (
+                <p className="text-xs text-muted-foreground">{t('fee.counter.cashToday')}</p>
+              ) : (
+                backdateOk && (
+                  <>
+                    <Checkbox
+                      id="counter-yesterday"
+                      checked={yesterday}
+                      onChange={(e) => setYesterday(e.target.checked)}
+                      label={t('fee.counter.yesterday')}
+                    />
+                    {yesterday && (
+                      <Field
+                        id="counter-backdate-reason"
+                        label="fee.counter.backdateReason"
+                        required
+                        error={errors.reason}
+                        hint={t('fee.counter.yesterdayHint')}
+                      >
+                        <Input
+                          id="counter-backdate-reason"
+                          value={reason}
+                          maxLength={200}
+                          onChange={(e) => setReason(e.target.value)}
+                        />
+                      </Field>
+                    )}
+                  </>
+                )
+              )}
+            </div>
+          </fieldset>
         </CardContent>
       </Card>
 
@@ -606,7 +874,7 @@ function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<
           <CardTitle>{t('fee.counter.allocation')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 px-4">
-          <fieldset className="flex flex-wrap gap-2">
+          <fieldset className="flex flex-wrap gap-2" disabled={locked}>
             {[false, true].map((d) => (
               <button
                 key={String(d)}
@@ -624,7 +892,16 @@ function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<
             ))}
           </fieldset>
           {direct && <p className="text-xs text-muted-foreground">{t('fee.counter.directHint')}</p>}
-          {preview && (
+          {directEmpty && (
+            <p
+              role="status"
+              id="alloc-direct-empty"
+              className="text-sm font-medium text-destructive"
+            >
+              {t('fee.counter.directEmpty')}
+            </p>
+          )}
+          {preview && !directEmpty && (
             <ul className="flex flex-col gap-1 text-sm" id="allocation-rows">
               {preview.rows.map((r) => (
                 <li key={r.line.id} className="flex gap-2" data-alloc={r.line.id}>
@@ -641,10 +918,10 @@ function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<
                   <Money paisa={preview.credit} />
                 </span>
               </li>
-              <li className="flex gap-2 font-medium">
-                {t('fee.counter.afterDue')}
+              <li className="flex gap-2 font-medium" id="allocation-after">
+                {t('fee.counter.balanceAfter')}
                 <span className="ms-auto">
-                  <Money paisa={Math.max(0, preview.after)} />
+                  <Money paisa={balanceAfter(preview, payer.credit)} />
                 </span>
               </li>
             </ul>
@@ -653,27 +930,74 @@ function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<
       </Card>
 
       <ErrorNote error={confirming ? null : networkError} />
-      <Button type="submit" size="lg" id="counter-confirm" disabled={collect.isPending}>
+      <Button
+        type="submit"
+        size="lg"
+        id="counter-confirm"
+        disabled={collect.isPending || (!locked && directEmpty)}
+      >
         {t('fee.counter.confirm')}
       </Button>
 
       <Dialog open={confirming} onOpenChange={(o) => !collect.isPending && setConfirming(o)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('fee.counter.confirmTitle')}</DialogTitle>
             <DialogDescription>
               {t('fee.counter.confirmBody', {
-                amount: `⁨${money(amount ?? 0)}⁩`,
-                method: t(`fee.methods.${method}`),
+                amount: `⁨${money(shown?.a.amount ?? 0)}⁩`,
+                method: t(`fee.methods.${shown?.a.method ?? method}`),
                 family: `⁨${payer.name}⁩`,
               })}
             </DialogDescription>
           </DialogHeader>
-          {preview && (
-            <p className="text-sm">
-              {t('fee.counter.afterDue')}: <Money paisa={Math.max(0, preview.after)} /> ·{' '}
-              {t('fee.counter.toCredit')}: <Money paisa={preview.credit} />
-            </p>
+          {shown && (
+            <div className="flex flex-col gap-3 text-sm" id="confirm-details">
+              {shown.a.yesterday && (
+                <p
+                  role="alert"
+                  id="confirm-yesterday"
+                  className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-base font-semibold text-destructive"
+                >
+                  <AlertTriangle className="size-5 shrink-0" aria-hidden />
+                  {t('fee.counter.yesterdayWarning', { date: `⁨${shownDate}⁩` })}
+                </p>
+              )}
+              <ul className="flex flex-col divide-y" id="confirm-rows">
+                {shown.view.rows.map((r) => (
+                  <li key={r.id} className="flex flex-wrap gap-x-2 py-1" data-confirm-row={r.id}>
+                    <bdi>{r.student_name}</bdi>·<Num>{r.period_key}</Num>·
+                    <bdi>{headLabel(r, i18n.language)}</bdi>
+                    <span className="ms-auto">
+                      <Money paisa={r.amount} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                {needsAccount(shown.a.method) && (
+                  <>
+                    <dt className="text-muted-foreground">{t('fee.counter.confirmAccount')}</dt>
+                    <dd id="confirm-account">{shownAccount?.name ?? ''}</dd>
+                  </>
+                )}
+                <dt className="text-muted-foreground">{t('fee.counter.confirmDate')}</dt>
+                <dd id="confirm-date">
+                  <Num>{shownDate}</Num>{' '}
+                  {!shown.a.yesterday && (
+                    <span className="text-muted-foreground">({t('fee.counter.today')})</span>
+                  )}
+                </dd>
+                <dt className="text-muted-foreground">{t('fee.counter.toCredit')}</dt>
+                <dd id="confirm-credit">
+                  <Money paisa={shown.view.credit} />
+                </dd>
+                <dt className="text-muted-foreground">{t('fee.counter.balanceAfter')}</dt>
+                <dd id="confirm-after">
+                  <Money paisa={shown.view.balance} />
+                </dd>
+              </dl>
+            </div>
           )}
           <ErrorNote error={networkError} />
           <DialogFooter>
@@ -691,6 +1015,14 @@ function CollectForm({ payer, onStale }: { payer: Payer; onStale: () => Promise<
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {waiving && (
+        <WaiveFineDialog
+          open
+          fine={waiving.fine}
+          line={waiving.line}
+          onOpenChange={(o) => !o && setWaiving(null)}
+        />
+      )}
     </form>
   );
 }
@@ -704,8 +1036,11 @@ export function CounterPage() {
   const payer = usePayer(family, sponsor);
   const qc = useQueryClient();
   const pick = (id: string) => setParams({ family: id });
-  const refetch = () =>
-    payer.refetch().then(() => qc.invalidateQueries({ queryKey: ['fee-search'] }));
+  const { refetch: refetchPayer } = payer;
+  const refetch = useCallback(
+    () => refetchPayer().then(() => qc.invalidateQueries({ queryKey: ['fee-search'] })),
+    [refetchPayer, qc],
+  );
   return (
     <section className="flex max-w-2xl flex-col gap-4">
       <PageTitle
@@ -723,9 +1058,15 @@ export function CounterPage() {
       {payer.isLoading && <p className="text-muted-foreground">{t('common.loading')}</p>}
       <ErrorNote error={payer.error} />
       {payer.data && (
-        // Not remounted on reload: after stale_dues the amount stays, the message explains, and the
-        // attempt key changes with the new dues hash.
-        <CollectForm payer={payer.data} onStale={refetch} />
+        // Not remounted on reload: after stale_dues the amount stays and the message explains; a
+        // new key is minted only when the collector confirms again. Keyed by payer so another
+        // family never inherits this one's pending attempt.
+        <CollectForm
+          key={`${payer.data.type}:${payer.data.id}`}
+          payer={payer.data}
+          onStale={refetch}
+          onRefresh={refetch}
+        />
       )}
     </section>
   );

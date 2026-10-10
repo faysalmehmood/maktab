@@ -40,15 +40,28 @@ export function ReceiptPrint({
           ? L.opening
           : L.title;
 
+  // The 58 mm page is as tall as the receipt: measured now, and again once the fonts are in
+  // (Nastaliq at line-height 2 is much taller than the fallback), and whenever paper or language
+  // changes (Urdu and English lay out to different heights).
   useLayoutEffect(() => {
     if (fmt !== 'thermal' || !ref.current) return;
-    const mm = Math.ceil((ref.current.offsetHeight * 25.4) / 96) + 6;
+    const el = ref.current;
     const style = document.createElement('style');
     style.dataset.receiptPage = 'thermal';
-    style.textContent = `@page receipt-thermal { size: 58mm ${Math.max(mm, 60)}mm; margin: 2mm; }`;
+    style.dataset.lang = lang;
+    const measure = () => {
+      const mm = Math.ceil((el.offsetHeight * 25.4) / 96) + 6;
+      style.textContent = `@page receipt-thermal { size: 58mm ${Math.max(mm, 60)}mm; margin: 2mm; }`;
+    };
+    measure();
     document.head.appendChild(style);
-    return () => style.remove();
-  }, [fmt]);
+    let live = true;
+    document.fonts?.ready.then(() => live && measure()).catch(() => undefined);
+    return () => {
+      live = false;
+      style.remove();
+    };
+  }, [fmt, lang]);
 
   return (
     <article
@@ -96,10 +109,16 @@ export function ReceiptPrint({
       {data.students.map((s) => (
         <table key={s.student_id} className="receipt-lines">
           <thead>
-            <tr>
-              <th colSpan={2}>
+            {/* The child header is a td row, so it survives the thermal print (only the column
+                labels below are hidden there). */}
+            <tr className="receipt-child">
+              <td colSpan={3}>
                 <bdi>{s.student_name}</bdi> · {L.admission_no} <N>{s.admission_no}</N>
-              </th>
+              </td>
+            </tr>
+            <tr className="receipt-cols">
+              <th>{L.month}</th>
+              <th>{L.head}</th>
               <th className="end">{L.amount}</th>
             </tr>
           </thead>

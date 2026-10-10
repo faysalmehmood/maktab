@@ -1,8 +1,8 @@
 import {
   type FamilyStatementDto,
   type FeeHeadDto,
-  type FeeLineDto,
   type FeeSettingsDto,
+  type FineDto,
   feeErrorsEn,
   formatPKR,
   hasGrant,
@@ -11,7 +11,7 @@ import {
   type StaffRole,
 } from '@maktab/shared';
 import { useQuery } from '@tanstack/react-query';
-import { getJson } from './api';
+import { ApiError, getJson } from './api';
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export type Account = {
@@ -31,14 +31,18 @@ export function latinDigits(s: string): string {
   });
 }
 
+const GROUPED = /^\d{1,3}(?:[,٬]\d{3})+(?:\.\d+)?$/;
+
 /**
  * The counter's amount box (rupees, optional paisa) → integer paisa, or null when empty/invalid.
- * Accepts "5,700", "5700", "5700.50", Urdu digits and the Urdu thousands separator (٬).
+ * Accepts "5,700", "5700", "5700.50", Urdu/Arabic digits, the Urdu thousands separator (٬), and a
+ * decimal written as "٫" or a single "," ("12,50" = 12.50). Rejects more than 2 decimals, more than
+ * 9 rupee digits, and commas that are neither grouping nor one decimal mark ("1,2,3").
  */
 export function rupeesToPaisa(input: string): number | null {
-  const s = latinDigits(input)
-    .replace(/[\s٬,]/g, '')
-    .replace('٫', '.');
+  let s = latinDigits(input).replace(/\s/g, '').replace(/٫/g, '.');
+  if (GROUPED.test(s)) s = s.replace(/[,٬]/g, '');
+  else if (/^\d+,\d{1,2}$/.test(s)) s = s.replace(',', '.');
   const m = /^(\d{1,9})(?:\.(\d{1,2}))?$/.exec(s);
   if (!m) return null;
   return Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0') || '0');
@@ -46,7 +50,11 @@ export function rupeesToPaisa(input: string): number | null {
 
 /** What the amount box shows while typing: Latin digits grouped by thousands ("12,500.5"). */
 export function formatRupeeInput(input: string): string {
-  const s = latinDigits(input).replace(/[^\d.]/g, '');
+  // "٫" is the Urdu decimal mark; a comma typed at the very end (a decimal-comma keyboard) is too —
+  // the box never ends in a grouping comma, so a trailing one was just typed.
+  let s = latinDigits(input).replace(/٫/g, '.');
+  if (!s.includes('.') && /\d,$/.test(s)) s = `${s.slice(0, -1)}.`;
+  s = s.replace(/[^\d.]/g, '');
   const [whole = '', ...rest] = s.split('.');
   const w = whole.replace(/^0+(?=\d)/, '').slice(0, 9);
   const grouped = w.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -59,103 +67,28 @@ export const paisaToRupeeText = (p: number): string =>
 
 export const money = (paisa: number) => formatPKR(paisa);
 
-// ---- allocation preview (mirrors packages/db ledger/alloc.ts openDues + oldestFirst) -----------
-
-/** Open family roots in the order the server allocates: due date, period, child, head, id. */
-export function openDuesInOrder(lines: readonly FeeLineDto[]): FeeLineDto[] {
-  const key = (l: FeeLineDto) => [
-    l.due_date,
-    l.period_key,
-    l.student_name,
-    l.student_id,
-    l.head_name,
-    l.id,
-  ];
-  return lines
-    .filter((l) => l.due > 0)
-    .slice()
-    .sort((a, b) => {
-      const ka = key(a);
-      const kb = key(b);
-      for (let i = 0; i < ka.length; i++) {
-        const x = ka[i] as string;
-        const y = kb[i] as string;
-        if (x !== y) return x < y ? -1 : 1;
-      }
-      return 0;
-    });
-}
-
-export type AllocationRow = { line: FeeLineDto; amount: number };
-export type AllocationPreview = { rows: AllocationRow[]; credit: number; after: number };
-
-/** Oldest first across the family; the remainder is credit (PLAN §14.4 step 3). */
-export function previewOldestFirst(
-  lines: readonly FeeLineDto[],
-  amount: number,
-): AllocationPreview {
-  const dues = openDuesInOrder(lines);
-  const rows: AllocationRow[] = [];
-  let left = amount;
-  for (const d of dues) {
-    if (left <= 0) break;
-    const take = Math.min(left, d.due);
-    if (take > 0) rows.push({ line: d, amount: take });
-    left -= take;
-  }
-  const totalDue = dues.reduce((a, d) => a + d.due, 0);
-  return { rows, credit: Math.max(0, left), after: totalDue - (amount - Math.max(0, left)) };
-}
-
-/**
- * "Only Ali's March": the chosen lines in server order, each paid up to its due from the amount;
- * what is left is credit. The `directed` body sent is exactly these rows.
- */
-export function previewDirected(
-  lines: readonly FeeLineDto[],
-  chosen: ReadonlySet<string>,
-  amount: number,
-): AllocationPreview {
-  const dues = openDuesInOrder(lines).filter((l) => chosen.has(l.id));
-  const rows: AllocationRow[] = [];
-  let left = amount;
-  for (const d of dues) {
-    if (left <= 0) break;
-    const take = Math.min(left, d.due);
-    rows.push({ line: d, amount: take });
-    left -= take;
-  }
-  const totalDue = openDuesInOrder(lines).reduce((a, d) => a + d.due, 0);
-  return {
-    rows,
-    credit: Math.max(0, left),
-    after: totalDue - (amount - Math.max(0, left)),
-  };
-}
+// ---- allocation preview: one implementation in @maktab/shared (alloc.ts), shared with the smoke
+// and the API's drift test against the server planner.
+export {
+  type AllocationPreview,
+  type AllocationRow,
+  balanceAfter,
+  openDuesInOrder,
+  previewDirected,
+  previewOldestFirst,
+} from '@maktab/shared';
 
 // ---- idempotency --------------------------------------------------------------------------------
 
+/** A fresh idempotency key for one collection (or refund) attempt. */
+export const mintAttemptKey = (prefix = 'ctr'): string => `${prefix}-${newId()}`;
+
 /**
- * One key per collection attempt: minted when the collector starts an attempt, reused for every
- * retry of that same attempt (network error, double tap), and replaced only when the attempt
- * changes (new amount/method/lines) or the server says `idempotency_conflict`.
+ * Was the outcome of a request unknown (no answer, or a server-side failure that may have
+ * committed)? Then the attempt stays pending and is only ever replayed with the same key.
  */
-export class AttemptKey {
-  private key: string | null = null;
-  private sig: string | null = null;
-  /** The key for this attempt's signature; the same signature keeps its key. */
-  for(signature: string): string {
-    if (this.key === null || this.sig !== signature) {
-      this.key = `ctr-${newId()}`;
-      this.sig = signature;
-    }
-    return this.key;
-  }
-  reset(): void {
-    this.key = null;
-    this.sig = null;
-  }
-}
+export const outcomeUnknown = (err: unknown): boolean =>
+  !(err instanceof ApiError) || err.status >= 500 || err.status === 408 || err.status === 429;
 
 // ---- rules the counter enforces before the server does -----------------------------------------
 
@@ -244,3 +177,7 @@ export const headLabel = (
 /** The school's calendar day (Asia/Karachi, UTC+5, no DST) — the server's business date. */
 export const karachiToday = (now = Date.now()): string =>
   new Date(now + 5 * 3600_000).toISOString().slice(0, 10);
+
+/** The fine on a root: one still to waive first, else a fully waived one (shown as waived). */
+export const fineOf = (fines: readonly FineDto[], rootId: string): FineDto | undefined =>
+  fines.find((f) => f.root_id === rootId && f.left > 0) ?? fines.find((f) => f.root_id === rootId);
