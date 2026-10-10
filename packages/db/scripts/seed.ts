@@ -1,6 +1,9 @@
 /**
- * DEV ONLY. Seeds the local wrangler D1 file (after `npm run db:migrate:local`) or SEED_DB=<path>.
- * SEED_OWNER_EMAIL=<your gmail> makes you the seeded owner. Refuses to run twice or with NODE_ENV=production; there is no seed route in the Worker by design.
+ * DEV ONLY. Seeds the local wrangler D1 file (after `npm run db:migrate:local`) or SEED_DB=<path>
+ * (a sqlite file; D1_PERSIST_TO is NOT read here — point SEED_DB at the .sqlite under that directory).
+ * SEED_OWNER_EMAIL=<your gmail> makes you the seeded owner; an address that is already a user (or is
+ * the demo teacher's) is reused, not an error. One transaction: a failure leaves nothing behind.
+ * Refuses to run twice or with NODE_ENV=production; there is no seed route in the Worker by design.
  */
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,7 +12,7 @@ import { newId } from '@maktab/shared';
 import { getTableName, sql } from 'drizzle-orm';
 import { getDb } from '../src/node';
 import * as t from '../src/schema';
-import { seedData } from './seed-data';
+import { seedAtomically } from './seed-data';
 
 function localD1File(): string {
   const dir = fileURLToPath(
@@ -31,7 +34,7 @@ async function main() {
     console.log(`${path} already has a school; not seeding again.`);
     return;
   }
-  await seedData(db, newId, process.env.SEED_OWNER_EMAIL);
+  await seedAtomically(db, newId, process.env.SEED_OWNER_EMAIL, (m) => console.log(`  note: ${m}`));
   console.log(`Seeded ${path}`);
   for (const table of [t.user, t.programme, t.grp, t.family, t.student, t.enrolment]) {
     const [row] = await db.select({ n: sql<number>`count(*)` }).from(table);

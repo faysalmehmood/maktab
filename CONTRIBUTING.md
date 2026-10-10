@@ -8,7 +8,14 @@ Thanks for helping. Maktab is small on purpose; please keep it that way.
 - `npm ci --ignore-scripts` (what CI uses) or `npm install`.
 - `cp apps/api/.dev.vars.example apps/api/.dev.vars`
 - `npm run db:migrate:local`
-- `npm run db:seed` (optional sample data)
+- `npm run db:seed` (optional sample data; one transaction, so a failure leaves nothing behind).
+  `SEED_OWNER_EMAIL=you@gmail.com` makes you the owner; an address that is already a user (you signed
+  in first) or is the demo teacher's is reused, not an error. `SEED_DB=<path to a .sqlite file>`
+  seeds another file: the seed does **not** read `D1_PERSIST_TO`, so with `--persist-to <dir>` point
+  `SEED_DB` at the `.sqlite` under `<dir>/v3/d1/miniflare-D1DatabaseObject/`.
+- Poking the database with the `sqlite3` CLI: run `PRAGMA foreign_keys = ON;` first (D1 always
+  enforces them; the CLI does not), or a delete can leave orphans that `PRAGMA foreign_key_check`
+  then reports.
 - `npm run dev` starts web (:5173) and API (:8787); `npm run dev -w @maktab/api` starts the API only.
 
 wrangler reads `.dev.vars` only at start: restart it after editing the file.
@@ -81,6 +88,32 @@ Driving the API by hand:
   of a `family` object and `guardians` (see `setup()` in `apps/api/test/attendance.test.ts`).
 - `POST /api/attendance/sync` takes at most 3 registers and 200 marks per request, and refuses a
   `taken_at` more than 5 minutes ahead of the server (`clock_skew`).
+- `POST /api/admissions` with a new `family` needs at least one entry in `guardians` (400
+  `guardian_required`). `fees: { charge: false }` admits without billing the first period
+  (`pro_rata`, `sibling_concession` are the other two options; see `admissionFeesSchema`).
+- Business date at the fee counter: today (Asia/Karachi). Only an owner/admin may send yesterday,
+  with `backdate_reason` (audited); anything else is 400 `bad_business_date`. Cash always lands in
+  today's drawer session; non-cash (`bank`, `jazzcash`, `easypaisa`, `cheque`, `other`) needs an
+  account (named, or the first matching one; else 400 `account_required`) and opens no session.
+
+## The fee cron locally
+
+The Worker's `scheduled` handler (monthly generation, then late fines) runs every 30 minutes in
+production. Locally, start the API with `--test-scheduled` and trigger it by hand:
+
+```sh
+npm run dev -w @maktab/api -- --test-scheduled     # wrangler dev --local, plus /__scheduled
+curl "localhost:8787/__scheduled?cron=*/30+*+*+*+*"   # one tick; the report is in the wrangler log
+npm run smoke:m3 -w @maktab/api                        # milestone 3 end-to-end, cron step included
+```
+
+Each tick bills at most a few group chunks, resuming from `billing_chunk`. It only picks up groups
+that have **no finished chunk** for the month: a student enrolled in a group after its chunk
+completed is not billed by the cron (or by "Generate", which skips finished groups) — bill them with
+`POST /api/fees/regenerate {student_id, period}` (admission does this itself unless
+`fees.charge` is false). A group whose chunk fails is logged (`billing_chunk.status = 'failed'`,
+`error_code`), skipped for that tick and retried on the next; `GET /api/fees/runs?period=YYYY-MM`
+lists it under `failing`. Fines still run for everyone else.
 
 By contributing you agree your work is licensed under AGPL-3.0. This project follows the
 [Code of Conduct](CODE_OF_CONDUCT.md).

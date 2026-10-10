@@ -1,31 +1,67 @@
+import { sql } from 'drizzle-orm';
 import type { AppDb } from '../src/client';
 import * as t from '../src/schema';
 
+export const DEMO_TEACHER_EMAIL = 'teacher@example.com';
+
+/**
+ * A user row by email, reused if it exists (a developer who signed in before seeding, or
+ * SEED_OWNER_EMAIL set to a demo address), else created. `log` says which.
+ */
+async function ensureUser(
+  db: AppDb,
+  o: { id: string; email: string; name: string; status: 'active' | 'invited'; createdBy?: string },
+  log: (m: string) => void,
+): Promise<string> {
+  const [row] = await db.all<{ id: string }>(sql`SELECT id FROM "user" WHERE email = ${o.email}`);
+  if (row) {
+    log(`reusing the existing user ${o.email}`);
+    if (o.status === 'active')
+      await db.run(sql`UPDATE "user" SET status = 'active' WHERE id = ${row.id}`);
+    return row.id;
+  }
+  await db.insert(t.user).values({ ...o, createdBy: o.createdBy ?? null });
+  return o.id;
+}
+
 /**
  * One school, 2 staff users, 3 programmes, 2 groups, 10 students in 6 families.
- * `ownerEmail` lets a developer sign in locally with their own Google account.
+ * `ownerEmail` lets a developer sign in locally with their own Google account. If that address is
+ * already a user (or is the demo teacher's), the row is reused: one person, owner (+ teacher) roles.
  */
 export async function seedData(
   db: AppDb,
   newId: () => string,
   ownerEmail = 'owner@example.com',
+  log: (m: string) => void = () => {},
 ): Promise<void> {
-  const ownerId = newId();
-  const teacherUserId = newId();
-  await db.insert(t.user).values([
-    { id: ownerId, email: ownerEmail.toLowerCase(), name: 'Owner (dev)', status: 'active' },
-    {
-      id: teacherUserId,
-      email: 'teacher@example.com',
-      name: 'Teacher (dev)',
-      status: 'invited',
-      createdBy: ownerId,
-    },
-  ]);
-  await db.insert(t.role).values([
-    { userId: ownerId, role: 'owner' },
-    { userId: teacherUserId, role: 'teacher', createdBy: ownerId },
-  ]);
+  const email = ownerEmail.trim().toLowerCase();
+  const ownerId = await ensureUser(
+    db,
+    { id: newId(), email, name: 'Owner (dev)', status: 'active' },
+    log,
+  );
+  const teacherUserId =
+    email === DEMO_TEACHER_EMAIL
+      ? ownerId
+      : await ensureUser(
+          db,
+          {
+            id: newId(),
+            email: DEMO_TEACHER_EMAIL,
+            name: 'Teacher (dev)',
+            status: 'invited',
+            createdBy: ownerId,
+          },
+          log,
+        );
+  if (teacherUserId === ownerId)
+    log(`SEED_OWNER_EMAIL is the demo teacher's address: one user gets both roles`);
+  await db.run(
+    sql`INSERT INTO role (user_id, role) VALUES (${ownerId}, 'owner') ON CONFLICT DO NOTHING`,
+  );
+  await db.run(sql`INSERT INTO role (user_id, role, created_by) VALUES (${teacherUserId}, 'teacher', ${ownerId})
+    ON CONFLICT DO NOTHING`);
   const by = { createdBy: ownerId };
 
   await db.insert(t.school).values({
@@ -39,7 +75,14 @@ export async function seedData(
   const teacherStaff = newId();
   await db.insert(t.staff).values([
     { id: ownerStaff, userId: ownerId, name: 'Owner (dev)', role: 'principal', ...by },
-    { id: teacherStaff, userId: teacherUserId, name: 'Teacher (dev)', role: 'teacher', ...by },
+    {
+      id: teacherStaff,
+      // One user cannot be two staff rows' login; the demo teacher stays a staff row without one.
+      userId: teacherUserId === ownerId ? null : teacherUserId,
+      name: 'Teacher (dev)',
+      role: 'teacher',
+      ...by,
+    },
   ]);
 
   const sessionId = newId();
@@ -143,5 +186,28 @@ export async function seedData(
         });
       }
     }
+  }
+}
+
+/**
+ * The whole seed as ONE transaction: a failure part-way (a constraint, a bad SEED_OWNER_EMAIL, a
+ * crash) leaves the database exactly as it was, so a re-run starts clean. better-sqlite3 runs every
+ * statement on one connection, so BEGIN … COMMIT around the async inserts is a real transaction.
+ */
+export async function seedAtomically(
+  db: AppDb,
+  newId: () => string,
+  ownerEmail?: string,
+  log?: (m: string) => void,
+): Promise<void> {
+  await db.run(sql`BEGIN IMMEDIATE`);
+  try {
+    await seedData(db, newId, ownerEmail, log);
+    const fk = await db.all(sql`PRAGMA foreign_key_check`);
+    if (fk.length) throw new Error(`seed left foreign-key violations: ${JSON.stringify(fk)}`);
+    await db.run(sql`COMMIT`);
+  } catch (err) {
+    await db.run(sql`ROLLBACK`);
+    throw err;
   }
 }

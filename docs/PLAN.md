@@ -318,11 +318,16 @@ Limits (M2 fix pass): ≤ 200 marks per register and per sync request, ≤ 3 reg
 4. Confirm → receipt number issued → receipt screen: print, save PDF, "send on WhatsApp" (prefilled text + parent link), done.
 5. Reversal: from the receipt, "Reverse" with reason → negative receipt, allocations mirrored; optional "re-enter correctly" in the same step.
 Rules: one receipt per family visit; over-payment is allowed and shown as credit; no edit of amount after confirm; collector must have an open cash session (auto-opened on first receipt of the day). Any user with accountant/admin/owner role can collect; the receipt permanently records collector, time, payer, student(s), and the charges it settled.
+M3a fix pass: business date is today (Asia/Karachi); only an owner/admin may enter yesterday, with a reason that is audited — anything else is `bad_business_date`. A drawer session is never opened for a past day: cash always goes into today's session, and the receipt's series year is never earlier than today's. Cash needs the session and the series number taken in the same batch (trigger); non-cash methods (bank, JazzCash, EasyPaisa, cheque, other) name the account and open no session. The family view returns `dues_hash`; the counter sends it back as `expected_due_hash` and gets 409 `stale_dues` if the family's dues changed in between (never a silent re-plan; `directed` rows are exact anyway). Idempotency keys belong to the user who sent them (another user's replay is `idempotency_conflict`); every payment writes an audit row with its receipt number. Dues shown to the family, in defaulters and in reminders are net of unallocated credit (floor 0).
 
 ### 14.5 Monthly fees and defaulters (office)
 - Generation runs on the 1st (cron) and from a button "Generate <month>"; idempotent; shows a dry-run count first; only active enrolments; applies live concessions and sponsorships as separate lines.
 - Fine job runs after grace day: adds `fine` charges per overdue tuition charge (once per period), shows a list; office can waive per student with reason.
 - Defaulters: by group, by months overdue, by amount; filters "exclude sponsored"; actions: "Remind all" (Send queue), export, print list for class teacher.
+- Generation never sticks (M3a fix pass): a group whose chunk fails is logged as a failed `billing_chunk` (status `failed`, `error_code`), skipped for the rest of the tick (and by "Generate", which returns `failed` and moves on), and retried by the cron every tick; fines still run. `GET /api/fees/runs` lists it under `failing`. A group with a finished chunk is never re-sent; a student added to it later is billed with "re-generate" for that student.
+- Due date: the school's due day; a mid-period joiner or transfer gets the same grace from their start (start + due day − 1 days). No late fine in the first period of an enrolment that started after the 1st. Pro-rata follows the enrolment chain (a mid-month transfer bills each row's days at its own rate, once). A student in a class and a batch is planned from both, primary first.
+- Void (M3a fix pass): `POST /api/charges/:id/void` (fee.manage) zeroes a fee (or what is left of a fine) with a `reversal` line and a required reason; paid money is released first and becomes credit, which is applied to the payer's other dues. Charges are never deleted.
+- Enums are final (last pass, migration 0010): receipt methods `cash, bank, jazzcash, easypaisa, cheque, other`; payslip status `draft → approved → paid`, or `void` before any payment.
 
 ### 14.6 Cash closing (collector, then owner)
 1. End of day: session shows expected (receipts by method − expenses paid from this drawer), collector enters counted cash → variance → close.
@@ -337,6 +342,7 @@ Rules: a closed session takes no more rows; a late-found error is corrected in a
 - Session boundary: concessions with no end date carry into the next session; the year-end promotion wizard lists them so the admin can confirm or end each in one pass.
 - Sponsorship: sponsor record (name, phone, optional CNIC) → link to student with share % and dates → generation bills that share to the sponsor; sponsor statement shows what is owed/paid; sponsor payments go through the same Fee counter with payer=sponsor.
 - Family view and parent page show gross, concession and net so parents see the discount they received; defaulter messages use the net.
+- Which rows apply to a month (M3a fix pass): the concession or sponsorship **live on the period's first day** (for a student whose enrolment starts later in the month, on that first day). "End" is the first day it no longer applies; a change mid-month (end 15th + new row from 16th) therefore takes effect from the next month, and re-generating the current month uses the same rule. Concessions and fines are family lines only; a late concession on a sponsored month re-bills the sponsor on the new base (a `reversal` line under the sponsor root, then the family's concession line for the rest), releasing anything overpaid first. One sponsor may not have two overlapping sponsorships of the same student and head (409 `sponsorship_overlap`; end the old row first); if the data has them anyway, generation merges them into one sponsor line capped at 100%.
 
 ### 14.8 Expenses and salary (owner / accountant)
 - Expense: date, category, amount, paid from (drawer or bank), vendor, note, optional photo of bill → `expense_no`; void with reason only.
@@ -391,6 +397,13 @@ Stop and ask the user only for: GitHub publish, production deploy to `school.con
 - Receipt numbering uses the same in-batch series bump as `admission_series`; `school.receipt_prefix` exists.
 - A reversal and its unwind allocations are one batch via `reverseReceipt`; `ledger_consistency` must stay empty in every test.
 - Leave date is not validated against enrolment start; pro-rating must clamp.
+
+**M3b must remember (from the M3a fix pass)**
+- Error codes the UI must handle: `bad_business_date` (400; yesterday needs owner/admin + `backdate_reason`), `stale_dues` (409; re-fetch the family view and re-confirm), `idempotency_conflict` (409; mint a new key), `account_required` (400; non-cash with no bank/wallet account), `sponsorship_overlap` (409), `already_void` / `not_voidable` (409), `session_closed`, `reason_repeated` (reopen reasons compare case- and blank-insensitively), and a `failed` object in the generate response (show it; `next` already skips the group).
+- Hash field: family view (and sponsor statement) `dues_hash`; send it as `expected_due_hash` on `POST /api/receipts` for an oldest-first collection (ignored with `directed`). `totals.due`/`overdue` are net of credit; `totals.due_before_credit` is the raw sum.
+- Date rules: the counter's date picker offers today, and yesterday only to owner/admin (with a reason field); drawer sessions are today's only; liveness of concessions/sponsorships is "live on the period's first day"; a joiner's due date is start + (due day − 1).
+- Methods `cheque` and `other` exist (labels in en/ur needed); payslip `void` (M4 UI).
+- Run `npm run db:verify -- --remote --env production` after every `migrations apply` (docs/deploy.md).
 
 | Milestone | Scope (from §14) | Done when |
 |---|---|---|

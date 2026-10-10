@@ -60,7 +60,7 @@ tier changes (PLAN §8).
 | `apps/web` | Vite + React 19 + Tailwind 4 + shadcn/ui PWA; i18next `en`/`ur` |
 | `packages/db` | Drizzle schema (all PLAN §5 tables), `sql/` triggers/views/partial indexes, migrations, seed |
 | `packages/shared` | Zod schemas, roles, permission types, money (`formatPKR`), i18n dictionaries |
-| `docs/` | PLAN, ADRs, restore runbook |
+| `docs/` | PLAN, ADRs, restore and deploy runbooks |
 
 ## Scripts
 
@@ -73,7 +73,8 @@ tier changes (PLAN §8).
 | `npm run typecheck` | `tsc` in every workspace |
 | `npm run db:generate` | Drizzle migration from schema changes + a new custom migration for any changed `packages/db/sql` file (ADR 0002) |
 | `npm run db:migrate:local` | Applies migrations to the local D1 database |
-| `npm run db:seed` | Dev-only demo data into the local D1 database |
+| `npm run db:seed` | Dev-only demo data into the local D1 database (one transaction; `SEED_DB=<sqlite file>` for another file) |
+| `npm run db:verify` | Asserts the database's triggers/views match `packages/db/sql` (`-- --remote --env production` after a deploy; docs/deploy.md) |
 
 ## Known limitations
 
