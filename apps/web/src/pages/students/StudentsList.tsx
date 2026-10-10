@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
 import { Num, PageTitle } from '@/components/form';
+import { isolate } from '@/components/students/fields';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -106,7 +107,7 @@ export function StudentsList() {
           <option value="">{t('student.allGroups')}</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
-              {g.programme_name} · {g.name}
+              {isolate(g.programme_name)} · {isolate(g.name)}
             </option>
           ))}
         </Select>
@@ -151,10 +152,17 @@ export function StudentsList() {
                   <UserRound className="size-10 shrink-0 rounded-full bg-muted p-2" aria-hidden />
                 )}
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-medium">{s.name}</span>
+                  <span className="truncate font-medium">
+                    <bdi>{s.name}</bdi>
+                  </span>
                   <span className="truncate text-xs text-muted-foreground">
-                    {s.father_name && <>{s.father_name} · </>}
-                    {s.group_name ?? '—'}
+                    {s.father_name && (
+                      <>
+                        <bdi>{s.father_name}</bdi>
+                        {' · '}
+                      </>
+                    )}
+                    {s.group_name ? <bdi>{s.group_name}</bdi> : '—'}
                     {s.guardian_phone && (
                       <>
                         {' · '}

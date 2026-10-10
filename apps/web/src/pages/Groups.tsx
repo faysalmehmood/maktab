@@ -69,7 +69,7 @@ export function GroupDetail() {
   return (
     <section className="flex max-w-3xl flex-col gap-4">
       <PageTitle>
-        {g.programme_name} · <bdi>{g.name}</bdi>
+        <bdi>{g.programme_name}</bdi> · <bdi>{g.name}</bdi>
       </PageTitle>
       <GroupCard g={g} />
       <h2 className="font-medium">{t('group.roster')}</h2>
@@ -87,9 +87,12 @@ export function GroupDetail() {
                   <Num>{r.roll_no ?? '—'}</Num>
                 </span>
                 <span className="flex-1">
-                  {r.name}
+                  <bdi>{r.name}</bdi>
                   {r.father_name && (
-                    <span className="text-sm text-muted-foreground"> · {r.father_name}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {' · '}
+                      <bdi>{r.father_name}</bdi>
+                    </span>
                   )}
                 </span>
                 <span className="text-sm text-muted-foreground">

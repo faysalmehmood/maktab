@@ -62,7 +62,8 @@ describe('admission form', () => {
     type(/Family name/, 'Khan');
     type(/Guardian name/, 'Imran Khan');
     type(/Student name/, 'Ali');
-    await screen.findByRole('option', { name: /Class 5 · A/ });
+    // Names are bidi-isolated so "5-B" never reorders inside Urdu text.
+    await screen.findByRole('option', { name: /Class 5\u2069 · \u2068A/ });
     fireEvent.change(screen.getByLabelText(/Class or batch/), { target: { value: ids.group } });
     fireEvent.click(screen.getByRole('button', { name: 'Admit student' }));
 
@@ -84,6 +85,20 @@ describe('admission form', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Admit a sibling/ })).toBeTruthy(),
     );
+  });
+
+  it('keeps a full group pickable and warns without blocking (capacity is for planning)', async () => {
+    mockApi({
+      'GET /api/groups': { items: [{ ...group, active_count: 30, seats_left: 0 }] },
+      'GET /api/sessions': { items: [session] },
+      'GET /api/custom-fields': { items: [] },
+    });
+    renderAt('/students/new', '/students/new', <AdmissionPage />);
+    const option = (await screen.findByRole('option', { name: /Full/ })) as HTMLOptionElement;
+    expect(option.disabled).toBe(false);
+    expect(screen.queryByText(/at or over its capacity/)).toBeNull();
+    fireEvent.change(screen.getByLabelText(/Class or batch/), { target: { value: ids.group } });
+    expect(screen.getByRole('status').textContent).toMatch(/at or over its capacity/);
   });
 
   it('labels every field in Urdu when the language is ur', async () => {

@@ -10,7 +10,7 @@ type Handler = unknown | ((url: URL, init: RequestInit) => unknown);
 
 /**
  * Stubs global fetch with a route table keyed "METHOD /path" (query string ignored for matching).
- * A handler may return a Response, or any value that is sent as a 200 JSON body.
+ * A handler may return (or resolve to) a Response, or any value that is sent as a 200 JSON body.
  */
 export function mockApi(routes: Record<string, Handler>) {
   const calls: Call[] = [];
@@ -31,7 +31,7 @@ export function mockApi(routes: Record<string, Handler>) {
           },
         );
       }
-      const out = typeof handler === 'function' ? handler(url, init) : handler;
+      const out: unknown = typeof handler === 'function' ? await handler(url, init) : handler;
       if (out instanceof Response) return out;
       return new Response(JSON.stringify(out), {
         status: 200,

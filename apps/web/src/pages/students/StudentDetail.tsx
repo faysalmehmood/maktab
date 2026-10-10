@@ -1,4 +1,7 @@
 import {
+  type EnrolmentDto,
+  enrolmentEndSchema,
+  enrolmentTransferSchema,
   type FamilyDetailDto,
   formatPkPhone,
   type GuardianDto,
@@ -19,6 +22,7 @@ import {
   GuardianFieldset,
   guardianDraftFrom,
   guardianInput,
+  isolate,
   PhotoPicker,
 } from '@/components/students/fields';
 import { Badge } from '@/components/ui/badge';
@@ -37,7 +41,7 @@ import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson, uploadFile } from '@/lib/api';
 import { type FieldErrors, issuesToErrors, todayIso } from '@/lib/form';
-import { useCustomFields } from '@/lib/queries';
+import { useCurrentSession, useCustomFields, useGroups } from '@/lib/queries';
 import { canWriteStudents, useRoles } from '@/lib/roles';
 
 export const useStudent = (id: string | undefined) =>
@@ -117,6 +121,145 @@ function StatusDialog({ student, onClose }: { student: StudentDetailDto; onClose
               {t('common.cancel')}
             </Button>
             <Button type="submit" variant="destructive" disabled={save.isPending}>
+              {t('common.save')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type EnrolmentAction = { kind: 'end' | 'transfer'; enrolment: EnrolmentDto };
+
+/**
+ * End an enrolment (withdrawn / completed) or transfer it to another group, through the existing
+ * routes; a transfer marks the old row `transferred` and opens the new one in one batch.
+ */
+function EnrolmentDialog({
+  action,
+  studentId,
+  onClose,
+}: {
+  action: EnrolmentAction;
+  studentId: string;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { kind, enrolment: e } = action;
+  const current = useCurrentSession();
+  const groups = (useGroups().data?.items ?? []).filter(
+    (g) => g.status !== 'closed' && g.id !== e.grp_id && g.is_primary === e.is_primary,
+  );
+  groups.sort(
+    (a, b) => Number(b.session_id === current?.id) - Number(a.session_id === current?.id),
+  );
+  const [draft, setDraft] = useState({
+    status: 'withdrawn' as 'withdrawn' | 'completed',
+    grp_id: '',
+    date: todayIso(),
+    reason: '',
+  });
+  const [newEnrolmentId] = useState(newId);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const body =
+    kind === 'end'
+      ? { status: draft.status, end_date: draft.date, reason: draft.reason }
+      : { new_id: newEnrolmentId, grp_id: draft.grp_id, date: draft.date, reason: draft.reason };
+  const save = useMutation({
+    mutationFn: () => sendJson('POST', `/api/enrolments/${e.id}/${kind}`, body),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['student', studentId] }),
+        qc.invalidateQueries({ queryKey: ['students'] }),
+        qc.invalidateQueries({ queryKey: ['groups'] }),
+      ]);
+      toast.success(t(kind === 'end' ? 'enrolment.ended' : 'enrolment.moved'));
+      onClose();
+    },
+  });
+  const submit = (ev: FormEvent) => {
+    ev.preventDefault();
+    const parsed = (kind === 'end' ? enrolmentEndSchema : enrolmentTransferSchema).safeParse(body);
+    if (!parsed.success) {
+      // Field ids here are the draft's: end_date is shown as "date".
+      const errs = issuesToErrors(parsed.error.issues, body);
+      if (errs.end_date) errs.date = errs.end_date;
+      return setErrors(errs);
+    }
+    setErrors({});
+    save.mutate();
+  };
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {t(kind === 'end' ? 'enrolment.endTitle' : 'enrolment.transferTitle')}
+          </DialogTitle>
+          <DialogDescription>
+            <bdi>{e.programme_name}</bdi> · <bdi>{e.grp_name}</bdi>
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} noValidate className="flex flex-col gap-3">
+          {kind === 'end' ? (
+            <Field id="enr-outcome" label="enrolment.outcome">
+              <Select
+                id="enr-outcome"
+                value={draft.status}
+                onChange={(ev) =>
+                  setDraft({
+                    ...draft,
+                    status: ev.target.value === 'completed' ? 'completed' : 'withdrawn',
+                  })
+                }
+              >
+                <option value="withdrawn">{t('enrolment.statuses.withdrawn')}</option>
+                <option value="completed">{t('enrolment.statuses.completed')}</option>
+              </Select>
+            </Field>
+          ) : (
+            <Field id="enr-group" label="enrolment.toGroup" error={errors.grp_id} required>
+              <Select
+                id="enr-group"
+                value={draft.grp_id}
+                onChange={(ev) => setDraft({ ...draft, grp_id: ev.target.value })}
+              >
+                <option value="">{t('admission.pickGroup')}</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {isolate(g.programme_name)} · {isolate(g.name)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          <Field id="enr-date" label="enrolment.date" error={errors.date} required>
+            <Input
+              id="enr-date"
+              type="date"
+              value={draft.date}
+              onChange={(ev) => setDraft({ ...draft, date: ev.target.value })}
+            />
+          </Field>
+          <Field id="enr-reason" label="enrolment.reason" error={errors.reason} required>
+            <Input
+              id="enr-reason"
+              value={draft.reason}
+              onChange={(ev) => setDraft({ ...draft, reason: ev.target.value })}
+            />
+          </Field>
+          <ErrorNote error={save.error} />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="submit"
+              variant={kind === 'end' ? 'destructive' : 'default'}
+              disabled={save.isPending}
+            >
               {t('common.save')}
             </Button>
           </DialogFooter>
@@ -220,6 +363,7 @@ export function StudentDetail() {
     enabled: !!familyId,
   });
   const [statusOpen, setStatusOpen] = useState(false);
+  const [enrolmentAction, setEnrolmentAction] = useState<EnrolmentAction | null>(null);
   const [guardianEdit, setGuardianEdit] = useState<GuardianDto | 'new' | null>(null);
   const [photoVersion, setPhotoVersion] = useState(0);
   const [photo, setPhoto] = useState<Blob | null>(null);
@@ -323,7 +467,9 @@ export function StudentDetail() {
             <Row label={t('student.admissionDate')}>
               <Num>{s.admission_date}</Num>
             </Row>
-            <Row label={t('student.family')}>{s.family.name}</Row>
+            <Row label={t('student.family')}>
+              <bdi>{s.family.name}</bdi>
+            </Row>
             {fields.map((f) => {
               const v = s.extra[f.key];
               if (v == null || v === '') return null;
@@ -359,8 +505,13 @@ export function StudentDetail() {
               <li key={g.id} className="flex items-center gap-3 py-2">
                 <div className="flex flex-1 flex-col">
                   <span className="font-medium">
-                    {g.name}
-                    {g.relation && <span className="text-muted-foreground"> · {g.relation}</span>}
+                    <bdi>{g.name}</bdi>
+                    {g.relation && (
+                      <span className="text-muted-foreground">
+                        {' · '}
+                        <bdi>{g.relation}</bdi>
+                      </span>
+                    )}
                   </span>
                   <span className="text-sm">
                     {g.phone && (
@@ -407,12 +558,30 @@ export function StudentDetail() {
                 <li key={e.id} className="flex flex-col gap-1 py-2 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <Link to={`/groups/${e.grp_id}`} className="font-medium hover:underline">
-                      {e.programme_name} · <bdi>{e.grp_name}</bdi>
+                      <bdi>{e.programme_name}</bdi> · <bdi>{e.grp_name}</bdi>
                     </Link>
                     <Badge variant={e.status === 'active' ? 'secondary' : 'outline'}>
                       {t(`enrolment.statuses.${e.status}`)}
                     </Badge>
                     {!e.is_primary && <Badge variant="outline">{t('group.batchBadge')}</Badge>}
+                    {write && e.status === 'active' && s.status === 'active' && (
+                      <span className="ms-auto flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEnrolmentAction({ kind: 'transfer', enrolment: e })}
+                        >
+                          {t('enrolment.transferAction')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEnrolmentAction({ kind: 'end', enrolment: e })}
+                        >
+                          {t('enrolment.endAction')}
+                        </Button>
+                      </span>
+                    )}
                   </div>
                   <span className="text-muted-foreground">
                     <Num>
@@ -425,7 +594,12 @@ export function StudentDetail() {
                         {t('group.rollNo')} <Num>{e.roll_no}</Num>
                       </>
                     )}
-                    {e.end_reason && ` · ${e.end_reason}`}
+                    {e.end_reason && (
+                      <>
+                        {' · '}
+                        <bdi>{e.end_reason}</bdi>
+                      </>
+                    )}
                   </span>
                 </li>
               ))}
@@ -457,7 +631,7 @@ export function StudentDetail() {
                     to={`/students/${x.id}`}
                     className="flex min-h-11 items-center gap-2 hover:underline"
                   >
-                    {x.name}
+                    <bdi>{x.name}</bdi>
                     <span className="ms-auto text-sm text-muted-foreground">
                       <Num>{x.admission_no}</Num>
                     </span>
@@ -470,6 +644,13 @@ export function StudentDetail() {
       </Card>
 
       {statusOpen && <StatusDialog student={s} onClose={() => setStatusOpen(false)} />}
+      {enrolmentAction && (
+        <EnrolmentDialog
+          action={enrolmentAction}
+          studentId={s.id}
+          onClose={() => setEnrolmentAction(null)}
+        />
+      )}
       {guardianEdit && (
         <GuardianDialog
           familyId={s.family_id}

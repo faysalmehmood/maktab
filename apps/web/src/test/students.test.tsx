@@ -49,6 +49,9 @@ describe('students list', () => {
     const no = screen.getByText('2026-0001');
     expect(no.tagName).toBe('BDI');
     expect(screen.getAllByText('0300 1234567')[0]?.tagName).toBe('BDI');
+    // Data-derived names in the mixed-direction subtitle are isolated too ("5-B" never "B-5").
+    expect(screen.getAllByText('Imran').every((el) => el.tagName === 'BDI')).toBe(true);
+    expect(screen.getAllByText('A').some((el) => el.tagName === 'BDI')).toBe(true);
     expect(screen.getByRole('link', { name: /داخلہ/ })).toBeTruthy();
     // Default view asks for active students only, page 1.
     expect(api.calls.find((c) => c.path.startsWith('/api/students'))?.path).toBe(

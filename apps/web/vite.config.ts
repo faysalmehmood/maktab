@@ -61,9 +61,10 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   server: {
-    port: 5173,
+    // PORT / API_PORT move both dev servers together (apps/api/scripts/dev.ts reads the same two).
+    port: Number(process.env.PORT ?? 5173),
     strictPort: true,
     // wrangler dev serves the API; same-origin in the browser keeps cookies simple.
-    proxy: { '/api': 'http://localhost:8787' },
+    proxy: { '/api': `http://localhost:${process.env.API_PORT ?? 8787}` },
   },
 });

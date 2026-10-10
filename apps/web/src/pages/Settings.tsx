@@ -107,7 +107,9 @@ export function SettingsPage() {
         )}
       </div>
       {sections.length > 1 && (
-        <div role="tablist" className="flex gap-1 overflow-x-auto border-b pb-1">
+        // Wraps instead of scrolling: at 360 px (and in longer Urdu labels) every tab, Staff
+        // included, stays visible without a hidden overflow.
+        <div role="tablist" className="flex flex-wrap gap-1 border-b pb-1">
           {sections.map((s) => (
             <button
               key={s}

@@ -21,6 +21,7 @@ import {
   type GuardianDraft,
   GuardianFieldset,
   guardianInput,
+  isolate,
   PhoneHint,
   PhotoPicker,
 } from '@/components/students/fields';
@@ -85,13 +86,28 @@ function GroupPicker({
   const groups = (useGroups().data?.items ?? [])
     .filter((g) => g.status !== 'closed')
     .sort((a, b) => Number(b.session_id === current?.id) - Number(a.session_id === current?.id));
+  const picked = groups.find((g) => g.id === value);
+  // Capacity is a planning number (never enforced): a full group stays pickable, with a warning.
+  const full = picked?.seats_left != null && picked.seats_left <= 0;
   return (
-    <Field id="adm-group" label="admission.group" error={error} required>
+    <Field
+      id="adm-group"
+      label="admission.group"
+      error={error}
+      required
+      hint={
+        full && (
+          <span role="status" className="text-amber-700">
+            {t('admission.groupFullWarning')}
+          </span>
+        )
+      }
+    >
       <Select id="adm-group" value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">{t('admission.pickGroup')}</option>
         {groups.map((g) => (
-          <option key={g.id} value={g.id} disabled={g.seats_left !== null && g.seats_left <= 0}>
-            {g.programme_name} · {g.name}
+          <option key={g.id} value={g.id}>
+            {isolate(g.programme_name)} · {isolate(g.name)}
             {g.seats_left !== null &&
               ` (${g.seats_left > 0 ? t('group.seatsLeft', { n: g.seats_left }) : t('group.full')})`}
           </option>

@@ -299,7 +299,7 @@ export function SubjectsEditor() {
                 <Input
                   aria-label={t('subject.name')}
                   value={editName}
-                  className="h-9 w-36"
+                  className="h-11 w-36 pointer-fine:h-9"
                   onChange={(e) => setEditName(e.target.value)}
                 />
                 <Button size="sm" onClick={() => editName.trim() && rename.mutate(s)}>

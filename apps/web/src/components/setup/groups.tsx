@@ -10,6 +10,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ErrorNote, Field } from '@/components/form';
+import { isolate } from '@/components/students/fields';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -338,7 +339,7 @@ export function GroupCard({ g, onEdit }: { g: GroupDto; onEdit?: () => void }) {
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">
-            {g.programme_name} · <bdi>{g.name}</bdi>
+            <bdi>{g.programme_name}</bdi> · <bdi>{g.name}</bdi>
           </span>
           <Badge variant={g.is_primary ? 'secondary' : 'outline'}>
             {g.is_primary ? t('group.primaryBadge') : t('group.batchBadge')}
@@ -358,14 +359,16 @@ export function GroupCard({ g, onEdit }: { g: GroupDto; onEdit?: () => void }) {
         </span>
         {g.class_teacher_name && (
           <span className="text-sm">
-            {t('group.classTeacher')}: {g.class_teacher_name}
+            {t('group.classTeacher')}: <bdi>{g.class_teacher_name}</bdi>
           </span>
         )}
         {g.subjects.length > 0 && (
           <span className="text-xs text-muted-foreground">
             {g.subjects
               .map((s) =>
-                s.teacher_name ? `${s.subject_name} (${s.teacher_name})` : s.subject_name,
+                s.teacher_name
+                  ? `${isolate(s.subject_name)} (${isolate(s.teacher_name)})`
+                  : isolate(s.subject_name),
               )
               .join('، ')}
           </span>
