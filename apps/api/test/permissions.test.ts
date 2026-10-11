@@ -44,6 +44,10 @@ exam.marks_entry         all          all          -                 own_subject
 exam.read                all          all          -                 own_groups    own_children
 send_queue.use           all          all          all               own_groups    -
 message.read             all          all          all               own_groups    -
+message.send             all          all          all               own_groups    -
+message.compose          all          all          -                 -             -
+template.manage          all          all          -                 -             -
+parent_page.view         public       public       public            public        public
 settings.manage          all          all          -                 -             -
 role.manage              all          -            -                 -             -
 backup.manage            all          -            -                 -             -
@@ -162,7 +166,6 @@ GET    /api/attendance/register                  D A A D A A
 GET    /api/attendance/student/:id               D A A D A A
 GET    /api/attendance/report                    D A A D A A
 GET    /api/dashboard/today                      D A A D A A
-GET    /api/messages                             D A A A A D
 GET    /api/holidays                             D A A A A D
 POST   /api/holidays                             D A A D D D
 DELETE /api/holidays/:date                       D A A D D D
@@ -244,6 +247,25 @@ GET    /api/reports/accounts                 D A A A D D
 GET    /api/audit                            D A D D D D
 GET    /api/audit/entities                   D A D D D D
 GET    /api/dashboard/month                  D A A A D D
+GET    /api/messages/counts                  D A A A A D
+GET    /api/messages/templates               D A A D D D
+POST   /api/messages/templates/preview       D A A D D D
+PUT    /api/messages/templates/:key/:lang    D A A D D D
+GET    /api/school/messages                  D A A D D D
+PUT    /api/school/messages                  D A A D D D
+POST   /api/messages/bulk-text               D A A A A D
+POST   /api/messages/compose                 D A A D D D
+GET    /api/messages                         D A A A A D
+GET    /api/messages/:id                     D A A A A D
+POST   /api/messages/:id/open                D A A A A D
+POST   /api/messages/:id/sent                D A A A A D
+POST   /api/messages/:id/skip                D A A A A D
+GET    /api/guardians/:id/parent-link        D A A A D D
+POST   /api/guardians/:id/parent-link        D A A A D D
+POST   /api/guardians/:id/parent-link/revoke D A A A D D
+GET    /api/p/:token                         A A A A A A
+POST   /api/p/:token/gate                    A A A A A A
+GET    /api/p/:token/receipt/:id             A A A A A A
 `;
 
 type Who = PrincipalRole | 'anonymous';
@@ -301,6 +323,34 @@ describe('route × role', () => {
           : 'deny';
       expect(parent, `parent ${spec.method} ${spec.path}`).toBe(want.parent);
     }
+  });
+
+  it("the 'public' grant sits on exactly the /api/p/* routes (parent page) and nothing else", () => {
+    const { routes } = testApp();
+    const viaPublicGrant = routes
+      .list()
+      .filter(
+        (r) => r.access.kind === 'requires' && decide(['owner'], r.access.permission) === 'public',
+      )
+      .map((r) => `${r.method} ${r.path}`)
+      .sort();
+    expect(viaPublicGrant).toEqual([
+      'GET /api/p/:token',
+      'GET /api/p/:token/receipt/:id',
+      'POST /api/p/:token/gate',
+    ]);
+    // …and every /api/p/* route goes through that grant (none is an unconditional publicRoute).
+    for (const r of routes.list().filter((x) => x.path.startsWith('/api/p/')))
+      expect(r.access.kind, r.path).toBe('requires');
+    // Only parent_page.view is public in the whole matrix.
+    const publicKeys = Object.entries(RESOURCES).flatMap(([res, actions]) =>
+      actions
+        .filter((a) =>
+          PRINCIPAL_ROLES.some((role) => grantFor(res as Resource, a as never, role) === 'public'),
+        )
+        .map((a) => `${res}.${a}`),
+    );
+    expect(publicKeys).toEqual(['parent_page.view']);
   });
 
   it('denies an endpoint mounted without a declaration (default deny)', async () => {

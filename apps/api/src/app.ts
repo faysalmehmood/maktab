@@ -15,7 +15,9 @@ import { coreRoutes } from './routes/core';
 import { feeRoutes } from './routes/fees';
 import { groupRoutes } from './routes/groups';
 import { importRoutes } from './routes/imports';
+import { messageRoutes } from './routes/messages';
 import { moneyRoutes } from './routes/money';
+import { PARENT_HEADERS, parentRoutes } from './routes/parent';
 import { peopleRoutes } from './routes/people';
 import { receiptRoutes } from './routes/receipts';
 import { staffRoutes } from './routes/staff';
@@ -25,6 +27,14 @@ export type AppDeps = {
   /** Injected so tests can run without the network; defaults to Google's live JWKS. */
   jwks?: JwksClient;
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
+};
+
+/** Same as apps/web/public/_headers (an asset fetched by the Worker does not get those rules). */
+const SPA_HEADERS: Record<string, string> = {
+  'Content-Security-Policy':
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
 };
 
 /** Module scope so the JWKS cache survives across requests in one isolate. */
@@ -60,6 +70,23 @@ export function createApp(deps: AppDeps) {
   receiptRoutes(app, routes);
   cashRoutes(app, routes);
   moneyRoutes(app, routes);
+  messageRoutes(app, routes);
+  parentRoutes(app, routes);
+
+  // The parent page itself (PLAN §14.10): the SPA's index.html, served by the Worker (wrangler.toml
+  // run_worker_first "/p/*") so it always carries noindex / no-referrer / no-store. Not an API route:
+  // it returns no data; the page fetches /api/p/:token.
+  app.get('/p/:token', async (c) => {
+    const res = c.env.ASSETS
+      ? await c.env.ASSETS.fetch(new Request(new URL('/', c.req.url)))
+      : new Response('<!doctype html><meta name="robots" content="noindex"><title>Maktab</title>', {
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        });
+    const out = new Response(res.body, res);
+    for (const [k, v] of Object.entries({ ...PARENT_HEADERS, ...SPA_HEADERS }))
+      out.headers.set(k, v);
+    return out;
+  });
 
   return { app, routes };
 }

@@ -24,8 +24,12 @@ export const RESOURCES = {
   payslip: ['read', 'prepare', 'approve', 'pay'],
   exam: ['marks_entry', 'read'],
   send_queue: ['use'],
-  /** The message outbox (absence alerts now; fee reminders in M3/M5). Read-only until M5. */
-  message: ['read'],
+  /** The message outbox (PLAN §14.9). send: open / sent / skip rows; compose: notices to families. */
+  message: ['read', 'send', 'compose'],
+  /** Message templates (en/ur) and message settings. */
+  template: ['manage'],
+  /** The parent magic-link page (PLAN §14.10): reached with a link token, never a session. */
+  parent_page: ['view'],
   settings: ['manage'],
   role: ['manage'],
   backup: ['manage'],
@@ -46,7 +50,13 @@ export type Grant =
   | 'own_subjects'
   | 'own_children'
   | 'own_only'
-  | 'all_except_owner';
+  | 'all_except_owner'
+  /**
+   * No session needed: the handler authenticates by other means (the parent link token). Only
+   * `parent_page.view` holds it, for every role at once; the guard lets such a route through
+   * without a session, and the route×role test pins it to exactly the /api/p/* routes.
+   */
+  | 'public';
 
 export type RoleGrants = Record<PrincipalRole, Grant>;
 
@@ -138,12 +148,32 @@ export const MATRIX = {
   // Queued messages carry guardian names and phones; a teacher sees those of their own groups.
   message: {
     read: g({ owner: all, admin: all, accountant: all, teacher: 'own_groups' }),
+    // Teachers send their own groups' absence rows; fee and notice rows are office work.
+    send: g({ owner: all, admin: all, accountant: all, teacher: 'own_groups' }),
+    compose: g({ owner: all, admin: all }),
+  },
+  template: { manage: g({ owner: all, admin: all }) },
+  parent_page: {
+    view: {
+      owner: 'public',
+      admin: 'public',
+      accountant: 'public',
+      teacher: 'public',
+      parent: 'public',
+    },
   },
   settings: { manage: g({ owner: all, admin: all }) },
   role: { manage: g({ owner: all }) },
   backup: { manage: g({ owner: all }) },
   audit: { read: g({ owner: all }) },
 } as const satisfies PermissionMatrix;
+
+/** A permission every role holds as 'public': its routes need no session (parent_page.view). */
+export function isPublicPermission<R extends Resource>(resource: R, action: Action<R>): boolean {
+  const byAction: Record<string, RoleGrants> = MATRIX[resource];
+  const grants = Object.values(byAction[action] ?? none);
+  return grants.length > 0 && grants.every((g) => g === 'public');
+}
 
 /** Does any of `roles` get (resource, action) at all (any scope)? For hiding UI the API would refuse. */
 export function hasGrant<R extends Resource>(

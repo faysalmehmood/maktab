@@ -19,6 +19,7 @@ const RANK: Record<Exclude<Grant, false>, number> = {
   own_subjects: 1,
   own_children: 1,
   own_only: 1,
+  public: 1,
 };
 
 export function grantFor<R extends Resource>(

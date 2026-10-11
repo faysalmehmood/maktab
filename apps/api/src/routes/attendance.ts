@@ -15,7 +15,6 @@ import {
   MAX_MARKS_PER_SYNC,
   type MarkCounts,
   type MarkStatus,
-  type MessageDto,
   monthSchema,
   newId,
   presentPct,
@@ -43,6 +42,7 @@ import {
 } from '../lib/attendance';
 import { ApiError } from '../lib/errors';
 import { idParam, jsonBody, notFoundError, queryParams, todayPk, userId } from '../lib/http';
+import { messageScopeSql } from '../lib/messaging';
 import { auditSql, changed, tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
 import { type GroupScope, registerFilter, scopeToGroups, studentFilter } from '../perm/scope';
@@ -184,25 +184,12 @@ const reportQuery = z.object({
   grp_subject_id: z.string().optional(),
   format: z.enum(['json', 'csv']).optional(),
 });
-const messagesQuery = z.object({
-  status: z.enum(['queued', 'sent', 'delivered', 'read', 'failed', 'skipped']).optional(),
-  template_key: z.string().max(40).optional(),
-  date: isoDateSchema.optional(),
-});
 
 function monthDays(month: string): string[] {
   const [y, m] = month.split('-').map(Number) as [number, number];
   const n = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return Array.from({ length: n }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`);
 }
-
-/** Scope filter for messages: a teacher sees those about their own groups (payload.grp_id). */
-const messageScope = (scope: GroupScope): SQL =>
-  scope.kind === 'all'
-    ? sql`1`
-    : scope.ids.length
-      ? inJson(sql`json_extract(msg.payload, '$.grp_id')`, scope.ids)
-      : sql`0`;
 
 export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
   const mark = requires('attendance', 'mark');
@@ -521,55 +508,6 @@ export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     },
   );
 
-  // ---- Message outbox (read-only until M5) ------------------------------------------------------
-  defineRoute(
-    app,
-    table,
-    { method: 'GET', path: '/api/messages', access: requires('message', 'read') },
-    async (c) => {
-      const db = c.get('db');
-      const q = queryParams(c, messagesQuery);
-      const where = sql.join(
-        [
-          messageScope(await scopeOf(c)),
-          q.status ? sql`msg.status = ${q.status}` : sql`1`,
-          q.template_key ? sql`msg.template_key = ${q.template_key}` : sql`1`,
-          q.date ? sql`json_extract(msg.payload, '$.date') = ${q.date}` : sql`1`,
-        ],
-        sql` AND `,
-      );
-      const [total] = await db.all<{ n: number }>(
-        sql`SELECT count(*) AS n FROM message msg WHERE ${where}`,
-      );
-      const rows = await db.all<{
-        id: string;
-        family_id: string;
-        family_name: string;
-        guardian_id: string | null;
-        guardian_name: string | null;
-        guardian_phone: string | null;
-        channel: string;
-        template_key: string;
-        lang: 'en' | 'ur';
-        status: string;
-        payload: string | null;
-        created_at: string;
-      }>(
-        sql`SELECT msg.id, msg.family_id, f.name AS family_name, msg.guardian_id,
-              gd.name AS guardian_name, COALESCE(gd.whatsapp, gd.phone) AS guardian_phone,
-              msg.channel, msg.template_key, msg.lang, msg.status, msg.payload, msg.created_at
-            FROM message msg JOIN family f ON f.id = msg.family_id
-            LEFT JOIN guardian gd ON gd.id = msg.guardian_id
-            WHERE ${where} ORDER BY msg.created_at DESC, msg.id DESC LIMIT 200`,
-      );
-      const items: MessageDto[] = rows.map((r) => ({
-        ...r,
-        payload: r.payload ? (JSON.parse(r.payload) as Record<string, unknown>) : null,
-      }));
-      return c.json({ items, total: Number(total?.n ?? 0) });
-    },
-  );
-
   // ---- Dashboard "today" (PLAN §14.11) ------------------------------------------------------------
   defineRoute(
     app,
@@ -601,7 +539,7 @@ export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const [queued] = await db.all<{ n: number }>(
         sql`SELECT count(*) AS n FROM message msg
             WHERE msg.status = 'queued' AND msg.template_key = 'absence'
-              AND json_extract(msg.payload, '$.date') = ${date} AND ${messageScope(scope)}`,
+              AND json_extract(msg.payload, '$.date') = ${date} AND ${messageScopeSql(scope)}`,
       );
       const body: DashboardTodayResponse = {
         date,

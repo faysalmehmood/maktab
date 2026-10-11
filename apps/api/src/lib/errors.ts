@@ -119,6 +119,13 @@ const DB_CONFLICTS: [RegExp, string, string][] = [
   [/UNIQUE constraint failed: user\.email/, 'email_taken', 'This email is already invited'],
   [/UNIQUE constraint failed: custom_field/, 'key_taken', 'A field with this key exists'],
   [/UNIQUE constraint failed: grp_subject/, 'duplicate_subject', 'Subject listed twice'],
+  [/message is no longer queued/, 'not_queued', 'This message was already sent or skipped'],
+  [/parent link already revoked/, 'already_revoked', 'This link was already revoked'],
+  [
+    /UNIQUE constraint failed: parent_link\.guardian_id/,
+    'link_conflict',
+    'The link changed at the same time; try again',
+  ],
   [/FOREIGN KEY constraint failed/, 'in_use', 'Referenced by other records'],
   [/UNIQUE constraint failed/, 'conflict', 'Already exists'],
 ];

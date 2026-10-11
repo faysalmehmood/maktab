@@ -8,6 +8,7 @@ export * from './dto';
 export * from './fees';
 export * from './i18n';
 export * from './import';
+export * from './messaging';
 export * from './money';
 export * from './moneyout';
 export * from './permissions';

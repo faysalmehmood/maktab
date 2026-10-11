@@ -1,4 +1,4 @@
-import type { Action, Permission, Resource } from '@maktab/shared';
+import { type Action, isPublicPermission, type Permission, type Resource } from '@maktab/shared';
 import type { Handler, Hono, MiddlewareHandler } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { matchedRoutes } from 'hono/route';
@@ -42,6 +42,12 @@ export class RouteTable {
 function guard(access: Access): MiddlewareHandler<AppEnv> {
   return createMiddleware<AppEnv>(async (c, next) => {
     if (access.kind === 'public') return next();
+    // parent_page.view: every role holds it as 'public' (MATRIX) — no session; the handler checks
+    // the link token itself. Kept in the matrix so default deny and the route×role test still see it.
+    if (isPublicPermission(access.permission.resource, access.permission.action as never)) {
+      c.set('grant', 'public');
+      return next();
+    }
     const principal = await loadPrincipal(c);
     if (!principal) throw new ApiError(401, 'unauthenticated', 'Sign in first');
     const grant = decide(principalRoles(principal), access.permission);
