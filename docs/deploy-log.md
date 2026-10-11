@@ -40,3 +40,27 @@ Tail of 20 health requests: cpuTime 0-1 ms, wallTime 1-2 ms.
 3. Backups (GitHub repo): secrets CLOUDFLARE_API_TOKEN (D1 Edit + R2 Edit), CLOUDFLARE_ACCOUNT_ID
    (`c2cb545de480a9e59b9e0d75d555c56f`), AGE_RECIPIENT, B2_KEY_ID, B2_APP_KEY, B2_BUCKET, B2_ENDPOINT;
    repo variable BACKUP_ENABLED=true. The backup R2 bucket `maktab-backups` also needs R2 enabled.
+
+# Deploy log: M5 + M5 fix pass (2026-10-11)
+
+Commits `b9d4349`, `aa0ca61`, `daf52bd` (pushed to main). From apps/api, CI=1 WRANGLER_SEND_METRICS=false.
+
+    npx wrangler d1 migrations apply maktab --remote --env production   # 0019, 0020, 0021 ✅
+    npm run db:verify -- --remote --env production                      # repo root
+    openssl rand -base64 48 | npx wrangler secret put PARENT_LINK_SECRET --env production   # never displayed
+    npm run build && npx wrangler deploy --env production
+
+- `db:verify --remote`: 94 triggers (expected 94), 8 views (expected 8).
+- After 0021: `school.parent_gate` = `birth_year`; notice templates carry `{body}` and `{link}`.
+- Secrets now: SESSION_SECRET, PARENT_LINK_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET.
+  Give the trustees a copy of PARENT_LINK_SECRET (docs/restore.md needs the same value).
+- Worker version `127573bb-40cb-434a-b4e4-377a0b3a0203`, cron `*/30 * * * *`.
+
+Checks (curl --resolve with the IP from `dig @1.1.1.1`):
+- `/api/health` 200 `{"status":"ok"}`.
+- `/api/p` without a token: 404 `application/json` `{"error":{"code":"not_found",…}}`,
+  `x-robots-tag: noindex, nofollow`, `cache-control: no-store`, `referrer-policy: no-referrer`;
+  a malformed `X-Parent-Token`: the same 404.
+- `/p`: 200 `text/html` (the SPA shell) with `x-robots-tag: noindex, nofollow`, `cache-control: no-store`,
+  the CSP (`frame-ancestors 'none'`), `permissions-policy: camera=(self), microphone=(), geolocation=()`,
+  `referrer-policy: no-referrer`, `x-content-type-options: nosniff`, `x-frame-options: DENY`.
