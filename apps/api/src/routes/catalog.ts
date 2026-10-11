@@ -124,7 +124,8 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     } else {
       const id = newId();
       await tx(db, [
-        db.insert(school).values({ id, ...values, createdBy: uid }),
+        // New schools start with the birth-year parent gate (M5 fix pass; PLAN §14.10).
+        db.insert(school).values({ id, ...values, parentGate: 'birth_year', createdBy: uid }),
         auditSql({
           id: auditId,
           userId: uid,

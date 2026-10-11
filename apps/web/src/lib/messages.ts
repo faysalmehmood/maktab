@@ -5,8 +5,10 @@ import {
   type MessageCountsDto,
   type MessageLang,
   monthLabel,
+  parentLinkUrl,
   type StaffRole,
   type TemplateVars,
+  wasFor,
 } from '@maktab/shared';
 import { useQuery } from '@tanstack/react-query';
 import { getJson } from './api';
@@ -42,12 +44,14 @@ export function sampleVars(lang: MessageLang, school: string, today: string): Te
   return {
     child: names[0] ?? '',
     children: joinNames(names, lang),
+    was: wasFor(names.length, lang),
     date: formatDmy(today),
     amount: 'Rs 8,000',
     month: monthLabel(today, lang),
     receipt_no: 'R-2026-00042',
     school,
-    link: `${origin}/p/${SAMPLE_LINK_TOKEN}`,
+    body: lang === 'ur' ? 'پیر کو اسکول بند رہے گا۔' : 'School is closed on Monday.',
+    link: parentLinkUrl(origin, SAMPLE_LINK_TOKEN),
   };
 }
 

@@ -22,9 +22,17 @@ function applyToDocument(lang: Language): void {
   document.documentElement.dir = DIRECTION[lang];
 }
 
+/**
+ * The parent page (/p) runs on a guardian's phone, often shared, and never as staff: its language
+ * choice is for that visit only and must not become the staff app's language (M5 fix pass).
+ */
+const isParentPage = (): boolean =>
+  typeof location !== 'undefined' && /^\/p(\/|$)/.test(location.pathname);
+
 export async function setLanguage(lang: Language): Promise<void> {
   await i18next.changeLanguage(lang);
   applyToDocument(lang);
+  if (isParentPage()) return;
   try {
     localStorage.setItem(STORAGE_KEY, lang);
   } catch {

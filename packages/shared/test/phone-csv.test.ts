@@ -2,14 +2,23 @@ import { describe, expect, it } from 'vitest';
 import {
   admissionInputSchema,
   csvRecords,
+  DEFAULT_TEMPLATES,
   formatPkPhone,
   importHeaderKey,
+  isPkMobile,
   normalizePkMobile,
   normalizePkPhone,
+  PK_MOBILE_GLOB,
+  parentLinkUrl,
   parseCsv,
   parseGender,
   parseYesNo,
+  renderTemplate,
+  type TemplateKey,
+  templateProblems,
   toCsvLine,
+  wasFor,
+  wrapNotice,
 } from '../src';
 
 describe('PK phone normaliser (PLAN §12 exp4)', () => {
@@ -113,5 +122,45 @@ describe('CSV', () => {
     expect(parseYesNo('maybe')).toBeNull();
     expect(parseGender('لڑکی')).toBe('f');
     expect(parseGender('x')).toBeUndefined();
+  });
+});
+
+describe('M5 fix pass: mobile check, template rules, plural verb', () => {
+  it('isPkMobile and its SQL glob accept exactly the normalised mobile form', () => {
+    expect(isPkMobile('923001234567')).toBe(true);
+    expect(isPkMobile('924235761234')).toBe(false); // Lahore landline
+    expect(isPkMobile('')).toBe(false);
+    expect(isPkMobile(null)).toBe(false);
+    expect(PK_MOBILE_GLOB).toBe('923[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]');
+  });
+
+  it('every template needs {link}; the notice also {body}; {body} is the notice’s only', () => {
+    expect(templateProblems('fee_due', 'Pay {amount}')).toEqual({ missing: ['link'], unknown: [] });
+    expect(templateProblems('notice', 'Hi\n{link}').missing).toEqual(['body']);
+    expect(templateProblems('absence', '{body}\n{link}').unknown).toEqual(['body']);
+    for (const [key, langs] of Object.entries(DEFAULT_TEMPLATES))
+      for (const body of Object.values(langs))
+        expect(templateProblems(key as TemplateKey, body)).toEqual({ missing: [], unknown: [] });
+  });
+
+  it('wraps a notice so the link stays alone on the last line', () => {
+    const t = renderTemplate(wrapNotice(DEFAULT_TEMPLATES.notice.en, 'Closed on {date}.'), {
+      date: '11/10/2026',
+      school: 'Al-Noor',
+      link: parentLinkUrl('https://s.example/', 'TOKEN'),
+    });
+    expect(t.split('\n')).toEqual([
+      'Assalamu alaikum.',
+      'Closed on 11/10/2026.',
+      '— Al-Noor',
+      'https://s.example/p#TOKEN',
+    ]);
+  });
+
+  it('{was} follows the number of children in English; Urdu uses تھے', () => {
+    expect(wasFor(1, 'en')).toBe('was');
+    expect(wasFor(2, 'en')).toBe('were');
+    expect(wasFor(1, 'ur')).toBe('تھے');
+    expect(wasFor(3, 'ur')).toBe('تھے');
   });
 });

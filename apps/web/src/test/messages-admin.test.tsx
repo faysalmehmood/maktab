@@ -15,7 +15,7 @@ import { visibleSections } from '@/pages/Settings';
 import { mockApi, renderAt } from './api-mock';
 
 const G = 'G1';
-const URL_ONCE = `https://school.example/p/${'B'.repeat(43)}`;
+const URL_ONCE = `https://school.example/p#${'B'.repeat(43)}`;
 const guardian = {
   id: G,
   name: 'Imran Raza',
@@ -154,16 +154,24 @@ describe('settings → messages', () => {
     const en = (await screen.findByLabelText('English')) as HTMLTextAreaElement;
     expect(en.value).toBe(DEFAULT_TEMPLATES.absence.en);
     expect(document.getElementById('tpl-absence-en-preview')?.textContent).toContain(
-      'Ahmed and Fatima was absent',
+      'Ahmed and Fatima were absent',
     );
     fireEvent.change(en, { target: { value: 'Hi {parent}, {children} absent. {link}' } });
     expect(screen.getByText(/Unknown placeholder/)).toBeTruthy();
     expect((document.getElementById('tpl-absence-en-save') as HTMLButtonElement).disabled).toBe(
       true,
     );
+    // Every text keeps {link}: without it, a warning and no save.
+    fireEvent.change(en, { target: { value: '{children} absent today.' } });
+    expect(document.getElementById('tpl-absence-en-missing')?.textContent).toContain('{link}');
+    expect((document.getElementById('tpl-absence-en-save') as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    // Only the owner (backup.manage) gets "Revoke all parent links".
+    expect(document.getElementById('msg-rotate-all')).toBeTruthy();
     fireEvent.change(en, { target: { value: '{children} absent today. {link}' } });
     const preview = document.getElementById('tpl-absence-en-preview')?.textContent ?? '';
-    expect(preview.split('\n').pop()).toMatch(/\/p\/\w{43}$/);
+    expect(preview.split('\n').pop()).toMatch(/\/p#\w{43}$/);
     fireEvent.click(document.getElementById('tpl-absence-en-save') as HTMLElement);
     await waitFor(() =>
       expect(calls.find((c) => c.method === 'PUT' && c.path.includes('templates'))?.body).toEqual({

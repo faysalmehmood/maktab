@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { PAYMENT_METHODS, RECEIPT_LABELS } from './fees';
 import { formatPKR } from './money';
 import { toLatinDigits } from './phone';
 
@@ -32,11 +33,29 @@ export const PLACEHOLDERS = [
   'link',
   'school',
   'receipt_no',
+  /** Notice template only: where the composed notice text goes. */
+  'body',
+  /** "was" / "were" by the number of children (English); Urdu uses the honorific تھے for both. */
+  'was',
 ] as const;
 export type Placeholder = (typeof PLACEHOLDERS)[number];
 export type TemplateVars = Partial<Record<Placeholder, string>>;
 
 export const MAX_TEMPLATE_LENGTH = 1000;
+
+/**
+ * What a stored text carries in place of the parent link (`message.rendered_text`, previews): the
+ * live link is put in only by POST /api/messages/:id/open's response, so no row, list or backup
+ * ever holds a working link (M5 fix pass).
+ */
+export const LINK_STUB = '{link}';
+
+/** The request header the parent page sends its link token in (never in a URL path or query). */
+export const PARENT_TOKEN_HEADER = 'x-parent-token';
+
+/** `https://host/p#<token>`: the token is a fragment, so it never reaches a server log or Referer. */
+export const parentLinkUrl = (origin: string, token: string): string =>
+  `${origin.replace(/\/+$/, '')}/p#${token}`;
 
 /**
  * Defaults, seeded into `message_template` by migration 0019 (a test keeps the two equal). `{link}`
@@ -45,8 +64,8 @@ export const MAX_TEMPLATE_LENGTH = 1000;
  */
 export const DEFAULT_TEMPLATES: Record<TemplateKey, Record<MessageLang, string>> = {
   absence: {
-    en: 'Assalamu alaikum. {children} was absent from school today, {date}. If this is a mistake, please tell us. — {school}\nDetails:\n{link}',
-    ur: 'السلام علیکم۔ آپ کے بچے {children} آج {date} کو اسکول میں غیر حاضر تھے۔ اگر یہ غلطی ہے تو ہمیں بتائیں۔ — {school}\nتفصیل:\n{link}',
+    en: 'Assalamu alaikum. {children} {was} absent from school today, {date}. If this is a mistake, please tell us. — {school}\nDetails:\n{link}',
+    ur: 'السلام علیکم۔ {children} آج {date} کو اسکول میں غیر حاضر {was}۔ اگر یہ غلطی ہے تو ہمیں بتائیں۔ — {school}\nتفصیل:\n{link}',
   },
   fee_due: {
     en: 'Assalamu alaikum. The fee of {amount} for {children} ({month}) is due. — {school}\nDetails:\n{link}',
@@ -61,8 +80,8 @@ export const DEFAULT_TEMPLATES: Record<TemplateKey, Record<MessageLang, string>>
     ur: 'السلام علیکم۔ {children} کی فیس {amount} موصول ہو گئی (رسید {receipt_no})۔ جزاک اللہ۔ — {school}\nرسید:\n{link}',
   },
   notice: {
-    en: 'Assalamu alaikum.\n\n— {school}\n{link}',
-    ur: 'السلام علیکم۔\n\n— {school}\n{link}',
+    en: 'Assalamu alaikum.\n{body}\n— {school}\n{link}',
+    ur: 'السلام علیکم۔\n{body}\n— {school}\n{link}',
   },
   result: {
     en: 'Assalamu alaikum. Results for {children} are ready. — {school}\nDetails:\n{link}',
@@ -81,13 +100,39 @@ export function unknownPlaceholders(body: string): string[] {
 }
 
 /**
+ * Placeholders a template for `key` must carry: every text ends with the parent link, and the
+ * notice wraps the composed text in `{body}`. `{body}` anywhere else is refused.
+ */
+export function templateProblems(
+  key: TemplateKey,
+  body: string,
+): { missing: Placeholder[]; unknown: string[] } {
+  const missing: Placeholder[] = [];
+  if (!body.includes('{link}')) missing.push('link');
+  if (key === 'notice' && !body.includes('{body}')) missing.push('body');
+  const unknown = unknownPlaceholders(body);
+  if (key !== 'notice' && body.includes('{body}')) unknown.push('body');
+  return { missing, unknown };
+}
+
+/** A notice's text inside the `notice` template (`{body}` slot; prepended to an old text without one). */
+export function wrapNotice(template: string, noticeBody: string): string {
+  return template.includes('{body}')
+    ? template.replace(/\{body\}/g, () => noticeBody)
+    : `${noticeBody}\n${template}`;
+}
+
+/**
  * Fills a template. Rules from experiment 4: Latin digits only (an Urdu keyboard's ۱۲۳ become 123);
  * a missing value renders empty; and `{link}`, wherever the body puts it, is moved to a line of its
  * own at the very end (no link → no line), so WhatsApp shows it as one clean tappable URL.
  */
 export function renderTemplate(body: string, vars: TemplateVars): string {
   const hasLink = body.includes('{link}');
-  let text = hasLink ? body.replace(/[ \t]*\{link\}/g, '') : body;
+  // A line holding only {link} goes entirely (no blank line left behind); elsewhere the token goes.
+  let text = hasLink
+    ? body.replace(/^[ \t]*\{link\}[ \t]*(\n|$)/gm, '').replace(/[ \t]*\{link\}/g, '')
+    : body;
   text = text.replace(TOKEN, (m, k: string) =>
     (PLACEHOLDERS as readonly string[]).includes(k) ? (vars[k as Placeholder] ?? '') : m,
   );
@@ -155,6 +200,10 @@ export function monthLabel(periodOrDate: string, lang: MessageLang): string {
   return name && y ? `${name} ${y}` : periodOrDate;
 }
 
+/** The verb for {children}: "was"/"were" in English; Urdu's honorific تھے reads right for one or many. */
+export const wasFor = (count: number, lang: MessageLang): string =>
+  lang === 'ur' ? 'تھے' : count > 1 ? 'were' : 'was';
+
 /** "Ali", "Ali and Sara", "Ali, Sara and Zain" — in Urdu with ، and اور. */
 export function joinNames(names: readonly string[], lang: MessageLang): string {
   const and = lang === 'ur' ? ' اور ' : ' and ';
@@ -215,6 +264,11 @@ export const composeInputSchema = z
   .refine((v) => !unknownPlaceholders(`${v.body_en}\n${v.body_ur}`).length, {
     message: 'Unknown placeholder',
     path: ['body_en'],
+  })
+  // The notice text goes into the template's {body} slot; the template adds the link itself.
+  .refine((v) => !/\{(body|link)\}/.test(`${v.body_en}\n${v.body_ur}`), {
+    message: 'The link is added by itself; leave {link} and {body} out of a notice',
+    path: ['body_en'],
   });
 export type ComposeInput = z.input<typeof composeInputSchema>;
 
@@ -236,6 +290,8 @@ export const templateUpdateSchema = z.object({
     .min(1)
     .max(MAX_TEMPLATE_LENGTH)
     .refine((b) => !unknownPlaceholders(b).length, 'Unknown placeholder')
+    // Every text ends with the parent link (PLAN §14.9); the notice also needs {body} (checked per key).
+    .refine((b) => b.includes('{link}'), 'Keep {link} in the text')
     .nullable(),
 });
 export const templatePreviewSchema = z.object({
@@ -274,6 +330,8 @@ export type QueueMessageDto = {
   /** Raw stored number (display); `wa_number` is the normalised mobile wa.me needs, if valid. */
   guardian_phone: string | null;
   wa_number: string | null;
+  /** Normalised number this row will message (wa) or dial (call); null = fix the number first. */
+  number: string | null;
   channel: string;
   template_key: string;
   lang: MessageLang;
@@ -371,8 +429,14 @@ export type ParentDueLineDto = {
   status: 'partial' | 'overdue' | 'due';
 };
 
+/**
+ * The parent page shows only what this whitelist names (M5 fix pass): first names, class, marks, dues
+ * lines and receipt numbers. No database ids anywhere — a child is an opaque per-link index (its
+ * place among the family's children), a receipt is its number.
+ */
 export type ParentChildDto = {
-  id: string;
+  /** 1-based, stable for the family (admission order); not a database id. */
+  index: number;
   first_name: string;
   group: string | null;
   today: 'P' | 'A' | 'L' | 'E' | null;
@@ -394,8 +458,37 @@ export type ParentPageDto = {
     total: number;
     overdue: number;
   } | null;
-  receipts: { id: string; receipt_no: string; amount: number; business_date: string }[] | null;
-  notices: { id: string; at: string; body_en: string; body_ur: string }[];
+  receipts: { receipt_no: string; amount: number; business_date: string }[] | null;
+  notices: { at: string; body_en: string; body_ur: string }[];
+};
+
+/** A receipt as the parent page prints it: the whitelist (no staff names, no ids, first names). */
+export type ParentReceiptDto = {
+  school: { name: string; name_ur: string | null; address: string | null; phone: string | null };
+  labels: typeof RECEIPT_LABELS;
+  lang: MessageLang;
+  receipt: {
+    receipt_no: string;
+    business_date: string;
+    amount: number;
+    method: (typeof PAYMENT_METHODS)[number];
+    /** The guardian's first name. */
+    payer_name: string;
+  };
+  students: {
+    child: number;
+    first_name: string;
+    lines: { period_key: string; head_name: string; head_name_ur: string | null; amount: number }[];
+    subtotal: number;
+  }[];
+  totals: {
+    amount: number;
+    allocated: number;
+    credit_added: number;
+    payer_due: number;
+    payer_credit: number;
+  };
+  reversed: boolean;
 };
 
 export type ParentGateResultDto = { gate_token: string; expires_at: string };

@@ -431,7 +431,14 @@ export function peopleRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       if (Number(n?.n ?? 0) <= 1) {
         throw new ApiError(409, 'last_guardian', 'A family keeps at least one guardian');
       }
-      // Messages (M5) will reference guardians; then the FK refuses and this becomes 409 in_use.
+      // A parent link (even a revoked one: links are never deleted) keeps the guardian.
+      const [link] = await db.all(sql`SELECT 1 FROM parent_link WHERE guardian_id = ${id} LIMIT 1`);
+      if (link)
+        throw new ApiError(
+          409,
+          'has_parent_link',
+          'This guardian has a parent link, so they cannot be deleted. Revoke the link instead (and update their details if needed).',
+        );
       await tx(db, [
         db.delete(guardian).where(eq(guardian.id, id)),
         auditSql({

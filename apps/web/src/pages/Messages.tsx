@@ -142,9 +142,12 @@ function QueueRow({
   const opened = state.kind === 'opened' ? state.open : null;
   const actionable = canSend && isPending(m, state);
   const isCall = m.channel === 'call';
-  const callNumber = normalizePkPhone(m.guardian_phone ?? '')?.number ?? null;
+  // `number` is the API's normalised number for this row (wa: the mobile; call: what to dial), so a
+  // row needing a fixed number shows before it is opened.
+  const callNumber =
+    (isCall ? m.number : null) ?? normalizePkPhone(m.guardian_phone ?? '')?.number ?? null;
   const tel = opened?.tel_url ?? (callNumber ? telUrl(callNumber) : null);
-  const noNumber = !isCall && !m.wa_number;
+  const noNumber = !isCall && !(m.number ?? m.wa_number);
   const finalStatus =
     state.kind === 'done' ? state.status : state.kind === 'auto' ? 'skipped' : m.status;
   const finalReason = state.kind === 'auto' ? state.reason : m.skipped_reason;

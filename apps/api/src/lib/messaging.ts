@@ -10,14 +10,18 @@ import {
   newId,
   PARENT_GATES,
   type ParentGate,
+  parentLinkUrl,
   renderTemplate,
   TEMPLATE_KEYS,
   type TemplateKey,
   type TemplateVars,
+  wasFor,
+  wrapNotice,
 } from '@maktab/shared';
 import { sql } from 'drizzle-orm';
 import type { GroupScope } from '../perm/scope';
 import { b64urlEncode, utf8 } from './b64';
+import { ApiError } from './errors';
 
 /**
  * Messaging helpers (PLAN §7, §14.9, §14.10): school/template lookups, the per-row renderer, the
@@ -43,31 +47,58 @@ function hmacKey(secret: string): Promise<CryptoKey> {
   return k;
 }
 
+const hmac = async (secret: string, msg: string): Promise<ArrayBuffer> =>
+  crypto.subtle.sign('HMAC', await hmacKey(secret), utf8(msg));
+const hex = (b: ArrayBuffer): string =>
+  [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+
 /**
- * The parent-link token: HMAC-SHA256(SESSION_SECRET, "parent-link:" + salt), base64url (43 chars,
- * 256 bits; the salt is 128 random bits). Only its SHA-256 is stored, so a database leak alone does
- * not give working links; the Worker can recompute it to put the current link into a message.
- * Rotating SESSION_SECRET therefore invalidates every parent link (staff re-create them).
+ * PARENT_LINK_SECRET (a Worker secret of its own, never SESSION_SECRET): parent-link tokens, the
+ * access log's IP hashes, PIN hashes and gate tokens all derive from it. Missing → the parent-link
+ * routes answer 503 `misconfigured` (and the Worker logs a config warning at start).
  */
-export async function linkToken(secret: string, salt: string): Promise<string> {
-  const mac = await crypto.subtle.sign('HMAC', await hmacKey(secret), utf8(`parent-link:${salt}`));
-  return b64urlEncode(mac);
+export function parentSecret(env: { PARENT_LINK_SECRET?: string | undefined }): string {
+  const s = env.PARENT_LINK_SECRET?.trim() ?? '';
+  if (s.length < 32)
+    throw new ApiError(503, 'misconfigured', 'Parent links are not set up on this server yet');
+  return s;
 }
 
-export const linkUrl = (origin: string, token: string): string =>
-  `${origin.replace(/\/+$/, '')}/p/${token}`;
+/**
+ * The parent-link token: HMAC-SHA256(PARENT_LINK_SECRET, "link:" + salt), base64url (43 chars,
+ * 256 bits; the salt is 128 random bits). Only its SHA-256 is stored, so a database leak alone does
+ * not give working links; the Worker can recompute it to put the current link into a message.
+ * Rotating PARENT_LINK_SECRET makes every stored link unrecomputable: run
+ * POST /api/parent-links/rotate-all afterwards (it revokes them all; new ones are made on demand).
+ */
+export async function linkToken(secret: string, salt: string): Promise<string> {
+  return b64urlEncode(await hmac(secret, `link:${salt}`));
+}
 
-/** Hashed client IP for the access log: the secret salts it so the log cannot be reversed by lookup. */
+/** `https://host/p#<token>` (shared with the web app). */
+export const linkUrl = parentLinkUrl;
+
+/** Hashed client IP for the access log: HMAC(PARENT_LINK_SECRET, ip), so it cannot be reversed by lookup. */
 export async function ipHash(
   secret: string,
   ip: string | null | undefined,
 ): Promise<string | null> {
   if (!ip) return null;
-  return (await sha256Hex(`ip:${secret.slice(0, 16)}:${ip}`)).slice(0, 16);
+  return hex(await hmac(secret, `ip:${ip}`));
 }
 
-export const pinHash = (linkId: string, pin: string): Promise<string> =>
-  sha256Hex(`pin:${linkId}:${pin}`);
+/** PIN hash: keyed, so a database leak alone cannot brute-force a 4–6 digit PIN offline. */
+export const pinHash = async (secret: string, linkId: string, pin: string): Promise<string> =>
+  hex(await hmac(secret, `pin:${linkId}:${pin}`));
+
+/** Constant-time string comparison (same length leaks nothing but the length). */
+export function safeEqual(a: string, b: string): boolean {
+  const x = utf8(a);
+  const y = utf8(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
 
 // ---- School and templates ----------------------------------------------------------------------------
 
@@ -91,7 +122,7 @@ export async function schoolMsg(db: AppDb): Promise<SchoolMsg> {
     phone: s?.phone ?? null,
     parent_gate: PARENT_GATES.includes(s?.parent_gate as ParentGate)
       ? (s?.parent_gate as ParentGate)
-      : 'none',
+      : 'birth_year',
     reminder_cooldown_days: Number(s?.reminder_cooldown_days ?? 7),
     announcement_groups_note: s?.announcement_groups_note ?? null,
   };
@@ -143,6 +174,7 @@ export function messageVars(
   return {
     child: names[0] ?? '',
     children: joinNames(names, lang),
+    was: wasFor(names.length, lang),
     date: formatDmy(when),
     amount: amount === undefined ? '' : formatRs(amount),
     month: monthLabel(when, lang),
@@ -160,9 +192,11 @@ export function bodyFor(
   templates: Templates,
 ): string {
   if (key === 'notice') {
+    // The composed text sits in the notice template's {body} slot, so the template's {link} is still
+    // alone on the last line (M5 fix pass).
     const en = str(payload.body_en) ?? '';
     const ur = str(payload.body_ur) ?? '';
-    return (lang === 'ur' ? ur || en : en || ur) || templates.notice[lang];
+    return wrapNotice(templates.notice[lang], lang === 'ur' ? ur || en : en || ur);
   }
   const t = (templates as Record<string, Record<MessageLang, string>>)[key];
   return t?.[lang] ?? '';
@@ -259,6 +293,7 @@ export type LinkRow = {
   pin_hash: string | null;
   gate_failures: number;
   gate_locked_until: string | null;
+  gate_last_attempt_at?: string | null;
 };
 
 export const linkExpired = (l: LinkRow, nowIso: string): boolean =>
@@ -278,6 +313,7 @@ export const randomSalt = (): string => b64urlEncode(crypto.getRandomValues(new 
  * renewal are the same thing: the old token stops working in the same batch the new one starts.
  */
 export async function newLinkStatements(o: {
+  /** PARENT_LINK_SECRET. */
   secret: string;
   guardianId: string;
   by: string | null;
@@ -291,7 +327,7 @@ export async function newLinkStatements(o: {
   const token = await linkToken(o.secret, salt);
   const hash = await sha256Hex(token);
   const expires = new Date(Date.parse(o.now) + o.days * 86_400_000).toISOString();
-  const pin = o.gate === 'pin' && o.pin ? await pinHash(id, o.pin) : null;
+  const pin = o.gate === 'pin' && o.pin ? await pinHash(o.secret, id, o.pin) : null;
   return {
     id,
     token,

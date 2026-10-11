@@ -8,6 +8,7 @@ import {
   MAX_MARKS_PER_SYNC,
   type MarkCounts,
   newId,
+  PK_MOBILE_GLOB,
   type SyncRejectCode,
   weekdayOf,
 } from '@maktab/shared';
@@ -18,6 +19,9 @@ import { dbConflict } from './errors';
 import { todayPk } from './http';
 import { isTransientD1Error } from './retry';
 import { tx } from './tx';
+
+/** A constant (not a bound parameter: the request budget counts those). */
+const MOBILE = sql.raw(`'${PK_MOBILE_GLOB}'`);
 
 /**
  * The attendance write path (PLAN §5.1, §12 exp6, §14.3). One function serves the teacher's sync
@@ -228,6 +232,8 @@ function absenceStatements(
       WHERE g2.family_id = st.family_id AND ${cond}
       ORDER BY g2.priority, g2.created_at, g2.id LIMIT 1)`;
   const hasNumber = sql`COALESCE(NULLIF(g2.whatsapp, ''), NULLIF(g2.phone, '')) IS NOT NULL`;
+  // WhatsApp only to a mobile (shared isPkMobile's SQL twin); a landline-only guardian is a call row.
+  const hasMobile = sql`(g2.whatsapp GLOB ${MOBILE} OR g2.phone GLOB ${MOBILE})`;
   return [
     sql`INSERT INTO message (id, family_id, guardian_id, channel, template_key, lang, payload,
                              status, created_by)
@@ -237,7 +243,7 @@ function absenceStatements(
                x.payload, 'queued', ${ctx.uid}
         FROM (
           SELECT min(json_extract(j.value, '$.m')) AS mid, st.family_id,
-                 ${firstWith(sql`g2.consent_whatsapp = 1 AND ${hasNumber}`)} AS wa,
+                 ${firstWith(sql`g2.consent_whatsapp = 1 AND ${hasMobile}`)} AS wa,
                  COALESCE(${firstWith(hasNumber)}, ${firstWith(sql`1`)}) AS callg,
                  json_object('student_ids', json_group_array(st.id),
                              'student_names', json_group_array(st.name),

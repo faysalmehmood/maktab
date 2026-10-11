@@ -9,6 +9,7 @@ import {
   formatDmy,
   isoDateSchema,
   joinNames,
+  LINK_STUB,
   MESSAGE_LANGS,
   type MessageCountsDto,
   type MessageLang,
@@ -32,8 +33,10 @@ import {
   type TemplateKey,
   telUrl,
   templatePreviewSchema,
+  templateProblems,
   templateUpdateSchema,
   unknownPlaceholders,
+  wasFor,
   waUrl,
 } from '@maktab/shared';
 import { asc, eq, type SQL, sql } from 'drizzle-orm';
@@ -53,6 +56,7 @@ import {
   loadTemplates,
   messageScopeSql,
   newLinkStatements,
+  parentSecret,
   renderRow,
   type SchoolMsg,
   type StillAbsent,
@@ -137,12 +141,14 @@ function toDto(
   ctx: { school: SchoolMsg; templates: Templates; origin: string; today: string },
 ): QueueMessageDto {
   const payload = parse(r.payload);
+  // Stored and listed texts carry LINK_STUB, never a working link (only /open's response does).
   const preview =
     r.rendered_text ??
     renderRow(
       { template_key: r.template_key, lang: r.lang, payload },
-      { ...ctx, link: r.guardian_id ? `${linkUrl(ctx.origin, '…')}` : '' },
+      { ...ctx, link: r.guardian_id ? LINK_STUB : '' },
     );
+  const wa = waNumber(r);
   return {
     id: r.id,
     family_id: r.family_id,
@@ -154,7 +160,10 @@ function toDto(
       r.channel === 'call'
         ? (r.guardian_phone ?? r.guardian_whatsapp)
         : (r.guardian_whatsapp ?? r.guardian_phone),
-    wa_number: waNumber(r),
+    wa_number: wa,
+    // What the row will dial or message, normalised, so "fix number" shows before opening: a
+    // WhatsApp row whose number is not a mobile has none (it becomes a call row at open).
+    number: r.channel === 'wa_manual' ? wa : (callNumber(r) ?? wa),
     channel: r.channel,
     template_key: r.template_key,
     lang: r.lang,
@@ -171,6 +180,10 @@ function toDto(
   };
 }
 
+/**
+ * Queue counters, each bounded by an index: queued rows by (status, template_key); sent / skipped
+ * today by (status, sent_at | skipped_at) over today's Pakistan-time range in UTC.
+ */
 async function counts(
   c: Context<AppEnv>,
   scope: GroupScope,
@@ -178,27 +191,29 @@ async function counts(
 ): Promise<MessageCountsDto> {
   const db = c.get('db');
   const where = messageScopeSql(scope);
-  const rows = await db.all<{
-    template_key: string;
-    queued: number;
-    sent: number;
-    skipped: number;
-  }>(
-    sql`SELECT msg.template_key,
-          sum(msg.status = 'queued') AS queued,
-          sum(msg.status = 'sent' AND date(msg.sent_at, '+5 hours') = ${today}) AS sent,
-          sum(msg.status = 'skipped' AND date(msg.skipped_at, '+5 hours') = ${today}) AS skipped
-        FROM message msg WHERE ${where} GROUP BY msg.template_key`,
+  const from = new Date(`${today}T00:00:00+05:00`).toISOString();
+  const to = new Date(Date.parse(from) + 86_400_000).toISOString();
+  const rows = await db.all<{ k: string; template_key: string | null; n: number }>(
+    sql`SELECT 'queued' AS k, msg.template_key, count(*) AS n FROM message msg
+          WHERE msg.status = 'queued' AND ${where} GROUP BY msg.template_key
+        UNION ALL
+        SELECT 'sent', NULL, count(*) FROM message msg
+          WHERE msg.status = 'sent' AND msg.sent_at >= ${from} AND msg.sent_at < ${to} AND ${where}
+        UNION ALL
+        SELECT 'skipped', NULL, count(*) FROM message msg
+          WHERE msg.status = 'skipped' AND msg.skipped_at >= ${from} AND msg.skipped_at < ${to} AND ${where}`,
   );
   const by_template: Record<string, number> = {};
   let queued = 0;
   let sent = 0;
   let skipped = 0;
   for (const r of rows) {
-    by_template[r.template_key] = Number(r.queued ?? 0);
-    queued += Number(r.queued ?? 0);
-    sent += Number(r.sent ?? 0);
-    skipped += Number(r.skipped ?? 0);
+    const n = Number(r.n ?? 0);
+    if (r.k === 'queued' && r.template_key) {
+      by_template[r.template_key] = n;
+      queued += n;
+    } else if (r.k === 'sent') sent = n;
+    else if (r.k === 'skipped') skipped = n;
   }
   return { queued, sent_today: sent, skipped_today: skipped, by_template };
 }
@@ -223,14 +238,17 @@ async function ensureLink(
   s: SchoolMsg,
 ): Promise<{ url: string; hash: string }> {
   const db = c.get('db');
+  const secret = parentSecret(c.env);
   const now = nowIso();
   const live = await liveLink(db, guardianId);
   if (live?.token_salt && !linkExpired(live, now)) {
-    const token = await linkToken(c.env.SESSION_SECRET, live.token_salt);
-    return { url: linkUrl(c.env.APP_ORIGIN, token), hash: live.token_hash };
+    const token = await linkToken(secret, live.token_salt);
+    // A link made under an earlier PARENT_LINK_SECRET cannot be recomputed: replace it.
+    if ((await sha256Hex(token)) === live.token_hash)
+      return { url: linkUrl(c.env.APP_ORIGIN, token), hash: live.token_hash };
   }
   const n = await newLinkStatements({
-    secret: c.env.SESSION_SECRET,
+    secret,
     guardianId,
     by: userId(c),
     now,
@@ -310,6 +328,14 @@ async function guardianExists(c: Context<AppEnv>, id: string): Promise<void> {
   if (!g) throw notFoundError('Guardian');
 }
 
+/** Puts the live link in place of the stub on a stored text's last line. */
+const withLink = (stored: string, url: string): string =>
+  stored.endsWith(`\n${LINK_STUB}`)
+    ? `${stored.slice(0, -LINK_STUB.length)}${url}`
+    : stored === LINK_STUB
+      ? url
+      : stored;
+
 /** Drops a trailing "Details:" line left behind when a text is rendered without its link. */
 const withoutLinkLead = (text: string): string => text.replace(/\n[^\n]*[:：]\s*$/u, '');
 
@@ -348,17 +374,20 @@ export function messageRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const text = renderTemplate(input.body, {
         child: names[0] ?? '',
         children: joinNames(names, input.lang),
+        was: wasFor(names.length, input.lang),
         date: formatDmy(today),
         amount: 'Rs 8,000',
         month: monthLabel(today, input.lang),
         receipt_no: 'R-2026-00042',
         school: input.lang === 'ur' ? s.name_ur || s.name : s.name,
-        link: linkUrl(c.env.APP_ORIGIN, 'Xk3f9Qa2LmNpXk3f9Qa2LmNp'),
+        body: input.lang === 'ur' ? 'پیر کو اسکول بند رہے گا۔' : 'School is closed on Monday.',
+        link: linkUrl(c.env.APP_ORIGIN, '…'),
       });
       return c.json({
         text,
         wa_url: waUrl('923001234567', text),
         unknown: unknownPlaceholders(input.body),
+        missing: templateProblems(input.key, input.body).missing,
       });
     },
   );
@@ -374,6 +403,15 @@ export function messageRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         throw notFoundError('Template');
       const input = await jsonBody(c, templateUpdateSchema);
       const body = input.body ?? DEFAULT_TEMPLATES[key][lang];
+      const problems = templateProblems(key, body);
+      if (problems.missing.length || problems.unknown.length)
+        throw new ApiError(
+          400,
+          'template_placeholders',
+          problems.missing.length
+            ? `Keep ${problems.missing.map((m) => `{${m}}`).join(' and ')} in the text`
+            : `Not allowed here: ${problems.unknown.map((m) => `{${m}}`).join(', ')}`,
+        );
       const db = c.get('db');
       const [before] = await db.all<{ body: string }>(
         sql`SELECT body FROM message_template WHERE key = ${key} AND lang = ${lang}`,
@@ -465,7 +503,8 @@ export function messageRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         c,
         z.object({
           grp_id: z.string().min(1).max(64),
-          template_key: z.enum(TEMPLATE_KEYS).default('absence'),
+          // Class-group texts only: absence and notices. Fee texts are private to a family.
+          template_key: z.enum(['absence', 'notice']).default('absence'),
           date: isoDateSchema.optional(),
         }),
       );
@@ -711,29 +750,34 @@ export function messageRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       }
       const s = await schoolMsg(db);
       const link = r.guardian_id ? await ensureLink(c, r.guardian_id, s) : null;
-      const text = renderRow(
+      // The stored text keeps LINK_STUB; the live link goes only into this response (M5 fix pass):
+      // no message row, list or backup ever holds a working parent link.
+      const stored = renderRow(
         { template_key: r.template_key, lang: r.lang, payload },
         {
           school: s,
           templates: await loadTemplates(db),
-          link: link?.url ?? '',
+          link: link ? LINK_STUB : '',
           today,
           ...(children ? { children } : {}),
           ...(amount !== undefined ? { amount } : {}),
         },
       );
+      const text = link ? withLink(stored, link.url) : stored;
+      // A WhatsApp row whose number is not a mobile (a landline, a typo) becomes a call row.
+      const channel = r.channel === 'wa_manual' && !waNumber(r) ? 'call' : r.channel;
       await tx(db, [
-        sql`UPDATE message SET opened_at = ${now}, rendered_text = ${text},
+        sql`UPDATE message SET opened_at = ${now}, rendered_text = ${stored}, channel = ${channel},
               link_token_hash = ${link?.hash ?? null} WHERE id = ${id} AND status = 'queued'`,
       ]);
-      const wa = r.channel === 'wa_manual' ? waNumber(r) : null;
+      const wa = channel === 'wa_manual' ? waNumber(r) : null;
       const call = callNumber(r) ?? wa;
       const names = children ?? (Array.isArray(payload.student_names) ? payload.student_names : []);
       const body: MessageOpenDto = {
         id,
         status: 'queued',
         skipped_reason: null,
-        channel: r.channel,
+        channel,
         lang: r.lang,
         text,
         wa_url: wa ? waUrl(wa, text) : null,
@@ -757,9 +801,13 @@ export function messageRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       if (r.status === 'sent') return c.json({ id, status: 'sent', replayed: true });
       if (r.status !== 'queued')
         throw new ApiError(409, 'not_queued', 'This message was already sent or skipped');
+      // A WhatsApp text can only have been sent from the text /open built (with its link).
+      if (r.channel === 'wa_manual' && !r.opened_at)
+        throw new ApiError(409, 'not_opened', 'Open it in WhatsApp first');
       await tx(db, [
         sql`UPDATE message SET status = 'sent', sent_at = ${nowIso()}, sent_by = ${userId(c)}
-            WHERE id = ${id} AND status = 'queued'`,
+            WHERE id = ${id} AND status = 'queued'
+              AND (channel <> 'wa_manual' OR opened_at IS NOT NULL)`,
       ]);
       return c.json({ id, status: 'sent', replayed: false });
     },
@@ -814,7 +862,7 @@ export function messageRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         throw new ApiError(400, 'pin_required', 'Choose a 4–6 digit PIN for this link');
       const before = await liveLink(db, id);
       const n = await newLinkStatements({
-        secret: c.env.SESSION_SECRET,
+        secret: parentSecret(c.env),
         guardianId: id,
         by: userId(c),
         now: nowIso(),
@@ -864,6 +912,36 @@ export function messageRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         }),
       ]);
       return c.json(await linkStatus(c, id));
+    },
+  );
+
+  /**
+   * Revokes every live parent link at once — after PARENT_LINK_SECRET was rotated (old links can no
+   * longer be recomputed) or leaked. Owner only (backup.manage, the restore/secret job). New links are
+   * made on demand: the next "Open WhatsApp" or the guardian panel.
+   */
+  defineRoute(
+    app,
+    table,
+    { method: 'POST', path: '/api/parent-links/rotate-all', access: requires('backup', 'manage') },
+    async (c) => {
+      const db = c.get('db');
+      const now = nowIso();
+      const [n] = await db.all<{ n: number }>(
+        sql`SELECT count(*) AS n FROM parent_link WHERE revoked_at IS NULL`,
+      );
+      await tx(db, [
+        sql`UPDATE parent_link SET revoked_at = ${now} WHERE revoked_at IS NULL`,
+        auditSql({
+          id: newId(),
+          userId: userId(c),
+          entity: 'parent_link',
+          entityId: 'all',
+          action: 'revoke_all',
+          after: { revoked: Number(n?.n ?? 0) },
+        }),
+      ]);
+      return c.json({ revoked: Number(n?.n ?? 0) });
     },
   );
 }

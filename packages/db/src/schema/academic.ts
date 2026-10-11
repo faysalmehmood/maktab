@@ -52,7 +52,12 @@ export const school = sqliteTable(
     siblingRule: text('sibling_rule'),
     /** Fee reminder cooldown per family and template, in days (PLAN §14.9). */
     reminderCooldownDays: integer('reminder_cooldown_days').notNull().default(7),
-    /** Default parent-page gate (M5): 'none' | 'birth_year' | 'pin', validated by the API. */
+    /**
+     * Default parent-page gate (M5): 'none' | 'birth_year' | 'pin', validated by the API. New schools
+     * start at 'birth_year' (M5 fix pass): the school insert (PUT /api/school) sets it, so the
+     * column's SQL default ('none', migration 0019) never needs a table rebuild; migration 0021
+     * moved existing rows.
+     */
     parentGate: text('parent_gate').notNull().default('none'),
     /** Guidance shown to staff about the school's WhatsApp announcement groups (M5). */
     announcementGroupsNote: text('announcement_groups_note'),

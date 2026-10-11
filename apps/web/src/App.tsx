@@ -146,7 +146,7 @@ export function App() {
       <Route path="/login" element={<Login />} />
       {/* The parent page (PLAN §14.10): public, no session, no app shell. */}
       <Route
-        path="/p/:token"
+        path="/p/*"
         element={
           <Loading>
             <ParentPage />

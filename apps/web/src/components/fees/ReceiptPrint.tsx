@@ -22,10 +22,13 @@ export function ReceiptPrint({
   data,
   fmt,
   lang,
+  publicCopy = false,
 }: {
   data: ReceiptPrintDto;
   fmt: ReceiptFormat;
   lang: ReceiptLang;
+  /** The parent page's copy: no admission numbers, no collector (the API does not send them). */
+  publicCopy?: boolean;
 }) {
   const L = data.labels[lang];
   const r = data.receipt;
@@ -118,7 +121,13 @@ export function ReceiptPrint({
                 labels below are hidden there). */}
             <tr className="receipt-child">
               <td colSpan={3}>
-                <bdi>{s.student_name}</bdi> · {L.admission_no} <N>{s.admission_no}</N>
+                <bdi>{s.student_name}</bdi>
+                {!publicCopy && (
+                  <>
+                    {' '}
+                    · {L.admission_no} <N>{s.admission_no}</N>
+                  </>
+                )}
               </td>
             </tr>
             <tr className="receipt-cols">
@@ -193,10 +202,14 @@ export function ReceiptPrint({
             </dd>
           </>
         )}
-        <dt>{L.collector}</dt>
-        <dd>
-          <bdi>{r.collector_name ?? ''}</bdi>
-        </dd>
+        {!publicCopy && (
+          <>
+            <dt>{L.collector}</dt>
+            <dd>
+              <bdi>{r.collector_name ?? ''}</bdi>
+            </dd>
+          </>
+        )}
       </dl>
       <footer className="receipt-foot">{L.signature}: ____________</footer>
     </article>

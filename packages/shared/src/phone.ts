@@ -38,6 +38,16 @@ export function normalizePkMobile(input: string): string | null {
   return d && /^923\d{9}$/.test(d) ? d : null;
 }
 
+/**
+ * A stored (normalised) number WhatsApp can reach: a PK mobile `923xxxxxxxxx`. Landlines and
+ * anything else route to "call" — at enqueue (SQL twin: PK_MOBILE_GLOB) and again at open.
+ */
+export const isPkMobile = (stored: string | null | undefined): boolean =>
+  !!stored && normalizePkMobile(stored) !== null;
+
+/** SQLite GLOB matching exactly the normalised mobile form isPkMobile accepts (`923` + 9 digits). */
+export const PK_MOBILE_GLOB = `923${'[0-9]'.repeat(9)}`;
+
 export type PkPhone = { number: string; mobile: boolean };
 
 /**

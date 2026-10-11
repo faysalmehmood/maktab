@@ -54,6 +54,9 @@ export const message = sqliteTable(
     check('message_channel', oneOf('channel', MESSAGE_CHANNELS)),
     check('message_status', oneOf('status', MESSAGE_STATUSES)),
     index('message_queue').on(t.status, t.templateKey),
+    /** The queue counters (sent / skipped today) read a time range per status (M5 fix pass). */
+    index('message_sent_at').on(t.status, t.sentAt),
+    index('message_skipped_at').on(t.status, t.skippedAt),
     index('message_family').on(t.familyId, t.templateKey),
     integerMoney('message', 'cost_estimate', true),
     integerMoney('message', 'cost_actual', true),
@@ -91,7 +94,7 @@ export const messageTemplate = sqliteTable(
 
 /**
  * Parent magic link (PLAN §7, §14.10). Only the SHA-256 of the token is stored, so a DB leak does
- * not leak working links. The token itself is HMAC(SESSION_SECRET, token_salt): 128 random bits of
+ * not leak working links. The token itself is HMAC(PARENT_LINK_SECRET, token_salt): 128 random bits of
  * salt, recomputable by the Worker so a queued message can carry the guardian's current link without
  * the link ever being stored in clear. One live link per guardian (rotate = revoke + new row).
  * `gate` NULL follows the school default (school.parent_gate); values are validated by the API.
@@ -112,9 +115,14 @@ export const parentLink = sqliteTable(
     tokenSalt: text('token_salt'),
     gate: text('gate'),
     pinHash: text('pin_hash'),
-    /** Wrong gate answers in a row; at 5 the gate locks for 15 minutes (gate_locked_until). */
+    /**
+     * Gate attempts counted in the current window: each attempt is claimed (counted) atomically
+     * before it is checked; a right answer resets it. At 5 the gate locks for 15 minutes.
+     */
     gateFailures: integer('gate_failures').notNull().default(0),
     gateLockedUntil: text('gate_locked_until'),
+    /** Last counted attempt: the count restarts after 15 minutes without one (sliding window). */
+    gateLastAttemptAt: text('gate_last_attempt_at'),
   },
   (t) => [index('parent_link_guardian').on(t.guardianId)],
 );

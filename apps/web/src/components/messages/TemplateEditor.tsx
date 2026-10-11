@@ -3,6 +3,8 @@ import {
   PLACEHOLDERS,
   type Placeholder,
   renderTemplate,
+  type TemplateKey,
+  templateProblems,
   unknownPlaceholders,
 } from '@maktab/shared';
 import { useRef } from 'react';
@@ -34,7 +36,8 @@ export function TemplateEditor({
   value,
   onChange,
   previewBody,
-  placeholders = PLACEHOLDERS,
+  placeholders,
+  templateKey,
 }: {
   id: string;
   label: string;
@@ -45,11 +48,17 @@ export function TemplateEditor({
   /** What the preview renders (defaults to `value`; a notice falls back to the other language). */
   previewBody?: string;
   placeholders?: readonly Placeholder[];
+  /** A stored template: checks the placeholders it must keep ({link}; {body} for the notice). */
+  templateKey?: TemplateKey;
 }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLTextAreaElement>(null);
   const vars = useSampleVars(lang);
-  const unknown = unknownPlaceholders(value);
+  const problems = templateKey ? templateProblems(templateKey, value) : null;
+  const unknown = problems ? problems.unknown : unknownPlaceholders(value);
+  const missing = problems?.missing ?? [];
+  const chips =
+    placeholders ?? PLACEHOLDERS.filter((p) => p !== 'body' || templateKey === 'notice');
   const body = previewBody ?? value;
 
   const insert = (p: Placeholder) => {
@@ -76,12 +85,12 @@ export function TemplateEditor({
         lang={lang}
         rows={5}
         value={value}
-        aria-invalid={unknown.length > 0}
+        aria-invalid={unknown.length > 0 || missing.length > 0}
         aria-describedby={unknown.length ? `${id}-unknown` : undefined}
         onChange={(e) => onChange(e.target.value)}
       />
       <fieldset className="flex flex-wrap gap-1" aria-label={t('msg.compose.insert')}>
-        {placeholders.map((p) => (
+        {chips.map((p) => (
           <button
             key={p}
             type="button"
@@ -99,6 +108,12 @@ export function TemplateEditor({
         <p id={`${id}-unknown`} role="alert" className="text-sm text-destructive">
           {t('msg.settings.unknown', { names: '' })}
           <bdi className="num">{unknown.map((u) => `{${u}}`).join(', ')}</bdi>
+        </p>
+      )}
+      {missing.length > 0 && (
+        <p id={`${id}-missing`} role="alert" className="text-sm text-destructive">
+          {t('msg.settings.missing', { names: '' })}
+          <bdi className="num">{missing.map((u) => `{${u}}`).join(' ')}</bdi>
         </p>
       )}
       {body.trim() && (

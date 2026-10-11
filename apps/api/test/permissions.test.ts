@@ -263,9 +263,10 @@ POST   /api/messages/:id/skip                D A A A A D
 GET    /api/guardians/:id/parent-link        D A A A D D
 POST   /api/guardians/:id/parent-link        D A A A D D
 POST   /api/guardians/:id/parent-link/revoke D A A A D D
-GET    /api/p/:token                         A A A A A A
-POST   /api/p/:token/gate                    A A A A A A
-GET    /api/p/:token/receipt/:id             A A A A A A
+POST   /api/parent-links/rotate-all          D A D D D D
+GET    /api/p                                A A A A A A
+POST   /api/p/gate                           A A A A A A
+GET    /api/p/receipt/:no                    A A A A A A
 `;
 
 type Who = PrincipalRole | 'anonymous';
@@ -325,7 +326,7 @@ describe('route × role', () => {
     }
   });
 
-  it("the 'public' grant sits on exactly the /api/p/* routes (parent page) and nothing else", () => {
+  it("the 'public' grant sits on exactly the /api/p routes (parent page) and nothing else", () => {
     const { routes } = testApp();
     const viaPublicGrant = routes
       .list()
@@ -334,11 +335,7 @@ describe('route × role', () => {
       )
       .map((r) => `${r.method} ${r.path}`)
       .sort();
-    expect(viaPublicGrant).toEqual([
-      'GET /api/p/:token',
-      'GET /api/p/:token/receipt/:id',
-      'POST /api/p/:token/gate',
-    ]);
+    expect(viaPublicGrant).toEqual(['GET /api/p', 'GET /api/p/receipt/:no', 'POST /api/p/gate']);
     // …and every /api/p/* route goes through that grant (none is an unconditional publicRoute).
     for (const r of routes.list().filter((x) => x.path.startsWith('/api/p/')))
       expect(r.access.kind, r.path).toBe('requires');

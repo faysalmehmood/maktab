@@ -16,6 +16,10 @@ export const msgErrorsEn = {
   gate_required: 'Answer the check first.',
   rate_limited: 'Too many requests. Wait a minute and try again.',
   unknown_placeholder: 'This text has a placeholder Maktab does not know.',
+  template_placeholders: 'Keep {link} in every text (and {body} in the notice).',
+  not_opened: 'Open it in WhatsApp first, then tap Sent.',
+  has_parent_link:
+    'This guardian has a parent link, so they cannot be deleted. Revoke the link instead.',
 } as const;
 
 export const msgErrorsUr: Shape<typeof msgErrorsEn> = {
@@ -27,6 +31,10 @@ export const msgErrorsUr: Shape<typeof msgErrorsEn> = {
   gate_required: 'پہلے تصدیق کا جواب دیں۔',
   rate_limited: 'بہت زیادہ درخواستیں۔ ایک منٹ رک کر دوبارہ کوشش کریں۔',
   unknown_placeholder: 'اس متن میں ایسا خانہ ہے جسے مکتب نہیں پہچانتا۔',
+  template_placeholders: 'ہر متن میں {link} رکھیں (اور اعلان میں {body} بھی)۔',
+  not_opened: 'پہلے واٹس ایپ میں کھولیں، پھر "بھیج دیا" دبائیں۔',
+  has_parent_link:
+    'اس سرپرست کا والدین لنک موجود ہے، اس لیے انہیں حذف نہیں کیا جا سکتا۔ اس کے بجائے لنک منسوخ کریں۔',
 };
 
 export const msgEn = {
@@ -64,6 +72,8 @@ export const msgEn = {
     link: 'parent page link',
     school: 'school name',
     receipt_no: 'receipt number',
+    body: 'notice text (notice only)',
+    was: '"was" / "were"',
   },
   queue: {
     title: 'Send queue',
@@ -159,7 +169,7 @@ export const msgEn = {
     revoke: 'Revoke',
     revokeConfirm: 'Revoke this link? The guardian will not be able to open it any more.',
     revoked: 'Link revoked',
-    once: 'Copy or send this link now. It is shown only once.',
+    once: 'Copy or send this link now. It is shown only once and Maktab does not keep it: messages store only a placeholder. Attendance shows to anyone with the link; dues and receipts need the check.',
     copy: 'Copy link',
     copied: 'Link copied',
     sendWa: 'Send via WhatsApp',
@@ -237,7 +247,14 @@ export const msgEn = {
     general: 'Message settings',
     cooldown: 'Days between fee reminders to one family',
     gate: 'Parent page check before fees and receipts',
-    gateHint: 'Links staff create can choose their own; automatic links never use a PIN.',
+    gateHint:
+      "Child's birth year is the default: a speed bump if a link is forwarded, not a password. Links staff create can choose their own; automatic links never use a PIN.",
+    missing: 'Keep these in the text: {{names}}',
+    rotateAll: 'Revoke all parent links',
+    rotateAllHint:
+      'Use after changing PARENT_LINK_SECRET or if links may have leaked. Every guardian gets a new link the next time a message is opened.',
+    rotateAllConfirm: 'Revoke every parent link now? Old links stop working at once.',
+    rotateAllDone: '{{count}} links revoked',
     groupsNote: 'Guidance for class WhatsApp groups',
     groupsHelp:
       "For notices to a whole class you can also use a WhatsApp announcement group (or a Community): set it so only admins can post. Members can see each other's phone numbers, so tell parents before adding them and never post fees or absences there.",
@@ -284,6 +301,8 @@ export const msgUr: Shape<typeof msgEn> = {
     link: 'والدین کے صفحے کا لنک',
     school: 'اسکول کا نام',
     receipt_no: 'رسید نمبر',
+    body: 'اعلان کا متن (صرف اعلان)',
+    was: '"تھا / تھے"',
   },
   queue: {
     title: 'بھیجنے کی قطار',
@@ -379,7 +398,7 @@ export const msgUr: Shape<typeof msgEn> = {
     revoke: 'منسوخ کریں',
     revokeConfirm: 'یہ لنک منسوخ کریں؟ سرپرست اسے دوبارہ نہیں کھول سکیں گے۔',
     revoked: 'لنک منسوخ ہو گیا',
-    once: 'یہ لنک ابھی کاپی کریں یا بھیجیں۔ یہ صرف ایک بار دکھایا جاتا ہے۔',
+    once: 'یہ لنک ابھی کاپی کریں یا بھیجیں۔ یہ صرف ایک بار دکھایا جاتا ہے اور مکتب اسے محفوظ نہیں رکھتا۔ حاضری لنک والا ہر شخص دیکھ سکتا ہے؛ فیس اور رسیدوں کے لیے تصدیق ضروری ہے۔',
     copy: 'لنک کاپی کریں',
     copied: 'لنک کاپی ہو گیا',
     sendWa: 'واٹس ایپ سے بھیجیں',
@@ -457,7 +476,14 @@ export const msgUr: Shape<typeof msgEn> = {
     general: 'پیغام کی ترتیبات',
     cooldown: 'ایک خاندان کو فیس یاد دہانیوں کے درمیان دن',
     gate: 'فیس اور رسیدوں سے پہلے والدین کے صفحے پر تصدیق',
-    gateHint: 'عملہ لنک بناتے وقت الگ انتخاب کر سکتا ہے؛ خودکار لنک کبھی پن استعمال نہیں کرتے۔',
+    gateHint:
+      'بطورِ طے شدہ بچے کا سالِ پیدائش: لنک آگے بھیجے جانے پر ایک رکاوٹ، پاس ورڈ نہیں۔ عملہ لنک بناتے وقت الگ انتخاب کر سکتا ہے؛ خودکار لنک کبھی پن استعمال نہیں کرتے۔',
+    missing: 'یہ متن میں رکھیں: {{names}}',
+    rotateAll: 'تمام والدین لنک منسوخ کریں',
+    rotateAllHint:
+      'PARENT_LINK_SECRET بدلنے کے بعد یا لنک افشا ہونے کے شبہ پر استعمال کریں۔ اگلی بار پیغام کھلنے پر ہر سرپرست کو نیا لنک ملے گا۔',
+    rotateAllConfirm: 'ابھی تمام والدین لنک منسوخ کریں؟ پرانے لنک فوراً کام کرنا بند کر دیں گے۔',
+    rotateAllDone: '{{count}} لنک منسوخ',
     groupsNote: 'جماعت کے واٹس ایپ گروپوں کے لیے ہدایت',
     groupsHelp:
       'پوری جماعت کو اطلاع کے لیے آپ واٹس ایپ اعلانات گروپ (یا کمیونٹی) بھی استعمال کر سکتے ہیں: اسے ایسا رکھیں کہ صرف ایڈمن پیغام بھیج سکیں۔ ممبران ایک دوسرے کے فون نمبر دیکھ سکتے ہیں، اس لیے شامل کرنے سے پہلے والدین کو بتائیں اور وہاں کبھی فیس یا غیر حاضری نہ لکھیں۔',

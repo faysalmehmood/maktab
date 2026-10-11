@@ -1,9 +1,12 @@
 import {
   type ComposeAudience,
   type ComposeResultDto,
+  DEFAULT_TEMPLATES,
   type FamilySearchHit,
   newId,
+  PLACEHOLDERS,
   unknownPlaceholders,
+  wrapNotice,
 } from '@maktab/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
@@ -22,6 +25,9 @@ import { useCurrentSession, useGroups } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
 type Kind = ComposeAudience['kind'];
+
+/** A notice's own text: everything but the link and the body slot (the template adds those). */
+const NOTICE_PLACEHOLDERS = PLACEHOLDERS.filter((p) => p !== 'link' && p !== 'body');
 type Picked = { id: string; name: string };
 type Progress = { done: number; total: number; queued: number; skipped: number };
 
@@ -124,7 +130,11 @@ export function ComposePage() {
 
   const en = bodyEn.trim();
   const ur = bodyUr.trim();
-  const unknown = unknownPlaceholders(`${en}\n${ur}`);
+  // {link} and {body} belong to the notice template, which wraps this text (link on the last line).
+  const unknown = [
+    ...unknownPlaceholders(`${en}\n${ur}`),
+    ...[...`${en}\n${ur}`.matchAll(/\{(body|link)\}/g)].map((m) => m[1] ?? ''),
+  ];
 
   const audience = (): ComposeAudience | null => {
     if (kind === 'all') return { kind: 'all' };
@@ -227,7 +237,8 @@ export function ComposePage() {
         lang="en"
         value={bodyEn}
         onChange={setBodyEn}
-        previewBody={en || ur}
+        previewBody={wrapNotice(DEFAULT_TEMPLATES.notice.en, en || ur)}
+        placeholders={NOTICE_PLACEHOLDERS}
       />
       <TemplateEditor
         id="compose-ur"
@@ -236,7 +247,8 @@ export function ComposePage() {
         lang="ur"
         value={bodyUr}
         onChange={setBodyUr}
-        previewBody={ur || en}
+        previewBody={wrapNotice(DEFAULT_TEMPLATES.notice.ur, ur || en)}
+        placeholders={NOTICE_PLACEHOLDERS}
       />
       <p className="text-xs text-muted-foreground">{t('msg.compose.sampleNote')}</p>
 

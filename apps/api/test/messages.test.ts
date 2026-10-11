@@ -15,8 +15,8 @@ import {
   type ParentLinkCreatedDto,
   type ParentLinkStatusDto,
   type ParentPageDto,
+  type ParentReceiptDto,
   type ProgrammeDto,
-  type ReceiptPrintDto,
 } from '@maktab/shared';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
@@ -183,6 +183,12 @@ async function dbError(run: () => unknown): Promise<string> {
 }
 
 const lastLine = (t: string) => t.split('\n').at(-1) ?? '';
+const ULID = /\b[0-9A-HJKMNP-TV-Z]{26}\b/;
+/** The parent page sends its link token in a header, never in the URL. */
+const P = (token: string | undefined, extra: Record<string, string> = {}) => ({
+  'x-parent-token': token ?? '',
+  ...extra,
+});
 
 /** Every key anywhere in a JSON value. */
 function keysOf(v: unknown, out = new Set<string>()): Set<string> {
@@ -215,7 +221,8 @@ describe('send queue: absence rebuilt at open time', () => {
     expect(open.body.children.sort()).toEqual(['Ali Khan', 'Zain Khan']);
     expect(open.body.text).toContain('Ali Khan اور Zain Khan');
     expect(open.body.text).toContain('السلام علیکم');
-    expect(lastLine(open.body.text)).toMatch(/^http:\/\/localhost:5173\/p\/[A-Za-z0-9_-]{43}$/);
+    expect(open.body.text).toContain('غیر حاضر تھے۔');
+    expect(lastLine(open.body.text)).toMatch(/^http:\/\/localhost:5173\/p#[A-Za-z0-9_-]{43}$/);
     const url = new URL(open.body.wa_url ?? '');
     expect(url.origin + url.pathname).toBe('https://wa.me/923001234567');
     expect(url.searchParams.get('text')).toBe(open.body.text);
@@ -223,7 +230,7 @@ describe('send queue: absence rebuilt at open time', () => {
       open.body.text,
     );
     // The link it carries is the guardian's live link (stored hashed on the message).
-    const token = lastLine(open.body.text).split('/p/')[1] ?? '';
+    const token = lastLine(open.body.text).split('/p#')[1] ?? '';
     const [m] = await s.db.all<{
       link_token_hash: string;
       rendered_text: string;
@@ -232,12 +239,14 @@ describe('send queue: absence rebuilt at open time', () => {
       sql`SELECT link_token_hash, rendered_text, opened_at FROM message WHERE id = ${khan[0]?.id}`,
     );
     expect(m?.link_token_hash).toBe(await sha256Hex(token));
-    expect(m?.rendered_text).toBe(open.body.text);
+    // The row keeps the text with a stub in place of the link: no working link is ever stored.
+    expect(m?.rendered_text).toBe(open.body.text.replace(lastLine(open.body.text), '{link}'));
+    expect(m?.rendered_text).not.toContain(token);
     expect(m?.opened_at).toBeTruthy();
     // Opening again reuses the same link (no rotation per message).
     const again = await s.api<MessageOpenDto>('POST', `/api/messages/${khan[0]?.id}/open`);
     expect(lastLine(again.body.text)).toBe(lastLine(open.body.text));
-    const page = await s.anon<ParentPageDto>('GET', `/api/p/${token}`);
+    const page = await s.anon<ParentPageDto>('GET', '/api/p', undefined, P(token));
     expect(page.status).toBe(200);
   });
 
@@ -396,8 +405,14 @@ describe('bulk text for a class announcement group', () => {
     );
     for (const l of lines) expect(l).not.toMatch(/^[=+\-@]/);
     expect(r.body.text).not.toMatch(/0300|92300|1234567|7654321/);
-    expect(r.body.text).not.toContain('/p/');
+    expect(r.body.text).not.toMatch(/\/p[#/]/);
+    expect(r.body.text).not.toContain('{link}');
     expect(r.body.text).not.toContain('Details:');
+    // Fee texts are private to a family: never offered for a class group.
+    expect(
+      (await s.api('POST', `/api/messages/bulk-text?grp_id=${s.g5a.id}&template_key=fee_due`))
+        .status,
+    ).toBe(400);
     await correct(s, s.g5a.id, [
       [s.ali.student_id, 'P'],
       [s.bilal.student_id, 'A'],
@@ -468,6 +483,19 @@ describe('compose a notice', () => {
     const list = await s.api<MessageListDto>('GET', '/api/messages?template_key=notice');
     const khan = list.body.items.find((m) => m.family_id === s.ali.family_id);
     expect(khan?.preview).toContain('ہفتہ کو 10 بجے Ali Khan اور Zain Khan کے والدین');
+    // The notice sits in the template's {body} slot: greeting first, link stub alone on the last line.
+    expect(khan?.preview.split('\n')).toEqual([
+      'السلام علیکم۔',
+      'ہفتہ کو 10 بجے Ali Khan اور Zain Khan کے والدین کی میٹنگ ہے۔',
+      '— Al-Noor',
+      '{link}',
+    ]);
+    const open = await s.api<MessageOpenDto>('POST', `/api/messages/${khan?.id}/open`);
+    expect(lastLine(open.body.text)).toMatch(/\/p#[A-Za-z0-9_-]{43}$/);
+    expect(open.body.text.split('\n')).toHaveLength(4);
+    expect(
+      (await s.api('POST', '/api/messages/compose', { ...body, body_en: 'See {link}' })).status,
+    ).toBe(400);
     expect(
       (await s.api('POST', '/api/messages/compose', { ...body, body_en: 'Hi {nope}' })).status,
     ).toBe(400);
@@ -503,7 +531,33 @@ describe('templates', () => {
     );
     expect(pv.body.text.split('\n')).toEqual([
       'Please pay Rs 8,000. Thanks — Al-Noor',
-      expect.stringMatching(/\/p\//),
+      expect.stringMatching(/\/p#/),
+    ]);
+    // Every text keeps {link}; the notice also keeps {body}; {body} belongs to the notice only.
+    for (const [key, body] of [
+      ['fee_due', 'Please pay {amount}.'],
+      ['notice', 'Salaam. — {school}\n{link}'],
+      ['absence', '{body} {children}\n{link}'],
+    ] as const) {
+      const r = await s.api<Err>('PUT', `/api/messages/templates/${key}/en`, { body });
+      expect(r.status, `${key}: ${r.text}`).toBe(400);
+    }
+    const notice = await s.api<{ item: MessageTemplateDto }>(
+      'PUT',
+      '/api/messages/templates/notice/en',
+      { body: 'Salaam.\n{body}\n{link}\n— {school}' },
+    );
+    expect(notice.status, notice.text).toBe(200);
+    const npv = await s.api<{ text: string }>('POST', '/api/messages/templates/preview', {
+      key: 'notice',
+      lang: 'en',
+      body: notice.body.item.body,
+    });
+    expect(npv.body.text.split('\n')).toEqual([
+      'Salaam.',
+      'School is closed on Monday.',
+      '— Al-Noor',
+      expect.stringMatching(/\/p#/),
     ]);
     const reset = await s.api<{ item: MessageTemplateDto }>(
       'PUT',
@@ -541,7 +595,7 @@ describe('parent links and the public parent page', () => {
       body,
     );
     expect(r.status, r.text).toBe(201);
-    const token = r.body.url.split('/p/')[1] ?? '';
+    const token = r.body.url.split('/p#')[1] ?? '';
     return { ...r.body, token };
   }
 
@@ -549,7 +603,9 @@ describe('parent links and the public parent page', () => {
     const s = await setup();
     const a = await linked(s);
     expect(a.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(a.link).toMatchObject({ status: 'active', gate: 'none' });
+    expect(a.url).toBe(`http://localhost:5173/p#${a.token}`);
+    // The school default (and so a link's default) is the birth-year gate (M5 fix pass).
+    expect(a.link).toMatchObject({ status: 'active', gate: 'birth_year' });
     expect(a.link?.expires_at?.slice(0, 4)).toBe(String(Number(today.slice(0, 4)) + 1));
     const rows = await s.db.all<Record<string, unknown>>(sql`SELECT * FROM parent_link`);
     for (const r of rows) for (const v of Object.values(r)) expect(v).not.toBe(a.token);
@@ -560,17 +616,17 @@ describe('parent links and the public parent page', () => {
       `/api/guardians/${s.khanGuardian}/parent-link`,
     );
     expect(st.text).not.toContain(a.token);
-    expect((await s.anon('GET', `/api/p/${a.token}`)).status).toBe(200);
+    expect((await s.anon('GET', '/api/p', undefined, P(a.token))).status).toBe(200);
 
     const b = await linked(s);
     expect(b.token).not.toBe(a.token);
-    expect((await s.anon('GET', `/api/p/${a.token}`)).status).toBe(404);
-    expect((await s.anon('GET', `/api/p/${b.token}`)).status).toBe(200);
+    expect((await s.anon('GET', '/api/p', undefined, P(a.token))).status).toBe(404);
+    expect((await s.anon('GET', '/api/p', undefined, P(b.token))).status).toBe(200);
 
     expect(
       (await s.api('POST', `/api/guardians/${s.khanGuardian}/parent-link/revoke`)).status,
     ).toBe(200);
-    expect((await s.anon('GET', `/api/p/${b.token}`)).status).toBe(404);
+    expect((await s.anon('GET', '/api/p', undefined, P(b.token))).status).toBe(404);
     expect(
       (await s.api('POST', `/api/guardians/${s.khanGuardian}/parent-link/revoke`)).status,
     ).toBe(404);
@@ -579,7 +635,7 @@ describe('parent links and the public parent page', () => {
     await s.db.run(
       sql`UPDATE parent_link SET expires_at = '2020-01-01T00:00:00.000Z' WHERE revoked_at IS NULL`,
     );
-    expect((await s.anon('GET', `/api/p/${c.token}`)).status).toBe(404);
+    expect((await s.anon('GET', '/api/p', undefined, P(c.token))).status).toBe(404);
     // Tokens are never edited, links never deleted (triggers).
     expect(await dbError(() => s.db.run(sql`UPDATE parent_link SET token_hash = 'x'`))).toMatch(
       /never edited/,
@@ -611,8 +667,9 @@ describe('parent links and the public parent page', () => {
       body_en: 'Holiday on Monday for {children}.',
       body_ur: 'پیر کو چھٹی ہے۔',
     });
-    const { token } = await linked(s);
-    const r = await s.anon<ParentPageDto>('GET', `/api/p/${token}`, undefined, {
+    const { token } = await linked(s, { gate: 'none' });
+    const r = await s.anon<ParentPageDto>('GET', '/api/p', undefined, {
+      'x-parent-token': token,
       'cf-connecting-ip': '203.0.113.9',
       'user-agent': 'TestPhone/1.0',
     });
@@ -621,10 +678,21 @@ describe('parent links and the public parent page', () => {
     expect(r.headers.get('referrer-policy')).toBe('no-referrer');
     expect(r.headers.get('cache-control')).toBe('no-store');
     expect(r.body.guardian).toEqual({ first_name: 'Imran', lang: 'ur' });
-    expect(r.body.children.map((c) => [c.first_name, c.group, c.today])).toEqual([
-      ['Ali', 'Class 5 A', 'A'],
-      ['Zain', 'Class 5 B', null],
+    expect(r.body.children.map((c) => [c.index, c.first_name, c.group, c.today])).toEqual([
+      [1, 'Ali', 'Class 5 A', 'A'],
+      [2, 'Zain', 'Class 5 B', null],
     ]);
+    // Whitelist: exactly these keys, and no database id (ULID) anywhere in the body.
+    expect([...keysOf(r.body)].sort()).toEqual(
+      [
+        ...['school', 'name', 'name_ur', 'phone', 'guardian', 'first_name', 'lang', 'date'],
+        ...['gate', 'kind', 'passed', 'children', 'index', 'group', 'today', 'month'],
+        ...['present', 'absent', 'late', 'excused', 'pct', 'dues', 'lines'],
+        ...['total_before_credit', 'credit', 'total', 'overdue', 'receipts', 'receipt_no'],
+        ...['amount', 'business_date', 'notices', 'at', 'body_en', 'body_ur'],
+      ].sort(),
+    );
+    expect(r.text).not.toMatch(ULID);
     expect(r.body.children[0]?.month).toMatchObject({ absent: 1, pct: 0 });
     expect(r.body.dues).toMatchObject({ credit: 250000, total: 0 });
     expect(r.body.receipts?.map((x) => x.amount)).toEqual([250000]);
@@ -649,13 +717,33 @@ describe('parent links and the public parent page', () => {
       if (k !== 'phone') expect(keys.has(k), k).toBe(false);
     // The only phone is the school's own (school.phone), never a guardian's.
     expect(r.text).not.toMatch(/1234567|35202|3520212345671|2016-05-04|Imran Khan|Ali Khan/);
-    // Receipt print JSON, internal fields blanked.
-    const rc = await s.anon<ReceiptPrintDto>(
+    // The receipt by its number, as a whitelist: no ids, no staff names, first names only.
+    const no = pay.body.receipt.receipt_no;
+    expect(r.body.receipts?.map((x) => x.receipt_no)).toEqual([no]);
+    const rc = await s.anon<ParentReceiptDto>(
       'GET',
-      `/api/p/${token}/receipt/${pay.body.receipt.id}`,
+      `/api/p/receipt/${encodeURIComponent(no)}`,
+      undefined,
+      P(token),
     );
     expect(rc.status, rc.text).toBe(200);
-    expect(rc.body.receipt).toMatchObject({ collector_id: '', note: null, cash_session_id: null });
+    expect(rc.body.receipt).toEqual({
+      receipt_no: no,
+      business_date: pay.body.receipt.business_date,
+      amount: 250000,
+      method: 'cash',
+      payer_name: 'Imran',
+    });
+    expect(Object.keys(rc.body).sort()).toEqual(
+      ['school', 'labels', 'lang', 'receipt', 'students', 'totals', 'reversed'].sort(),
+    );
+    expect(Object.keys(rc.body.school).sort()).toEqual(['address', 'name', 'name_ur', 'phone']);
+    const rcBody = JSON.stringify({ ...rc.body, labels: null });
+    expect(rcBody).not.toMatch(ULID);
+    expect(rcBody).not.toMatch(
+      /collector|account_id|cash_session|admission_no|Ali Khan|Imran Khan/,
+    );
+    for (const st of rc.body.students) expect(st.first_name).not.toContain(' ');
     // Another family's receipt: not found.
     const other = await s.api<CollectResultDto>('POST', '/api/receipts', {
       idempotency_key: newId(),
@@ -663,19 +751,33 @@ describe('parent links and the public parent page', () => {
       amount: 10000,
       method: 'cash',
     });
-    expect((await s.anon('GET', `/api/p/${token}/receipt/${other.body.receipt.id}`)).status).toBe(
-      404,
-    );
+    expect(
+      (
+        await s.anon(
+          'GET',
+          `/api/p/receipt/${encodeURIComponent(other.body.receipt.receipt_no)}`,
+          undefined,
+          P(token),
+        )
+      ).status,
+    ).toBe(404);
     // Access log: a repeat visit from the same IP is one row; another IP is another.
-    await s.anon('GET', `/api/p/${token}`, undefined, { 'cf-connecting-ip': '203.0.113.9' });
-    await s.anon('GET', `/api/p/${token}`, undefined, { 'cf-connecting-ip': '198.51.100.7' });
+    await s.anon('GET', '/api/p', undefined, {
+      'x-parent-token': token,
+      'cf-connecting-ip': '203.0.113.9',
+    });
+    await s.anon('GET', '/api/p', undefined, {
+      'x-parent-token': token,
+      'cf-connecting-ip': '198.51.100.7',
+    });
     const st = await s.api<ParentLinkStatusDto>(
       'GET',
       `/api/guardians/${s.khanGuardian}/parent-link`,
     );
     expect(st.body.access).toHaveLength(2);
     expect(st.body.access[1]?.ua).toBe('TestPhone/1.0');
-    expect(st.body.access[0]?.ip_hash).toMatch(/^[0-9a-f]{16}$/);
+    // HMAC(PARENT_LINK_SECRET, ip), full length.
+    expect(st.body.access[0]?.ip_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(st.text).not.toContain('203.0.113.9');
     expect(st.body.link?.last_seen_at).toBeTruthy();
   });
@@ -683,24 +785,30 @@ describe('parent links and the public parent page', () => {
   it('birth-year gate hides dues and receipts until answered; 5 wrong answers lock it', async () => {
     const s = await setup();
     const { token } = await linked(s, { gate: 'birth_year' });
-    const before = await s.anon<ParentPageDto>('GET', `/api/p/${token}`);
+    const before = await s.anon<ParentPageDto>('GET', '/api/p', undefined, P(token));
     expect(before.body.gate).toEqual({ kind: 'birth_year', passed: false });
     expect(before.body.dues).toBeNull();
     expect(before.body.receipts).toBeNull();
     expect(before.body.children).toHaveLength(2); // attendance stays visible
-    const wrong = await s.anon<Err>('POST', `/api/p/${token}/gate`, { birth_year: 2015 });
+    const wrong = await s.anon<Err>('POST', '/api/p/gate', { birth_year: 2015 }, P(token));
     expect(wrong.status).toBe(400);
-    const ok = await s.anon<ParentGateResultDto>('POST', `/api/p/${token}/gate`, {
-      birth_year: 2016,
-    });
+    const ok = await s.anon<ParentGateResultDto>(
+      'POST',
+      '/api/p/gate',
+      {
+        birth_year: 2016,
+      },
+      P(token),
+    );
     expect(ok.status, ok.text).toBe(200);
-    const after = await s.anon<ParentPageDto>('GET', `/api/p/${token}`, undefined, {
+    const after = await s.anon<ParentPageDto>('GET', '/api/p', undefined, {
+      'x-parent-token': token,
       'x-parent-gate': ok.body.gate_token,
     });
     expect(after.body.gate.passed).toBe(true);
     expect(after.body.dues).not.toBeNull();
-    for (let i = 0; i < 5; i++) await s.anon('POST', `/api/p/${token}/gate`, { birth_year: 1999 });
-    const locked = await s.anon<Err>('POST', `/api/p/${token}/gate`, { birth_year: 2016 });
+    for (let i = 0; i < 5; i++) await s.anon('POST', '/api/p/gate', { birth_year: 1999 }, P(token));
+    const locked = await s.anon<Err>('POST', '/api/p/gate', { birth_year: 2016 }, P(token));
     expect(locked.status).toBe(429);
     expect(locked.body.error.code).toBe('gate_locked');
     // A gate token for one link does not open another.
@@ -709,8 +817,9 @@ describe('parent links and the public parent page', () => {
       `/api/guardians/${(await s.db.all<{ id: string }>(sql`SELECT id FROM guardian WHERE family_id = ${s.bilal.family_id}`))[0]?.id}/parent-link`,
       { gate: 'birth_year' },
     );
-    const t2 = other.body.url.split('/p/')[1];
-    const cross = await s.anon<ParentPageDto>('GET', `/api/p/${t2}`, undefined, {
+    const t2 = other.body.url.split('/p#')[1] ?? '';
+    const cross = await s.anon<ParentPageDto>('GET', '/api/p', undefined, {
+      'x-parent-token': t2,
       'x-parent-gate': ok.body.gate_token,
     });
     expect(cross.body.gate.passed).toBe(false);
@@ -723,8 +832,8 @@ describe('parent links and the public parent page', () => {
         .body.error.code,
     ).toBe('pin_required');
     const { token } = await linked(s, { gate: 'pin', pin: '4821' });
-    expect((await s.anon('POST', `/api/p/${token}/gate`, { pin: '1111' })).status).toBe(400);
-    expect((await s.anon('POST', `/api/p/${token}/gate`, { pin: '4821' })).status).toBe(200);
+    expect((await s.anon('POST', '/api/p/gate', { pin: '1111' }, P(token))).status).toBe(400);
+    expect((await s.anon('POST', '/api/p/gate', { pin: '4821' }, P(token))).status).toBe(200);
     const [row] = await s.db.all<{ pin_hash: string }>(
       sql`SELECT pin_hash FROM parent_link WHERE revoked_at IS NULL`,
     );
@@ -733,25 +842,212 @@ describe('parent links and the public parent page', () => {
 
   it('rate limit: 60 requests a minute per token, then 429', async () => {
     const s = await setup();
-    const { token } = await linked(s);
+    const { token } = await linked(s, { gate: 'none' });
     const statuses: number[] = [];
     for (let i = 0; i < 61; i++)
       statuses.push(
-        (await s.anon('GET', `/api/p/${token}`, undefined, { 'cf-connecting-ip': '192.0.2.1' }))
-          .status,
+        (
+          await s.anon('GET', '/api/p', undefined, {
+            'x-parent-token': token,
+            'cf-connecting-ip': '192.0.2.1',
+          })
+        ).status,
       );
     expect(statuses.slice(0, 60).every((x) => x === 200)).toBe(true);
     expect(statuses[60]).toBe(429);
-    // Garbage tokens are just 404s (and also counted).
-    expect((await s.anon('GET', '/api/p/not-a-token')).status).toBe(404);
+    // Garbage or missing tokens are just JSON 404s with the noindex headers; a token in the path
+    // is not a route at all.
+    expect((await s.anon('GET', '/api/p', undefined, P('not-a-token'))).status).toBe(404);
+    const none = await s.anon<Err>('GET', '/api/p');
+    expect(none.status).toBe(404);
+    expect(none.body.error.code).toBe('not_found');
+    expect(none.headers.get('x-robots-tag')).toContain('noindex');
+    expect((await s.anon('GET', `/api/p/${token}`)).status).toBe(404);
   });
 
-  it('/p/:token serves the SPA shell with noindex and no-store', async () => {
+  it('/p serves the SPA shell with noindex, no-store and the SPA security headers', async () => {
     const s = await setup();
-    const res = await s.request('/p/abc');
-    expect(res.status).toBe(200);
-    expect(res.headers.get('x-robots-tag')).toContain('noindex');
-    expect(res.headers.get('cache-control')).toBe('no-store');
-    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+    for (const path of ['/p', '/p/abc']) {
+      const res = await s.request(path);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('x-robots-tag')).toContain('noindex');
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+      expect(res.headers.get('permissions-policy')).toBe(
+        'camera=(self), microphone=(), geolocation=()',
+      );
+      expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    }
+  });
+});
+
+describe('M5 fix pass: no live link at rest, routing, guards', () => {
+  const LIVE = /\/p[#/][A-Za-z0-9_-]{43}/;
+
+  it('no staff API response holds a live parent link except /open and POST parent-link; no message row does', async () => {
+    const s = await setup();
+    await register(s, s.g5a.id, [
+      [s.ali.student_id, 'A'],
+      [s.bilal.student_id, 'A'],
+    ]);
+    const rows = (await queue(s)).items;
+    const tokens: string[] = [];
+    for (const r of rows) {
+      const o = await s.api<MessageOpenDto>('POST', `/api/messages/${r.id}/open`);
+      expect(o.status, o.text).toBe(200);
+      const t = lastLine(o.body.text).split('/p#')[1];
+      if (t) tokens.push(t);
+    }
+    expect(tokens.length).toBeGreaterThan(0);
+    await s.api('POST', `/api/messages/${rows[0]?.id}/sent`);
+    const ids: Record<string, string[]> = {
+      id: [...rows.map((r) => r.id), s.khanGuardian, s.ali.family_id, s.ali.student_id, s.g5a.id],
+    };
+    const { routes } = s;
+    let checked = 0;
+    for (const r of routes.list()) {
+      if (r.method !== 'GET' || r.path.startsWith('/api/p')) continue;
+      const params = [...r.path.matchAll(/:(\w+)/g)].map((m) => m[1] ?? '');
+      if (params.some((p) => !ids[p])) continue;
+      const paths = params.length
+        ? (ids.id ?? []).map((v) => r.path.replace(/:id\b/, v))
+        : [r.path];
+      for (const path of paths) {
+        const res = await s.api('GET', path);
+        checked++;
+        for (const t of tokens) expect(res.text, path).not.toContain(t);
+        expect(res.text, path).not.toMatch(LIVE);
+      }
+    }
+    expect(checked).toBeGreaterThan(40);
+    const bulk = await s.api('POST', `/api/messages/bulk-text?grp_id=${s.g5a.id}`);
+    expect(bulk.text).not.toMatch(LIVE);
+    // No message row (any column) and no audit row holds a link.
+    for (const table of ['message', 'audit', 'parent_link', 'parent_link_access']) {
+      const all = await s.db.all<Record<string, unknown>>(sql.raw(`SELECT * FROM ${table}`));
+      const text = JSON.stringify(all);
+      for (const t of tokens) expect(text, table).not.toContain(t);
+      expect(text, table).not.toMatch(LIVE);
+    }
+  });
+
+  it('landline / non-mobile numbers route to call at enqueue and at open', async () => {
+    const s = await setup();
+    // The Ahmed guardian consents, but has only a landline: a call row at enqueue.
+    await s.db.run(
+      sql`UPDATE guardian SET consent_whatsapp = 1, phone = '924235761234', whatsapp = NULL
+          WHERE family_id = ${s.bilal.family_id}`,
+    );
+    await register(s, s.g5a.id, [
+      [s.ali.student_id, 'A'],
+      [s.bilal.student_id, 'A'],
+    ]);
+    const items = (await queue(s)).items;
+    const ahmed = items.find((m) => m.family_id === s.bilal.family_id);
+    const khan = items.find((m) => m.family_id === s.ali.family_id);
+    expect(ahmed).toMatchObject({ channel: 'call', number: '924235761234', wa_number: null });
+    expect(khan).toMatchObject({ channel: 'wa_manual', number: '923001234567' });
+    // A WhatsApp row whose number became a landline before it was opened: a call row at open.
+    await s.db.run(
+      sql`UPDATE guardian SET phone = '924235761234', whatsapp = NULL WHERE id = ${s.khanGuardian}`,
+    );
+    const o = await s.api<MessageOpenDto>('POST', `/api/messages/${khan?.id}/open`);
+    expect(o.body).toMatchObject({ channel: 'call', wa_url: null, tel_url: 'tel:+924235761234' });
+    const [row] = await s.db.all<{ channel: string }>(
+      sql`SELECT channel FROM message WHERE id = ${khan?.id}`,
+    );
+    expect(row?.channel).toBe('call');
+  });
+
+  it('a WhatsApp row cannot be marked sent before it was opened; a call row can', async () => {
+    const s = await setup();
+    await register(s, s.g5a.id, [
+      [s.ali.student_id, 'A'],
+      [s.bilal.student_id, 'A'],
+    ]);
+    const items = (await queue(s)).items;
+    const wa = items.find((m) => m.channel === 'wa_manual');
+    const call = items.find((m) => m.channel === 'call');
+    const early = await s.api<Err>('POST', `/api/messages/${wa?.id}/sent`);
+    expect(early.status).toBe(409);
+    expect(early.body.error.code).toBe('not_opened');
+    await s.api('POST', `/api/messages/${wa?.id}/open`);
+    expect((await s.api('POST', `/api/messages/${wa?.id}/sent`)).status).toBe(200);
+    expect((await s.api('POST', `/api/messages/${call?.id}/sent`)).status).toBe(200);
+  });
+
+  it('English absence text says "were" for several children, "was" for one', async () => {
+    const s = await setup();
+    await s.db.run(sql`UPDATE guardian SET lang = 'en' WHERE id = ${s.khanGuardian}`);
+    await register(s, s.g5a.id, [
+      [s.ali.student_id, 'A'],
+      [s.bilal.student_id, 'P'],
+    ]);
+    await register(s, s.g5b.id, [[s.zain.student_id, 'A']]);
+    const [row] = (await queue(s)).items;
+    const o = await s.api<MessageOpenDto>('POST', `/api/messages/${row?.id}/open`);
+    expect(o.body.text).toContain('Ali Khan and Zain Khan were absent from school today');
+  });
+
+  it('a guardian with a parent link cannot be deleted (409 has_parent_link)', async () => {
+    const s = await setup();
+    // A second guardian, so "last guardian" is not what refuses.
+    const g2 = await s.api<{ id: string }>('POST', '/api/guardians', {
+      family_id: s.ali.family_id,
+      name: 'Amna Khan',
+      phone: '0300-7654321',
+    });
+    expect(g2.status, g2.text).toBe(201);
+    const id = g2.body.id;
+    await s.api('POST', `/api/guardians/${id}/parent-link`, {});
+    await s.api('POST', `/api/guardians/${id}/parent-link/revoke`);
+    const del = await s.api<Err>('DELETE', `/api/guardians/${id}`);
+    expect(del.status).toBe(409);
+    expect(del.body.error.code).toBe('has_parent_link');
+    expect(del.body.error.message).toMatch(/[Rr]evoke/);
+  });
+
+  it('rotate-all (owner only) revokes every live link; a rotated secret makes /open mint a new one', async () => {
+    const s = await setup();
+    await register(s, s.g5a.id, [
+      [s.ali.student_id, 'A'],
+      [s.bilal.student_id, 'P'],
+    ]);
+    const [row] = (await queue(s)).items;
+    const first = await s.api<MessageOpenDto>('POST', `/api/messages/${row?.id}/open`);
+    const t1 = lastLine(first.body.text).split('/p#')[1] ?? '';
+    // Same app, new PARENT_LINK_SECRET: the old link is not recomputable, so /open replaces it.
+    const rotated = testApp({ db: s.db, env: { PARENT_LINK_SECRET: 'x'.repeat(40) } });
+    const owner2 = await signedInAs(s.db, ['owner']);
+    const api2 = client(rotated.request, owner2.cookie);
+    const second = await api2<MessageOpenDto>('POST', `/api/messages/${row?.id}/open`);
+    const t2 = lastLine(second.body.text).split('/p#')[1] ?? '';
+    expect(t2).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(t2).not.toBe(t1);
+    expect((await s.anon('GET', '/api/p', undefined, P(t1))).status).toBe(404);
+    expect((await s.acct('POST', '/api/parent-links/rotate-all')).status).toBe(403);
+    const all = await api2<{ revoked: number }>('POST', '/api/parent-links/rotate-all');
+    expect(all.status, all.text).toBe(200);
+    expect(all.body.revoked).toBe(1);
+    expect((await rotated.request('/api/p', { headers: { 'x-parent-token': t2 } })).status).toBe(
+      404,
+    );
+    const [n] = await s.db.all<{ n: number }>(
+      sql`SELECT count(*) AS n FROM parent_link WHERE revoked_at IS NULL`,
+    );
+    expect(n?.n).toBe(0);
+  });
+
+  it('parent links answer 503 misconfigured without PARENT_LINK_SECRET', async () => {
+    const s = await setup();
+    const bare = testApp({ db: s.db, env: { PARENT_LINK_SECRET: '' } });
+    const owner2 = await signedInAs(s.db, ['owner']);
+    const r = await client(bare.request, owner2.cookie)<Err>(
+      'POST',
+      `/api/guardians/${s.khanGuardian}/parent-link`,
+      {},
+    );
+    expect(r.status).toBe(503);
+    expect(r.body.error.code).toBe('misconfigured');
   });
 });

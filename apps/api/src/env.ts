@@ -8,6 +8,12 @@ export type Bindings = {
   FILES?: R2Bucket;
   ASSETS?: Fetcher;
   SESSION_SECRET: string;
+  /**
+   * Parent links (M5): link tokens, gate tokens, PIN and access-log IP hashes are HMACs under this
+   * secret (>= 32 chars), never SESSION_SECRET. A restore needs the same value or every link stops
+   * working; changing it is how all links are revoked at once (then POST /api/parent-links/rotate-all).
+   */
+  PARENT_LINK_SECRET?: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   APP_ORIGIN: string;

@@ -5,7 +5,9 @@ import {
   type MessageListDto,
   type MessageOpenDto,
   type ParentPageDto,
+  type ParentReceiptDto,
   type QueueMessageDto,
+  RECEIPT_LABELS,
   renderTemplate,
   waUrl,
 } from '@maktab/shared';
@@ -19,7 +21,7 @@ import { group, mockApi, renderAt, session } from './api-mock';
 
 const ORIGIN = 'https://school.example';
 const TOKEN = 'A'.repeat(43);
-const LINK = `${ORIGIN}/p/${TOKEN}`;
+const LINK = `${ORIGIN}/p#${TOKEN}`;
 
 function row(id: string, over: Partial<QueueMessageDto> = {}): QueueMessageDto {
   return {
@@ -30,13 +32,14 @@ function row(id: string, over: Partial<QueueMessageDto> = {}): QueueMessageDto {
     guardian_name: `Guardian ${id}`,
     guardian_phone: '923001234567',
     wa_number: '923001234567',
+    number: '923001234567',
     channel: 'wa_manual',
     template_key: 'absence',
     lang: 'en',
     status: 'queued',
     payload: { grp_id: group.id, grp_name: 'Class 5 A' },
     created_at: '2026-10-11T04:00:00Z',
-    preview: `Preview ${id}\n${ORIGIN}/p/…`,
+    preview: `Preview ${id}\n{link}`,
     grp_id: group.id,
     grp_name: 'Class 5 A',
     opened_at: null,
@@ -50,8 +53,19 @@ function row(id: string, over: Partial<QueueMessageDto> = {}): QueueMessageDto {
 const ROWS = [
   row('m1', { lang: 'ur', guardian_name: 'رضا' }),
   row('m2'),
-  row('m3', { channel: 'call', template_key: 'fee_due', wa_number: null, grp_id: null }),
-  row('m4', { template_key: 'fee_due', guardian_phone: '0421234567', wa_number: null }),
+  row('m3', {
+    channel: 'call',
+    template_key: 'fee_due',
+    wa_number: null,
+    number: '923001234567',
+    grp_id: null,
+  }),
+  row('m4', {
+    template_key: 'fee_due',
+    guardian_phone: '0421234567',
+    wa_number: null,
+    number: null,
+  }),
 ];
 
 const counts = { queued: 4, sent_today: 1, skipped_today: 0, by_template: { absence: 2 } };
@@ -106,6 +120,7 @@ beforeAll(async () => {
 });
 afterEach(async () => {
   vi.unstubAllGlobals();
+  window.history.replaceState(null, '', '/');
   try {
     sessionStorage.clear();
   } catch {
@@ -286,11 +301,13 @@ describe('compose notice', () => {
     fireEvent.change(screen.getByLabelText('Notice in Urdu'), {
       target: { value: 'کل {children} کی چھٹی ہے۔' },
     });
-    expect(document.getElementById('compose-en-preview')?.textContent).toBe(
-      'School is closed tomorrow for Ahmed and Fatima.',
-    );
+    // The preview is the notice as sent: greeting, the text, the school, then the link alone last.
+    const en = document.getElementById('compose-en-preview')?.textContent ?? '';
+    expect(en).toContain('Assalamu alaikum.');
+    expect(en).toContain('School is closed tomorrow for Ahmed and Fatima.');
+    expect(en).toMatch(/\/p#[A-Za-z0-9_-]{43}$/);
     const ur = document.getElementById('compose-ur-preview');
-    expect(ur?.textContent).toBe('کل احمد اور فاطمہ کی چھٹی ہے۔');
+    expect(ur?.textContent).toContain('کل احمد اور فاطمہ کی چھٹی ہے۔');
     expect(ur?.getAttribute('dir')).toBe('rtl');
 
     fireEvent.click(screen.getByRole('button', { name: 'Queue notice' }));
@@ -346,7 +363,7 @@ function parentPage(over: Partial<ParentPageDto> = {}): ParentPageDto {
     gate: { kind: 'none', passed: true },
     children: [
       {
-        id: 'S1',
+        index: 1,
         first_name: 'Ahmed',
         group: 'Class 5 A',
         today: 'A',
@@ -372,15 +389,44 @@ function parentPage(over: Partial<ParentPageDto> = {}): ParentPageDto {
       total: 350000,
       overdue: 350000,
     },
-    receipts: [
-      { id: 'R1', receipt_no: 'R-2026-00001', amount: 100000, business_date: '2026-10-05' },
-    ],
-    notices: [{ id: 'N1', at: '2026-10-09T05:00:00Z', body_en: 'Closed on {date}', body_ur: '' }],
+    receipts: [{ receipt_no: 'R-2026-00001', amount: 100000, business_date: '2026-10-05' }],
+    notices: [{ at: '2026-10-09T05:00:00Z', body_en: 'Closed on {date}', body_ur: '' }],
     ...over,
   };
 }
 
-const renderParent = () => renderAt(`/p/${TOKEN}`, '/p/:token', <ParentPage />);
+function parentReceipt(): ParentReceiptDto {
+  return {
+    school: { name: 'Maktab School', name_ur: null, address: null, phone: null },
+    labels: RECEIPT_LABELS,
+    lang: 'en',
+    receipt: {
+      receipt_no: 'R-2026-00001',
+      business_date: '2026-10-05',
+      amount: 100000,
+      method: 'cash',
+      payer_name: 'Imran',
+    },
+    students: [
+      {
+        child: 1,
+        first_name: 'Ahmed',
+        lines: [
+          { period_key: '2026-10', head_name: 'Tuition', head_name_ur: null, amount: 100000 },
+        ],
+        subtotal: 100000,
+      },
+    ],
+    totals: { amount: 100000, allocated: 100000, credit_added: 0, payer_due: 0, payer_credit: 0 },
+    reversed: false,
+  };
+}
+
+/** The real page reads its token from window.location's fragment (/p#<token>). */
+const renderParent = (hash = `#${TOKEN}`) => {
+  window.history.replaceState(null, '', `/p${hash}`);
+  return renderAt('/p', '/p/*', <ParentPage />);
+};
 
 function stubSpeech(voices: { lang: string }[] = []) {
   const speak = vi.fn();
@@ -401,7 +447,7 @@ function stubSpeech(voices: { lang: string }[] = []) {
 describe('parent page', () => {
   it('opens in Urdu (dir=rtl) for an Urdu guardian, with noindex and the Listen button', async () => {
     const speak = stubSpeech([]);
-    mockApi({ [`GET /api/p/${TOKEN}`]: parentPage() });
+    mockApi({ ['GET /api/p']: parentPage() });
     renderParent();
     await waitFor(() => expect(document.documentElement.dir).toBe('rtl'));
     await screen.findByText('ٹیوشن');
@@ -424,7 +470,7 @@ describe('parent page', () => {
 
   it('speaks Urdu when the phone has an Urdu voice', async () => {
     const speak = stubSpeech([{ lang: 'ur-PK' }]);
-    mockApi({ [`GET /api/p/${TOKEN}`]: parentPage() });
+    mockApi({ ['GET /api/p']: parentPage() });
     renderParent();
     fireEvent.click(await screen.findByRole('button', { name: /سنیں/ }));
     const u = speak.mock.calls[0]?.[0] as { text: string; lang: string };
@@ -433,7 +479,7 @@ describe('parent page', () => {
   });
 
   it('hides Listen without speechSynthesis', async () => {
-    mockApi({ [`GET /api/p/${TOKEN}`]: parentPage({ guardian: { first_name: 'I', lang: 'en' } }) });
+    mockApi({ ['GET /api/p']: parentPage({ guardian: { first_name: 'I', lang: 'en' } }) });
     renderParent();
     await screen.findByText(/Assalamu alaikum,/);
     expect(document.getElementById('parent-listen')).toBeNull();
@@ -442,7 +488,7 @@ describe('parent page', () => {
   it('asks the gate, then re-fetches with x-parent-gate', async () => {
     const seen: (string | null)[] = [];
     const { calls } = mockApi({
-      [`GET /api/p/${TOKEN}`]: (_url: URL, init: RequestInit) => {
+      ['GET /api/p']: (_url: URL, init: RequestInit) => {
         const h = new Headers(init.headers);
         seen.push(h.get('x-parent-gate'));
         return h.get('x-parent-gate') === 'GT'
@@ -457,7 +503,7 @@ describe('parent page', () => {
               receipts: null,
             });
       },
-      [`POST /api/p/${TOKEN}/gate`]: (_url: URL, init: RequestInit) =>
+      ['POST /api/p/gate']: (_url: URL, init: RequestInit) =>
         JSON.parse(String(init.body)).birth_year === 2015
           ? { gate_token: 'GT', expires_at: '2026-10-11T20:00:00Z' }
           : new Response(JSON.stringify({ error: { code: 'gate_failed', message: 'x' } }), {
@@ -474,11 +520,45 @@ describe('parent page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     await waitFor(() => expect(document.getElementById('parent-total')).toBeTruthy());
     expect(seen[seen.length - 1]).toBe('GT');
-    expect(calls.filter((c) => c.path === `/api/p/${TOKEN}/gate`).map((c) => c.body)).toEqual([
+    expect(calls.filter((c) => c.path === '/api/p/gate').map((c) => c.body)).toEqual([
       { birth_year: 2014 },
       { birth_year: 2015 },
     ]);
     expect(sessionStorage.getItem(`maktab.pgate.${TOKEN.slice(0, 12)}`)).toBe('GT');
+  });
+
+  it('sends the token only in X-Parent-Token, never in a URL', async () => {
+    const tokens: (string | null)[] = [];
+    const { calls } = mockApi({
+      'GET /api/p': (_url: URL, init: RequestInit) => {
+        tokens.push(new Headers(init.headers).get('x-parent-token'));
+        return parentPage({ guardian: { first_name: 'I', lang: 'en' } });
+      },
+    });
+    renderParent();
+    await screen.findByText(/Assalamu alaikum,/);
+    expect(tokens[0]).toBe(TOKEN);
+    for (const c of calls) expect(c.path).not.toContain(TOKEN);
+  });
+
+  it('without a token in the fragment it shows the invalid page and calls nothing', async () => {
+    const { calls } = mockApi({ 'GET /api/p': parentPage() });
+    renderParent('');
+    expect(await screen.findByText('This link is not valid any more')).toBeTruthy();
+    expect(calls).toEqual([]);
+  });
+
+  it('the language toggle never saves to localStorage (shared phones, staff app)', async () => {
+    localStorage.setItem('maktab.lang', 'en');
+    mockApi({ 'GET /api/p': parentPage() });
+    renderParent();
+    await waitFor(() => expect(document.documentElement.dir).toBe('rtl'));
+    expect(localStorage.getItem('maktab.lang')).toBe('en');
+    fireEvent.click(screen.getByText('English').closest('button') as HTMLElement);
+    await waitFor(() => expect(document.documentElement.dir).toBe('ltr'));
+    fireEvent.click(screen.getByText('اردو').closest('button') as HTMLElement);
+    await waitFor(() => expect(document.documentElement.dir).toBe('rtl'));
+    expect(localStorage.getItem('maktab.lang')).toBe('en');
   });
 
   it('an invalid link gets a friendly page', async () => {
@@ -489,14 +569,17 @@ describe('parent page', () => {
 
   it('opens a receipt in print view and goes back', async () => {
     mockApi({
-      [`GET /api/p/${TOKEN}`]: parentPage({ guardian: { first_name: 'I', lang: 'en' } }),
-      [`GET /api/p/${TOKEN}/receipt/R1`]: () =>
-        import('./fee-fixtures').then((f) => f.receiptPrint()),
+      ['GET /api/p']: parentPage({ guardian: { first_name: 'I', lang: 'en' } }),
+      'GET /api/p/receipt/R-2026-00001': () => parentReceipt(),
     });
     renderParent();
     fireEvent.click(await screen.findByRole('button', { name: /Open receipt R-2026-00001/ }));
     await waitFor(() => expect(document.querySelector('.receipt')).toBeTruthy());
     expect(document.querySelector('img.receipt-logo')).toBeNull();
+    // The public copy shows no collector and no admission number.
+    const paper = document.getElementById('receipt-paper')?.textContent ?? '';
+    expect(paper).toContain('Ahmed');
+    expect(paper).not.toMatch(/Collected by|Collector|Adm/i);
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(await screen.findByText(/Assalamu alaikum,/)).toBeTruthy();
   });
@@ -535,7 +618,7 @@ describe('RTL smoke: messaging screens in Urdu', () => {
 
   it('parent page', async () => {
     stubSpeech([]);
-    mockApi({ [`GET /api/p/${TOKEN}`]: parentPage() });
+    mockApi({ ['GET /api/p']: parentPage() });
     const { container } = renderParent();
     await waitFor(() => expect(document.documentElement.dir).toBe('rtl'));
     await screen.findByText('ٹیوشن');

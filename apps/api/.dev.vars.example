@@ -1,6 +1,9 @@
 # Copy to .dev.vars (gitignored) for `wrangler dev`.
 # Generate a secret with: node -e "console.log(crypto.randomUUID()+crypto.randomUUID())"
 SESSION_SECRET=dev-only-secret-change-me-at-least-32-chars
+# Parent links (link tokens, gate tokens, PIN and IP hashes); its own secret, >= 32 chars.
+# Production: openssl rand -base64 48 | npx wrangler secret put PARENT_LINK_SECRET --env production
+PARENT_LINK_SECRET=dev-only-parent-link-secret-change-me-32-chars
 # OAuth client (Web application) with redirect URI http://localhost:5173/api/auth/google/callback
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=

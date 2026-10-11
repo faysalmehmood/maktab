@@ -1,5 +1,5 @@
 import type { AppDb } from '@maktab/db';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { csrf } from 'hono/csrf';
 import { secureHeaders } from 'hono/secure-headers';
 import { createJwksClient, type JwksClient } from './auth/google';
@@ -35,6 +35,7 @@ const SPA_HEADERS: Record<string, string> = {
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
+  'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
 };
 
 /** Module scope so the JWKS cache survives across requests in one isolate. */
@@ -73,10 +74,12 @@ export function createApp(deps: AppDeps) {
   messageRoutes(app, routes);
   parentRoutes(app, routes);
 
-  // The parent page itself (PLAN §14.10): the SPA's index.html, served by the Worker (wrangler.toml
-  // run_worker_first "/p/*") so it always carries noindex / no-referrer / no-store. Not an API route:
-  // it returns no data; the page fetches /api/p/:token.
-  app.get('/p/:token', async (c) => {
+  // The parent page itself (PLAN §14.10): `/p#<token>`, the SPA's index.html served by the Worker
+  // (wrangler.toml run_worker_first "/p", "/p/*") so it always carries noindex / no-referrer /
+  // no-store and the SPA's security headers. Not an API route: it returns no data; the page reads the
+  // fragment and calls /api/p with the token in X-Parent-Token. Anything under /p/ gets the same
+  // shell (the page then says the link is not valid): a token never belongs in a path.
+  const parentShell = async (c: Context<AppEnv>) => {
     const res = c.env.ASSETS
       ? await c.env.ASSETS.fetch(new Request(new URL('/', c.req.url)))
       : new Response('<!doctype html><meta name="robots" content="noindex"><title>Maktab</title>', {
@@ -86,7 +89,9 @@ export function createApp(deps: AppDeps) {
     for (const [k, v] of Object.entries({ ...PARENT_HEADERS, ...SPA_HEADERS }))
       out.headers.set(k, v);
     return out;
-  });
+  };
+  app.get('/p', parentShell);
+  app.get('/p/*', parentShell);
 
   return { app, routes };
 }

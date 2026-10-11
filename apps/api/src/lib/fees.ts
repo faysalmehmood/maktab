@@ -19,12 +19,16 @@ import {
   type AdmissionFeesDto,
   type CashSessionDto,
   newId,
+  PK_MOBILE_GLOB,
   type PlannedChargeDto,
   RECEIPT_LABELS,
   type ReceiptPrintDto,
 } from '@maktab/shared';
 import { type SQL, sql } from 'drizzle-orm';
 import { ApiError } from './errors';
+
+/** A constant (not a bound parameter: the request budget counts those). */
+const MOBILE = sql.raw(`'${PK_MOBILE_GLOB}'`);
 
 /**
  * Fee plumbing shared by the fee, receipt, cash and admission routes. The money rules live in
@@ -355,6 +359,8 @@ export function familyMessageStatements(o: {
   const firstWith = (cond: SQL) => sql`(SELECT g2.id FROM guardian g2
       WHERE g2.family_id = x.f AND ${cond} ORDER BY g2.priority, g2.created_at, g2.id LIMIT 1)`;
   const hasNumber = sql`COALESCE(NULLIF(g2.whatsapp, ''), NULLIF(g2.phone, '')) IS NOT NULL`;
+  // WhatsApp only to a mobile (shared isPkMobile's SQL twin); a landline-only guardian is a call row.
+  const hasMobile = sql`(g2.whatsapp GLOB ${MOBILE} OR g2.phone GLOB ${MOBILE})`;
   const cooldown =
     o.cooldownDays == null
       ? sql``
@@ -366,7 +372,7 @@ export function familyMessageStatements(o: {
                ${o.template}, COALESCE((SELECT lang FROM guardian WHERE id = COALESCE(y.wa, y.callg)), 'ur'),
                y.p, 'queued', ${o.by}
         FROM (SELECT x.m, x.f, x.p,
-                     ${firstWith(sql`g2.consent_whatsapp = 1 AND ${hasNumber}`)} AS wa,
+                     ${firstWith(sql`g2.consent_whatsapp = 1 AND ${hasMobile}`)} AS wa,
                      COALESCE(${firstWith(hasNumber)}, ${firstWith(sql`1`)}) AS callg
               FROM (SELECT json_extract(value, '$.m') AS m, json_extract(value, '$.f') AS f,
                            json_extract(value, '$.p') AS p FROM json_each(${json})) x

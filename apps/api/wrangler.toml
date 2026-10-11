@@ -1,7 +1,7 @@
 # Maktab Worker: serves the built web app (static assets) and the /api/* routes.
 # Local dev needs no Cloudflare account:  npm run db:migrate:local && npm run dev
 # Secrets for local dev go in apps/api/.dev.vars (see .dev.vars.example); in production use
-#   npx wrangler secret put SESSION_SECRET --env production   (and GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
+#   npx wrangler secret put SESSION_SECRET --env production   (and PARENT_LINK_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
 
 name = "maktab"
 main = "src/index.ts"
@@ -19,8 +19,9 @@ not_found_handling = "single-page-application"
 # Without this, SPA fallback would answer /api/* with index.html. /__scheduled is wrangler dev's
 # --test-scheduled trigger (smoke:m3); without --test-scheduled (and in production) the Worker
 # answers it with its JSON 404.
-# /p/* is the parent page: the Worker serves index.html itself with noindex / no-store headers.
-run_worker_first = ["/api/*", "/__scheduled", "/p/*"]
+# /p is the parent page (/p#<token>): the Worker serves index.html itself with noindex / no-store
+# and the SPA headers; /p/* gets the same shell (a token never belongs in a path).
+run_worker_first = ["/api/*", "/__scheduled", "/p", "/p/*"]
 
 [[d1_databases]]
 binding = "DB"
@@ -54,6 +55,7 @@ crons = ["*/30 * * * *"]
 #   1. npx wrangler d1 create maktab            -> paste database_id below
 #   2. npx wrangler r2 bucket create maktab-files
 #   3. npx wrangler secret put SESSION_SECRET --env production   (>= 32 random chars)
+#      npx wrangler secret put PARENT_LINK_SECRET --env production   (>= 32 random chars, its own)
 #      npx wrangler secret put GOOGLE_CLIENT_ID --env production
 #      npx wrangler secret put GOOGLE_CLIENT_SECRET --env production
 #   4. Google Cloud console: authorised redirect URI

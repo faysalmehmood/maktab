@@ -9,11 +9,13 @@ import type { Bindings } from '../src/env';
 import { b64urlEncode, utf8 } from '../src/lib/b64';
 
 export const SECRET = 'test-secret-that-is-at-least-32-characters-long';
+export const PARENT_SECRET = 'test-parent-link-secret-also-32-characters-or-more';
 export const CLIENT_ID = 'test-client.apps.googleusercontent.com';
 export const ORIGIN = 'http://localhost:5173';
 
 export const env = {
   SESSION_SECRET: SECRET,
+  PARENT_LINK_SECRET: PARENT_SECRET,
   GOOGLE_CLIENT_ID: CLIENT_ID,
   GOOGLE_CLIENT_SECRET: 'test-client-secret',
   APP_ORIGIN: ORIGIN,

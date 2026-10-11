@@ -1,4 +1,5 @@
 import {
+  hasGrant,
   MESSAGE_LANGS,
   type MessageLang,
   type MessageSettingsDto,
@@ -6,7 +7,7 @@ import {
   PARENT_GATES,
   TEMPLATE_KEYS,
   type TemplateKey,
-  unknownPlaceholders,
+  templateProblems,
 } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RotateCcw } from 'lucide-react';
@@ -21,6 +22,7 @@ import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { getJson, sendJson } from '@/lib/api';
+import { useRoles } from '@/lib/roles';
 import { MARK, WithValue } from './common';
 import { TemplateEditor } from './TemplateEditor';
 
@@ -55,7 +57,8 @@ function TemplateLang({ item }: { item: MessageTemplateDto }) {
   });
   const id = `tpl-${item.key}-${item.lang}`;
   const dirty = body.trim() !== item.body;
-  const invalid = !body.trim() || unknownPlaceholders(body).length > 0;
+  const problems = templateProblems(item.key, body);
+  const invalid = !body.trim() || problems.unknown.length > 0 || problems.missing.length > 0;
   return (
     <div className="flex flex-col gap-2 rounded-md border p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -77,6 +80,7 @@ function TemplateLang({ item }: { item: MessageTemplateDto }) {
         lang={item.lang}
         value={body}
         onChange={setBody}
+        templateKey={item.key}
       />
       <div className="flex flex-wrap gap-2">
         <Button
@@ -222,12 +226,62 @@ function GeneralForm() {
   );
 }
 
+/**
+ * Owner only (backup.manage): revoke every parent link at once — after PARENT_LINK_SECRET was
+ * rotated (old links can no longer be recomputed) or if links may have leaked.
+ */
+function RevokeAllLinks() {
+  const { t } = useTranslation();
+  const [confirm, setConfirm] = useState(false);
+  const run = useMutation({
+    mutationFn: () => sendJson<{ revoked: number }>('POST', '/api/parent-links/rotate-all', {}),
+    onSuccess: (r) => {
+      setConfirm(false);
+      toast.success(t('msg.settings.rotateAllDone', { count: r.revoked }));
+    },
+  });
+  return (
+    <div className="flex flex-col gap-2">
+      <h3 className="font-medium">{t('msg.settings.rotateAll')}</h3>
+      <p className="text-sm text-muted-foreground">{t('msg.settings.rotateAllHint')}</p>
+      {confirm ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm">{t('msg.settings.rotateAllConfirm')}</p>
+          <Button
+            id="msg-rotate-all-confirm"
+            variant="destructive"
+            disabled={run.isPending}
+            onClick={() => run.mutate()}
+          >
+            {t('msg.settings.rotateAll')}
+          </Button>
+          <Button variant="outline" onClick={() => setConfirm(false)}>
+            {t('common.cancel')}
+          </Button>
+        </div>
+      ) : (
+        <Button
+          id="msg-rotate-all"
+          variant="outline"
+          className="self-start"
+          onClick={() => setConfirm(true)}
+        >
+          {t('msg.settings.rotateAll')}
+        </Button>
+      )}
+      <ErrorNote error={run.error} />
+    </div>
+  );
+}
+
 /** Settings → Messages (template.manage): templates en/ur and the message settings. */
 export function MessageSettings() {
+  const roles = useRoles();
   return (
     <div className="flex flex-col gap-6">
       <GeneralForm />
       <TemplatesEditor />
+      {hasGrant(roles, 'backup', 'manage') && <RevokeAllLinks />}
     </div>
   );
 }

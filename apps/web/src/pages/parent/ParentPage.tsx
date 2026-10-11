@@ -5,19 +5,21 @@ import {
   type MessageLang,
   monthLabel,
   normalizePkPhone,
+  PARENT_TOKEN_HEADER,
   type ParentChildDto,
   type ParentGateResultDto,
   type ParentPageDto,
+  type ParentReceiptDto,
   type ReceiptPrintDto,
   renderTemplate,
   telUrl,
+  wasFor,
 } from '@maktab/shared';
 import { useQuery } from '@tanstack/react-query';
 import type { TFunction } from 'i18next';
 import { ArrowLeft, Lock, Phone, Printer, Square, Volume2 } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router';
 import { ReceiptPrint } from '@/components/fees/ReceiptPrint';
 import { ErrorNote, Num } from '@/components/form';
 import { LanguageToggle } from '@/components/LanguageToggle';
@@ -33,10 +35,29 @@ import { money } from '@/lib/fees';
 import { cn } from '@/lib/utils';
 
 /**
- * The parent page (PLAN §7, §14.10): public, reached by the magic link, never a staff session. It
- * uses plain fetches (no cookies, no redirect to /login), stores the gate token for this tab only,
- * and asks search engines not to index it while it is mounted.
+ * The parent page (PLAN §7, §14.10): public, reached by the magic link `/p#<token>`, never a staff
+ * session. The token is the URL fragment (never sent to a server, never in a Referer); the page
+ * sends it in the X-Parent-Token header. Plain fetches (no cookies, no redirect to /login), the
+ * gate token kept for this tab only, the language choice never saved, noindex while mounted.
  */
+
+/** The link token from `#<token>` (43 base64url characters); '' when absent or malformed. */
+export function tokenFromHash(hash: string): string {
+  const t = hash.replace(/^#/, '');
+  return /^[A-Za-z0-9_-]{43}$/.test(t) ? t : '';
+}
+
+function useLinkToken(): string {
+  const [token, setToken] = useState(() =>
+    typeof location !== 'undefined' ? tokenFromHash(location.hash) : '',
+  );
+  useEffect(() => {
+    const on = () => setToken(tokenFromHash(location.hash));
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  return token;
+}
 
 const gateStorageKey = (token: string) => `maktab.pgate.${token.slice(0, 12)}`;
 
@@ -57,15 +78,60 @@ function writeGate(token: string, value: string | null): void {
   }
 }
 
-const parentFetch = <T,>(path: string, gate: string | null, init: RequestInit = {}): Promise<T> =>
+const parentFetch = <T,>(
+  path: string,
+  token: string,
+  gate: string | null,
+  init: RequestInit = {},
+): Promise<T> =>
   apiFetch(path, {
     ...init,
     credentials: 'omit',
     headers: {
       ...(init.body ? { 'content-type': 'application/json' } : {}),
+      [PARENT_TOKEN_HEADER]: token,
       ...(gate ? { 'x-parent-gate': gate } : {}),
     },
   }) as Promise<T>;
+
+/** The parent receipt (a whitelist) in the shape the shared paper receipt renders. */
+function printShape(p: ParentReceiptDto): ReceiptPrintDto {
+  return {
+    // The logo URL needs a staff session; the parent copy prints without it.
+    school: { ...p.school, has_logo: false },
+    labels: p.labels,
+    lang: p.lang,
+    receipt: {
+      id: '',
+      receipt_no: p.receipt.receipt_no,
+      kind: 'payment',
+      reverses_id: null,
+      reversed_by: null,
+      payer_type: 'family',
+      payer_id: '',
+      payer_name: p.receipt.payer_name,
+      amount: p.receipt.amount,
+      method: p.receipt.method,
+      account_id: null,
+      collector_id: '',
+      collector_name: null,
+      cash_session_id: null,
+      business_date: p.receipt.business_date,
+      reference: null,
+      note: null,
+      created_at: '',
+    },
+    students: p.students.map((s) => ({
+      student_id: `child-${s.child}`,
+      student_name: s.first_name,
+      admission_no: '',
+      lines: s.lines.map((l, i) => ({ charge_id: `${s.child}-${i}`, ...l })),
+      subtotal: s.subtotal,
+    })),
+    totals: p.totals,
+    reversed: p.reversed,
+  };
+}
 
 function useNoIndex() {
   useEffect(() => {
@@ -171,7 +237,7 @@ function GateForm({
     setBusy(true);
     setError(null);
     try {
-      const r = await parentFetch<ParentGateResultDto>(`/api/p/${token}/gate`, null, {
+      const r = await parentFetch<ParentGateResultDto>('/api/p/gate', token, null, {
         method: 'POST',
         body: JSON.stringify(kind === 'birth_year' ? { birth_year: Number(v) } : { pin: v }),
       });
@@ -379,19 +445,20 @@ function Dues({ dues, lang }: { dues: NonNullable<ParentPageDto['dues']>; lang: 
 
 function ReceiptView({
   token,
-  id,
+  no,
   gate,
   onBack,
 }: {
   token: string;
-  id: string;
+  no: string;
   gate: string | null;
   onBack: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const q = useQuery({
-    queryKey: ['parent-receipt', token, id, gate],
-    queryFn: () => parentFetch<ReceiptPrintDto>(`/api/p/${token}/receipt/${id}`, gate),
+    queryKey: ['parent-receipt', token, no, gate],
+    queryFn: () =>
+      parentFetch<ParentReceiptDto>(`/api/p/receipt/${encodeURIComponent(no)}`, token, gate),
     retry: false,
   });
   const lang = i18n.language === 'ur' ? 'ur' : 'en';
@@ -413,12 +480,7 @@ function ReceiptView({
       <ErrorNote error={q.error} />
       {q.data && (
         <div className="overflow-x-auto">
-          {/* The logo URL needs a staff session; the parent copy prints without it. */}
-          <ReceiptPrint
-            data={{ ...q.data, school: { ...q.data.school, has_logo: false } }}
-            fmt="a5"
-            lang={lang}
-          />
+          <ReceiptPrint data={printShape(q.data)} fmt="a5" lang={lang} publicCopy />
         </div>
       )}
     </section>
@@ -459,12 +521,13 @@ function noticeText(
       lang,
     ),
     child: data.children[0]?.first_name ?? '',
+    was: wasFor(data.children.length, lang),
     date: formatDmy(at.slice(0, 10)),
   });
 }
 
 export function ParentPage() {
-  const { token = '' } = useParams();
+  const token = useLinkToken();
   const { t, i18n } = useTranslation();
   useNoIndex();
   const [gate, setGate] = useState<string | null>(() => readGate(token));
@@ -472,7 +535,8 @@ export function ParentPage() {
   const langSet = useRef(false);
   const q = useQuery({
     queryKey: ['parent-page', token, gate],
-    queryFn: () => parentFetch<ParentPageDto>(`/api/p/${token}`, gate),
+    queryFn: () => parentFetch<ParentPageDto>('/api/p', token, gate),
+    enabled: !!token,
     retry: false,
     staleTime: 30_000,
   });
@@ -494,6 +558,7 @@ export function ParentPage() {
     }
   }, [data, gate, token]);
 
+  if (!token) return <Invalid />;
   if (q.isPending) return <p className="p-4 text-muted-foreground">{t('common.loading')}</p>;
   if (q.error instanceof ApiError && q.error.status === 404) return <Invalid />;
   if (!data)
@@ -506,7 +571,7 @@ export function ParentPage() {
       </main>
     );
   if (receipt)
-    return <ReceiptView token={token} id={receipt} gate={gate} onBack={() => setReceipt(null)} />;
+    return <ReceiptView token={token} no={receipt} gate={gate} onBack={() => setReceipt(null)} />;
 
   const lang: MessageLang = i18n.language === 'ur' ? 'ur' : 'en';
   const school = lang === 'ur' && data.school.name_ur ? data.school.name_ur : data.school.name;
@@ -539,7 +604,7 @@ export function ParentPage() {
 
       <ul className="flex flex-col gap-2">
         {data.children.map((c) => (
-          <ChildCard key={c.id} c={c} />
+          <ChildCard key={c.index} c={c} />
         ))}
       </ul>
 
@@ -567,12 +632,12 @@ export function ParentPage() {
             ) : (
               <ul className="flex flex-col divide-y">
                 {data.receipts.map((r) => (
-                  <li key={r.id}>
+                  <li key={r.receipt_no}>
                     <button
                       type="button"
-                      id={`parent-receipt-${r.id}`}
+                      id={`parent-receipt-${r.receipt_no}`}
                       aria-label={t('msg.parent.receiptOpen', { no: r.receipt_no })}
-                      onClick={() => setReceipt(r.id)}
+                      onClick={() => setReceipt(r.receipt_no)}
                       className="flex min-h-11 w-full flex-wrap items-center gap-2 text-start hover:bg-accent"
                     >
                       <Num>{r.receipt_no}</Num>
@@ -603,7 +668,10 @@ export function ParentPage() {
               const name =
                 textLang === 'ur' && data.school.name_ur ? data.school.name_ur : data.school.name;
               return (
-                <li key={n.id} className="flex flex-col gap-1 border-b pb-2 last:border-0">
+                <li
+                  key={`${n.at}|${n.body_en}|${n.body_ur}`}
+                  className="flex flex-col gap-1 border-b pb-2 last:border-0"
+                >
                   <span className="text-xs text-muted-foreground">
                     <Num>{formatDmy(n.at.slice(0, 10))}</Num>
                   </span>

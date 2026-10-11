@@ -120,16 +120,34 @@ describe('Google sign-in', () => {
     expect(configWarning({ APP_ORIGIN: 'http://localhost:5173' })).toMatch(
       /GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET empty/,
     );
+    const PLS = 'p'.repeat(32);
     expect(
       configWarning({
         APP_ORIGIN: 'http://localhost:5173',
         GOOGLE_CLIENT_ID: 'a',
         GOOGLE_CLIENT_SECRET: 'b',
+        PARENT_LINK_SECRET: PLS,
       }),
     ).toBeNull();
     expect(
-      configWarning({ APP_ORIGIN: 'https://school.example', GOOGLE_CLIENT_ID: '' }),
+      configWarning({
+        APP_ORIGIN: 'https://school.example',
+        GOOGLE_CLIENT_ID: '',
+        PARENT_LINK_SECRET: PLS,
+      }),
     ).toBeNull();
+  });
+
+  it('warns everywhere (production too) when PARENT_LINK_SECRET is missing or short', () => {
+    expect(configWarning({ APP_ORIGIN: 'https://school.example' })).toMatch(/PARENT_LINK_SECRET/);
+    expect(
+      configWarning({
+        APP_ORIGIN: 'http://localhost:5173',
+        GOOGLE_CLIENT_ID: 'a',
+        GOOGLE_CLIENT_SECRET: 'b',
+        PARENT_LINK_SECRET: 'short',
+      }),
+    ).toMatch(/PARENT_LINK_SECRET missing or shorter/);
   });
 
   it('rejects an uninvited email once an owner exists', async () => {
