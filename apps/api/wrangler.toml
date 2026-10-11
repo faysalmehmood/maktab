@@ -80,6 +80,6 @@ migrations_dir = "../../packages/db/migrations"
 # R2 is not enabled on the account yet (API error 10042). Once enabled:
 #   npx wrangler r2 bucket create maktab-files   then uncomment and redeploy. Until then photo
 #   upload answers 501.
-# [[env.production.r2_buckets]]
-# binding = "FILES"
-# bucket_name = "maktab-files"
+[[env.production.r2_buckets]]
+binding = "FILES"
+bucket_name = "maktab-files"
