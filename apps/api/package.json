@@ -15,7 +15,8 @@
     "smoke:m2": "tsx scripts/smoke-m2.ts",
     "smoke:m3": "tsx scripts/smoke-m3.ts",
     "smoke:m3b": "tsx scripts/smoke-m3b.ts",
-    "smoke:m4": "tsx scripts/smoke-m4.ts"
+    "smoke:m4": "tsx scripts/smoke-m4.ts",
+    "smoke:m5": "tsx scripts/smoke-m5.ts"
   },
   "dependencies": {
     "@maktab/db": "0.0.0",
