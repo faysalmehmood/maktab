@@ -77,8 +77,10 @@ Ports: `PORT` (web, default 5173) and `API_PORT` (API, default 8787) move the Vi
 `/api` proxy, the Worker's `APP_ORIGIN` and the smoke script together, e.g.
 `PORT=5180 API_PORT=8790 npm run dev`, then `PORT=5180 API_PORT=8790 npm run smoke:m1 -w @maktab/api`. The cookie is named `maktab_sid`
 on `http://localhost` (`__Host-maktab_sid` needs an https origin). If wrangler runs with
-`--persist-to <dir>`, pass the same dir as `D1_PERSIST_TO=<dir>` to both scripts, and to the
-migration: `D1_PERSIST_TO=<dir> npm run db:migrate:local`. (A flag does not work there:
+`--persist-to <dir>`, set `D1_PERSIST_TO=<dir>` instead: `npm run dev -w @maktab/api`,
+`npm run db:migrate:local` and the dev-session script all read it and pass `--persist-to <dir>`
+themselves, e.g. `D1_PERSIST_TO=.wrangler/alt npm run db:migrate:local` then
+`D1_PERSIST_TO=.wrangler/alt npm run dev -w @maktab/api`. (A flag does not work for the migration:
 `npm run db:migrate:local -- --persist-to <dir>` loses it in the root script's second npm layer.)
 
 Driving the API by hand:

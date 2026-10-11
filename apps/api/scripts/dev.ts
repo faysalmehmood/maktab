@@ -2,6 +2,8 @@
  * `npm run dev -w @maktab/api`: wrangler dev on API_PORT (default 8787), with APP_ORIGIN pointed
  * at the Vite dev server on PORT (default 5173), so both ports can move together when the defaults
  * are taken. A script rather than `${API_PORT:-8787}` in package.json so it also runs on Windows.
+ * D1_PERSIST_TO=<dir> adds `--persist-to <dir>`, the same variable migrate-local.ts and
+ * dev-session.ts read, so one setting points all three at the same local database.
  */
 import { spawn } from 'node:child_process';
 
@@ -14,6 +16,7 @@ const args = [
   apiPort,
   '--var',
   `APP_ORIGIN:http://localhost:${webPort}`,
+  ...(process.env.D1_PERSIST_TO ? ['--persist-to', process.env.D1_PERSIST_TO] : []),
   ...process.argv.slice(2),
 ];
 const child = spawn('wrangler', args, { stdio: 'inherit', shell: process.platform === 'win32' });

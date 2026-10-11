@@ -11,7 +11,7 @@ import {
   studentStatusSchema,
 } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, UserRound } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
@@ -48,6 +48,17 @@ import { canReadMoney } from '@/lib/fees';
 import { type FieldErrors, issuesToErrors, todayIso } from '@/lib/form';
 import { useCurrentSession, useCustomFields, useGroups } from '@/lib/queries';
 import { canWriteStudents, useRoles } from '@/lib/roles';
+
+/** Up to two initials of a name ("Ali Raza" → "AR"; Urdu letters work too). */
+export function initials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => [...w][0] ?? '')
+    .join('')
+    .toUpperCase();
+}
 
 export const useStudent = (id: string | undefined) =>
   useQuery({
@@ -371,12 +382,14 @@ export function StudentDetail() {
   const [enrolmentAction, setEnrolmentAction] = useState<EnrolmentAction | null>(null);
   const [guardianEdit, setGuardianEdit] = useState<GuardianDto | 'new' | null>(null);
   const [photoVersion, setPhotoVersion] = useState(0);
+  const [photoFailed, setPhotoFailed] = useState(false);
   const [photo, setPhoto] = useState<Blob | null>(null);
   const uploadPhoto = useMutation({
     mutationFn: (blob: Blob) => uploadFile(`/api/students/${id}/photo`, blob, 'photo.jpg'),
     onSuccess: async () => {
       setPhoto(null);
       setPhotoVersion((v) => v + 1);
+      setPhotoFailed(false);
       toast.success(t('student.photoSaved'));
       await qc.invalidateQueries({ queryKey: ['student', id] });
     },
@@ -418,14 +431,23 @@ export function StudentDetail() {
       <Card className="gap-4 py-4">
         <CardContent className="flex flex-col gap-4 px-4 sm:flex-row">
           <div className="flex flex-col items-center gap-2">
-            {s.has_photo ? (
+            {s.has_photo && !photoFailed ? (
               <img
+                id="student-photo-img"
                 src={`/api/students/${s.id}/photo?v=${photoVersion}`}
                 alt={t('student.photo')}
                 className="size-28 rounded-md object-cover"
+                onError={() => setPhotoFailed(true)}
               />
             ) : (
-              <UserRound className="size-28 rounded-md bg-muted p-6" aria-hidden />
+              // No photo (or it did not load): the child's initials, never an empty box.
+              <div
+                id="student-avatar"
+                aria-hidden
+                className="flex size-28 items-center justify-center rounded-md bg-muted text-3xl font-semibold text-muted-foreground"
+              >
+                <bdi>{initials(s.name)}</bdi>
+              </div>
             )}
             {write && (
               <>
@@ -567,7 +589,10 @@ export function StudentDetail() {
               {s.enrolments.map((e) => (
                 <li key={e.id} className="flex flex-col gap-1 py-2 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Link to={`/groups/${e.grp_id}`} className="font-medium hover:underline">
+                    <Link
+                      to={`/groups/${e.grp_id}`}
+                      className="inline-flex min-h-11 items-center font-medium hover:underline"
+                    >
                       <bdi>{e.programme_name}</bdi> · <bdi>{e.grp_name}</bdi>
                     </Link>
                     <Badge variant={e.status === 'active' ? 'secondary' : 'outline'}>
