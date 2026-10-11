@@ -1,4 +1,5 @@
 import { feeEn, feeErrorsEn, feeErrorsUr, feeUr } from './i18n-fees';
+import { msgEn, msgErrorsEn, msgErrorsUr, msgUr } from './i18n-messages';
 import { moneyEn, moneyErrorsEn, moneyErrorsUr, moneyUr } from './i18n-money';
 
 export const LANGUAGES = ['en', 'ur'] as const;
@@ -65,9 +66,11 @@ export const en = {
   },
   fee: feeEn,
   money: moneyEn,
+  msg: msgEn,
   errors: {
     ...feeErrorsEn,
     ...moneyErrorsEn,
+    ...msgErrorsEn,
     holiday: 'This date is a school holiday',
     weekly_off: 'The school is closed on this weekday',
     future_date: 'You cannot take attendance for a future date',
@@ -467,12 +470,6 @@ export const en = {
     noHolidays: 'No holidays added.',
     settingsSaved: 'Attendance settings saved',
   },
-  queue: {
-    title: 'Send queue',
-    placeholder:
-      'Sending messages on WhatsApp comes in a later milestone. Messages are already being queued.',
-    queuedAbsence: '{{n}} absence messages waiting',
-  },
   settings: {
     title: 'Settings',
     account: 'Your account',
@@ -490,6 +487,7 @@ export const en = {
       customFields: 'Fields',
       attendance: 'Attendance',
       fees: 'Fees',
+      messages: 'Messages',
     },
   },
 } as const;
@@ -555,9 +553,11 @@ export const ur: Messages = {
   },
   fee: feeUr,
   money: moneyUr,
+  msg: msgUr,
   errors: {
     ...feeErrorsUr,
     ...moneyErrorsUr,
+    ...msgErrorsUr,
     holiday: 'یہ تاریخ اسکول کی چھٹی ہے',
     weekly_off: 'اس دن اسکول بند ہوتا ہے',
     future_date: 'آنے والی تاریخ کی حاضری نہیں لی جا سکتی',
@@ -959,12 +959,6 @@ export const ur: Messages = {
     noHolidays: 'کوئی چھٹی شامل نہیں۔',
     settingsSaved: 'حاضری کی ترتیبات محفوظ ہو گئیں',
   },
-  queue: {
-    title: 'پیغامات کی قطار',
-    placeholder:
-      'واٹس ایپ پر پیغام بھیجنا اگلے مرحلے میں آئے گا۔ پیغامات ابھی سے قطار میں جمع ہو رہے ہیں۔',
-    queuedAbsence: 'غیر حاضری کے {{n}} پیغامات منتظر',
-  },
   settings: {
     title: 'ترتیبات',
     account: 'آپ کا اکاؤنٹ',
@@ -982,6 +976,7 @@ export const ur: Messages = {
       customFields: 'خانے',
       attendance: 'حاضری',
       fees: 'فیس',
+      messages: 'پیغامات',
     },
   },
 };

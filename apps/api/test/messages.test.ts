@@ -608,7 +608,7 @@ describe('parent links and the public parent page', () => {
     await s.api('POST', '/api/messages/compose', {
       notice_id: newId(),
       audience: { kind: 'families', family_ids: [s.ali.family_id] },
-      body_en: 'Holiday on Monday.',
+      body_en: 'Holiday on Monday for {children}.',
       body_ur: 'پیر کو چھٹی ہے۔',
     });
     const { token } = await linked(s);
@@ -629,6 +629,7 @@ describe('parent links and the public parent page', () => {
     expect(r.body.dues).toMatchObject({ credit: 250000, total: 0 });
     expect(r.body.receipts?.map((x) => x.amount)).toEqual([250000]);
     expect(r.body.notices.map((n) => n.body_ur)).toEqual(['پیر کو چھٹی ہے۔']);
+    expect(r.body.notices[0]?.body_en).toBe('Holiday on Monday for Ali and Zain.');
     const keys = keysOf(r.body);
     for (const k of [
       'cnic',

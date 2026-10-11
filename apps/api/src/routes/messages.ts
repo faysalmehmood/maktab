@@ -149,7 +149,11 @@ function toDto(
     family_name: r.family_name,
     guardian_id: r.guardian_id,
     guardian_name: r.guardian_name,
-    guardian_phone: r.guardian_whatsapp ?? r.guardian_phone,
+    // A call row dials the phone first (as /open's tel_url does); WhatsApp rows show the WhatsApp number.
+    guardian_phone:
+      r.channel === 'call'
+        ? (r.guardian_phone ?? r.guardian_whatsapp)
+        : (r.guardian_whatsapp ?? r.guardian_phone),
     wa_number: waNumber(r),
     channel: r.channel,
     template_key: r.template_key,

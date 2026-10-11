@@ -1,7 +1,10 @@
 import { familyStatement } from '@maktab/db';
 import {
   firstName,
+  formatDmy,
+  joinNames,
   type MessageLang,
+  monthLabel,
   newId,
   type ParentChildDto,
   type ParentGate,
@@ -10,6 +13,7 @@ import {
   parentGateInputSchema,
   presentPct,
   type ReceiptPrintDto,
+  renderTemplate,
 } from '@maktab/shared';
 import { sql } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
@@ -212,12 +216,27 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable): void {
           WHERE family_id = ${l.family_id} AND template_key = 'notice' AND status IN ('queued', 'sent')
           ORDER BY created_at DESC LIMIT 10`,
     );
+    const kids = await children(c, l.family_id, today);
+    // Notices are shown filled in (school, first names, date) and without the link: the reader is
+    // already on the page the link points to.
+    const fill = (text: string, lang: MessageLang) =>
+      renderTemplate(text, {
+        children: joinNames(
+          kids.map((k) => k.first_name),
+          lang,
+        ),
+        child: kids[0]?.first_name ?? '',
+        date: formatDmy(today),
+        month: monthLabel(today, lang),
+        school: lang === 'ur' ? s.name_ur || s.name : s.name,
+        link: '',
+      });
     const body: ParentPageDto = {
       school: { name: s.name, name_ur: s.name_ur, phone: s.phone },
       guardian: { first_name: firstName(l.guardian_name), lang: l.guardian_lang },
       date: today,
       gate: { kind: gateKind(l), passed },
-      children: await children(c, l.family_id, today),
+      children: kids,
       dues,
       receipts,
       notices: notices.map((n) => {
@@ -225,8 +244,8 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         return {
           id: n.id,
           at: n.at,
-          body_en: typeof p.body_en === 'string' ? p.body_en : '',
-          body_ur: typeof p.body_ur === 'string' ? p.body_ur : '',
+          body_en: typeof p.body_en === 'string' ? fill(p.body_en, 'en') : '',
+          body_ur: typeof p.body_ur === 'string' ? fill(p.body_ur, 'ur') : '',
         };
       }),
     };

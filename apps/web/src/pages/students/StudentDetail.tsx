@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { StudentFeesCard } from '@/components/fees/StudentFees';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
+import { ParentLinkPanel } from '@/components/messages/ParentLinkPanel';
 import { StudentAttendanceCard } from '@/components/students/attendance';
 import {
   emptyGuardian,
@@ -506,7 +507,7 @@ export function StudentDetail() {
         <CardContent className="px-4">
           <ul className="flex flex-col divide-y">
             {s.guardians.map((g) => (
-              <li key={g.id} className="flex items-center gap-3 py-2">
+              <li key={g.id} className="flex flex-wrap items-center gap-3 py-2">
                 <div className="flex flex-1 flex-col">
                   <span className="font-medium">
                     <bdi>{g.name}</bdi>
@@ -542,6 +543,11 @@ export function StudentDetail() {
                   >
                     <Pencil aria-hidden />
                   </Button>
+                )}
+                {write && (
+                  <div className="w-full">
+                    <ParentLinkPanel guardian={g} />
+                  </div>
                 )}
               </li>
             ))}

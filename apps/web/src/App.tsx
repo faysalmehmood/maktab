@@ -42,6 +42,12 @@ const ReportPage = lazy(() =>
 const MessagesPage = lazy(() =>
   import('@/pages/Messages').then((m) => ({ default: m.MessagesPage })),
 );
+const ComposePage = lazy(() =>
+  import('@/pages/messages/Compose').then((m) => ({ default: m.ComposePage })),
+);
+const ParentPage = lazy(() =>
+  import('@/pages/parent/ParentPage').then((m) => ({ default: m.ParentPage })),
+);
 const GroupsPage = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupsPage })));
 const GroupDetail = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupDetail })));
 
@@ -101,6 +107,12 @@ export const MONEY_ROUTES: [string, ComponentType, GrantRef][] = [
   ['audit', AuditPage, ['audit', 'read']],
 ];
 
+/** Messaging routes (M5): the send queue for message readers, compose for message.compose. */
+export const MESSAGE_ROUTES: [string, ComponentType, GrantRef][] = [
+  ['messages', MessagesPage, ['message', 'read']],
+  ['messages/compose', ComposePage, ['message', 'compose']],
+];
+
 /**
  * Fee routes (M3b): path → page → the MATRIX grant its main API call needs. Each is lazily loaded
  * behind the shared Suspense and guarded: without the grant the URL redirects home with a toast.
@@ -132,6 +144,15 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* The parent page (PLAN §14.10): public, no session, no app shell. */}
+      <Route
+        path="/p/:token"
+        element={
+          <Loading>
+            <ParentPage />
+          </Loading>
+        }
+      />
       <Route
         path="/setup"
         element={
@@ -232,15 +253,7 @@ export function App() {
             </Loading>
           }
         />
-        <Route
-          path="messages"
-          element={
-            <Loading>
-              <MessagesPage />
-            </Loading>
-          }
-        />
-        {[...FEE_ROUTES, ...MONEY_ROUTES].map(([path, Page, grant]) => (
+        {[...FEE_ROUTES, ...MONEY_ROUTES, ...MESSAGE_ROUTES].map(([path, Page, grant]) => (
           <Route
             key={path}
             path={path}

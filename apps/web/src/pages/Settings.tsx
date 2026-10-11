@@ -4,6 +4,7 @@ import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { FeeSetup } from '@/components/fees/setup';
+import { MessageSettings } from '@/components/messages/MessageSettings';
 import { AttendanceSettingsForm, HolidaysEditor } from '@/components/setup/attendance';
 import { CustomFieldsEditor } from '@/components/setup/customFields';
 import { GroupsEditor } from '@/components/setup/groups';
@@ -15,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import { useMe } from '@/lib/api';
+import { canManageTemplates } from '@/lib/messages';
 import { useCurrentSession, useSchool } from '@/lib/queries';
 import { canManageRoles, canManageSettings } from '@/lib/roles';
 import { cn } from '@/lib/utils';
@@ -29,6 +31,7 @@ const SECTIONS = [
   'customFields',
   'attendance',
   'fees',
+  'messages',
 ] as const;
 type Section = (typeof SECTIONS)[number];
 
@@ -37,7 +40,8 @@ type Section = (typeof SECTIONS)[number];
  * accountant: "settings-lite" = account + read-only school profile; teacher: account only.
  */
 export function visibleSections(roles: readonly StaffRole[]): Section[] {
-  if (canManageSettings(roles)) return [...SECTIONS];
+  if (canManageSettings(roles))
+    return SECTIONS.filter((s) => s !== 'messages' || canManageTemplates(roles));
   if (roles.includes('accountant')) return ['account', 'school'];
   return ['account'];
 }
@@ -172,6 +176,11 @@ export function SettingsPage() {
       {shown === 'fees' && (
         <Section title={t('fee.setup.title')}>
           <FeeSetup />
+        </Section>
+      )}
+      {shown === 'messages' && (
+        <Section title={t('msg.settings.title')}>
+          <MessageSettings />
         </Section>
       )}
       {shown === 'customFields' && (

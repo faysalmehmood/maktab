@@ -14,6 +14,7 @@ import {
   WaiveFineDialog,
 } from '@/components/fees/dialogs';
 import { ErrorNote, Num, PageTitle } from '@/components/form';
+import { FamilyParentLinks } from '@/components/messages/ParentLinkPanel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +27,7 @@ import {
   headLabel,
   useFamilyStatement,
 } from '@/lib/fees';
+import { canManageLinks } from '@/lib/messages';
 import { useRoles } from '@/lib/roles';
 
 type Dialog =
@@ -313,6 +315,7 @@ export function FamilyStatementPage() {
           onOpenChange={close}
         />
       )}
+      {canManageLinks(roles) && <FamilyParentLinks familyId={f.family.id} />}
     </section>
   );
 }

@@ -5,6 +5,7 @@ import { Link } from 'react-router';
 import { DayOffNote, TodayList } from '@/components/attendance/common';
 import { FeeTiles } from '@/components/fees/DashboardTiles';
 import { Num } from '@/components/form';
+import { MessagesTile } from '@/components/messages/MessagesTile';
 import { MonthTiles } from '@/components/money/MonthTiles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -161,10 +162,11 @@ export function Dashboard() {
         ) : (
           <p className="text-muted-foreground">{t('dashboard.setupNotFinished')}</p>
         ))}
+      {canReadMessages(roles) && <MessagesTile />}
       {canReadMoney(roles) && <FeeTiles />}
       {canReadMoney(roles) && <MonthTiles />}
       {attendance && (canCorrect(roles) ? <OfficeToday /> : <TeacherToday />)}
-      {!attendance && !canReadMoney(roles) && (
+      {!attendance && !canReadMoney(roles) && !canReadMessages(roles) && (
         <p className="text-muted-foreground">{t('common.comingSoon')}</p>
       )}
     </section>
