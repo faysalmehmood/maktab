@@ -1,5 +1,6 @@
-import { check, index, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { check, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { family, guardian } from './academic';
+import { user } from './auth';
 import { id, integerMoney, nowIso, oneOf, paisa } from './common';
 
 /**
@@ -39,11 +40,21 @@ export const message = sqliteTable(
     createdBy: text('created_by'),
     sentAt: text('sent_at'),
     error: text('error'),
+    /** M5: the exact text staff opened in WhatsApp (rebuilt at open time; PLAN §14.9). */
+    renderedText: text('rendered_text'),
+    /** M5: when "Open WhatsApp" (or the call script) was last opened. */
+    openedAt: text('opened_at'),
+    /** M5: who tapped "Sent" / "Called" (explicit, never inferred from opening). */
+    sentBy: text('sent_by').references(() => user.id),
+    /** M5: why a row was skipped (staff reason, or no_longer_absent / already_paid at open time). */
+    skippedReason: text('skipped_reason'),
+    skippedAt: text('skipped_at'),
   },
   (t) => [
     check('message_channel', oneOf('channel', MESSAGE_CHANNELS)),
     check('message_status', oneOf('status', MESSAGE_STATUSES)),
     index('message_queue').on(t.status, t.templateKey),
+    index('message_family').on(t.familyId, t.templateKey),
     integerMoney('message', 'cost_estimate', true),
     integerMoney('message', 'cost_actual', true),
   ],
@@ -62,16 +73,63 @@ export const reminderState = sqliteTable(
   (t) => [primaryKey({ columns: [t.familyId, t.templateKey] })],
 );
 
-/** Only the SHA-256 of the token is stored, so a DB leak does not leak working links. */
-export const parentLink = sqliteTable('parent_link', {
-  id: id(),
-  guardianId: text('guardian_id')
-    .notNull()
-    .references(() => guardian.id),
-  tokenHash: text('token_hash').notNull().unique(),
-  expiresAt: text('expires_at'),
-  revokedAt: text('revoked_at'),
-  lastSeenAt: text('last_seen_at'),
-  createdAt: text('created_at').notNull().default(nowIso),
-  createdBy: text('created_by'),
-});
+/**
+ * Message texts per template and language (PLAN §14.12), seeded with the defaults in
+ * `@maktab/shared` DEFAULT_TEMPLATES by migration 0019. Placeholders are validated by the API.
+ */
+export const messageTemplate = sqliteTable(
+  'message_template',
+  {
+    key: text('key').notNull(),
+    lang: text('lang', { enum: ['en', 'ur'] }).notNull(),
+    body: text('body').notNull(),
+    updatedBy: text('updated_by').references(() => user.id),
+    updatedAt: text('updated_at').notNull().default(nowIso),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.lang] })],
+);
+
+/**
+ * Parent magic link (PLAN §7, §14.10). Only the SHA-256 of the token is stored, so a DB leak does
+ * not leak working links. The token itself is HMAC(SESSION_SECRET, token_salt): 128 random bits of
+ * salt, recomputable by the Worker so a queued message can carry the guardian's current link without
+ * the link ever being stored in clear. One live link per guardian (rotate = revoke + new row).
+ * `gate` NULL follows the school default (school.parent_gate); values are validated by the API.
+ */
+export const parentLink = sqliteTable(
+  'parent_link',
+  {
+    id: id(),
+    guardianId: text('guardian_id')
+      .notNull()
+      .references(() => guardian.id),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: text('expires_at'),
+    revokedAt: text('revoked_at'),
+    lastSeenAt: text('last_seen_at'),
+    createdAt: text('created_at').notNull().default(nowIso),
+    createdBy: text('created_by'),
+    tokenSalt: text('token_salt'),
+    gate: text('gate'),
+    pinHash: text('pin_hash'),
+    /** Wrong gate answers in a row; at 5 the gate locks for 15 minutes (gate_locked_until). */
+    gateFailures: integer('gate_failures').notNull().default(0),
+    gateLockedUntil: text('gate_locked_until'),
+  },
+  (t) => [index('parent_link_guardian').on(t.guardianId)],
+);
+
+/** Staff-visible access log of a parent link (hashed IP, user agent); capped per link by the API. */
+export const parentLinkAccess = sqliteTable(
+  'parent_link_access',
+  {
+    id: id(),
+    linkId: text('link_id')
+      .notNull()
+      .references(() => parentLink.id),
+    at: text('at').notNull().default(nowIso),
+    ipHash: text('ip_hash'),
+    ua: text('ua'),
+  },
+  (t) => [index('parent_link_access_link').on(t.linkId, t.at)],
+);

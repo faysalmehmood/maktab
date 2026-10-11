@@ -134,6 +134,20 @@
       "when": 1791654511058,
       "tag": "0018_c4_reopen_period",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1791687600550,
+      "tag": "0019_m5_messaging",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1791687601424,
+      "tag": "0020_m5_messaging_rules",
+      "breakpoints": true
     }
   ]
 }

@@ -72,6 +72,13 @@
       "files": {
         "50_fees.sql": "a71e45483426e16a048d022dcf24ef4e9d9c6b7deb2a3f94934e4989a6febe7c"
       }
+    },
+    {
+      "migration": "0020_m5_messaging_rules",
+      "sha256": "0263e0b9dae8be5c68679675ee49a1b9823c9a6bfa8d7e2db0c6bf572d40aefd",
+      "files": {
+        "70_messaging.sql": "9edfde0082261a3c6c06f84a5e6d85fdcb01a5aac4ab6666ac7bf85cc7ab64ef"
+      }
     }
   ]
 }

@@ -52,6 +52,10 @@ export const school = sqliteTable(
     siblingRule: text('sibling_rule'),
     /** Fee reminder cooldown per family and template, in days (PLAN §14.9). */
     reminderCooldownDays: integer('reminder_cooldown_days').notNull().default(7),
+    /** Default parent-page gate (M5): 'none' | 'birth_year' | 'pin', validated by the API. */
+    parentGate: text('parent_gate').notNull().default('none'),
+    /** Guidance shown to staff about the school's WhatsApp announcement groups (M5). */
+    announcementGroupsNote: text('announcement_groups_note'),
     /** Suggested advance recovery per payslip, as a percent of the slip's pay (M4). */
     advanceRecoveryPct: integer('advance_recovery_pct').notNull().default(25),
     ...stamps(),
