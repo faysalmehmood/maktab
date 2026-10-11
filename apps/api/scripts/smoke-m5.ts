@@ -3,8 +3,10 @@
  * registers (M2 path) → the office corrects one child to present → opening that row skips it
  * (no_longer_absent); opening the other merges a sibling absent in another group, carries the parent
  * link alone on the last line and a wa.me URL that decodes to the text → explicit Sent → a notice
- * composed to the class (cursor loop) → the guardian's parent link → GET /api/p/:token shape (no
- * CNIC / B-form / DOB / phones) with noindex headers → revoke → 404.
+ * composed to the class (cursor loop) → the guardian's parent link (`/p#<token>`; the queue and the
+ * stored row carry only `{link}`) → birth-year gate → GET /api/p (token in X-Parent-Token) as a
+ * whitelist (no ids, CNIC / B-form / DOB / phones) with noindex headers → the receipt whitelist →
+ * /p shell headers → revoke → 404.
  *
  *   npm run db:migrate:local && npm run dev -w @maktab/api      # terminal 1
  *   npm run smoke:m5 -w @maktab/api                              # terminal 2
@@ -21,6 +23,7 @@ import type {
   MessageOpenDto,
   ParentLinkCreatedDto,
   ParentPageDto,
+  ParentReceiptDto,
   ProgrammeDto,
   SchoolResponse,
   SessionDto,
@@ -28,13 +31,24 @@ import type {
 } from '@maktab/shared';
 import { newId } from '@maktab/shared';
 import { mintDevSession } from './dev-session';
-import { always, BASE, EMAIL, expectOk, finish, makeApi, runId as run, step } from './smoke-lib';
+import {
+  always,
+  BASE,
+  EMAIL,
+  expectOk,
+  finish,
+  makeApi,
+  ORIGIN,
+  runId as run,
+  step,
+} from './smoke-lib';
+
+const ULID = /\b[0-9A-HJKMNP-TV-Z]{26}\b/;
 
 let ownerCookie = '';
 let teacherCookie = '';
 const api = makeApi(() => ownerCookie);
 const teacher = makeApi(() => teacherCookie);
-const anon = makeApi(() => '');
 
 const today = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Karachi',
@@ -220,10 +234,19 @@ async function main() {
       expectOk(r.status === 200 && r.body.status === 'queued', r);
       expectOk(r.body.children.length === 2 && r.body.text.includes(' اور '), r.body);
       const last = r.body.text.split('\n').at(-1) ?? '';
-      expectOk(/\/p\/[A-Za-z0-9_-]{43}$/.test(last), last);
-      token = last.split('/p/')[1] ?? '';
+      expectOk(/\/p#[A-Za-z0-9_-]{43}$/.test(last), last);
+      token = last.split('/p#')[1] ?? '';
       const u = new URL(r.body.wa_url ?? 'x:');
       expectOk(u.host === 'wa.me' && u.searchParams.get('text') === r.body.text, r.body.wa_url);
+      // The queue (and so the stored row) holds only the {link} stub, never the live link.
+      const listed = await teacher<{ message: { preview: string } }>(
+        'GET',
+        `/api/messages/${row?.id}`,
+      );
+      expectOk(
+        listed.body.message.preview.endsWith('\n{link}') && !listed.text.includes(token),
+        listed.body.message.preview,
+      );
       const sent = await teacher<{ status: string }>('POST', `/api/messages/${row?.id}/sent`);
       expectOk(sent.body.status === 'sent', sent);
     },
@@ -254,10 +277,45 @@ async function main() {
     expectOk(teacherSees.body.items.length === 0, 'teacher sees notices');
   });
 
+  let gateToken = '';
+  let receiptNo = '';
+  await step('a payment for the Khan family (credit), for the receipt whitelist', async () => {
+    const r = await api<{ receipt: { receipt_no: string } }>('POST', '/api/receipts', {
+      idempotency_key: newId(),
+      payer_id: khan?.family_id,
+      amount: 10000,
+      method: 'cash',
+    });
+    expectOk(r.status === 201, r);
+    receiptNo = r.body.receipt.receipt_no;
+  });
+
+  await step('birth-year gate (auto link follows the school gate) → gate token', async () => {
+    const pre = await fetch(`${BASE}/api/p`, { headers: { 'x-parent-token': token } });
+    const body = (await pre.json()) as ParentPageDto;
+    expectOk(pre.status === 200, body);
+    if (body.gate.kind === 'none') return 'school gate is none';
+    expectOk(body.dues === null && body.receipts === null, 'dues before the gate');
+    const g = await fetch(`${BASE}/api/p/gate`, {
+      method: 'POST',
+      headers: { 'x-parent-token': token, origin: ORIGIN, 'content-type': 'application/json' },
+      body: JSON.stringify({ birth_year: 2016 }),
+    });
+    const gb = (await g.json()) as { gate_token: string };
+    expectOk(g.status === 200, gb);
+    gateToken = gb.gate_token;
+    return body.gate.kind;
+  });
+
+  const parentHeaders = () => ({
+    'x-parent-token': token,
+    ...(gateToken ? { 'x-parent-gate': gateToken } : {}),
+  });
+
   await step(
-    'GET /api/p/:token: first names, no CNIC/B-form/DOB/phones, noindex headers',
+    'GET /api/p (header token): whitelist — first names, child index, no ids/CNIC/DOB, noindex',
     async () => {
-      const res = await fetch(`${BASE}/api/p/${token}`);
+      const res = await fetch(`${BASE}/api/p`, { headers: parentHeaders() });
       const text = await res.text();
       expectOk(res.status === 200, text);
       expectOk(res.headers.get('x-robots-tag')?.includes('noindex'), 'x-robots-tag');
@@ -268,27 +326,58 @@ async function main() {
       expectOk(body.children.find((c) => c.first_name === 'Ali')?.today === 'A', body.children);
       expectOk(body.notices.length === 1 && body.dues, body);
       const keys = keysOf(body);
-      for (const k of ['cnic', 'b_form_no', 'dob', 'whatsapp', 'admission_no', 'family_id'])
+      for (const k of ['cnic', 'b_form_no', 'dob', 'whatsapp', 'admission_no', 'family_id', 'id'])
         expectOk(!keys.has(k), `leaks ${k}`);
       expectOk(!/35202|2016-05-04/.test(text), 'leaks CNIC or DOB');
+      expectOk(!ULID.test(text), 'leaks a database id');
+      expectOk(
+        body.children.map((c) => c.index).join() === '1,2',
+        body.children.map((c) => c.index),
+      );
+      expectOk(
+        body.receipts?.some((r) => r.receipt_no === receiptNo),
+        body.receipts,
+      );
     },
   );
 
-  await step('GET /p/:token (SPA shell) carries noindex / no-store', async () => {
-    const res = await fetch(`${BASE}/p/${token}`);
+  await step('GET /api/p/receipt/:no: whitelist — no ids, no staff, first names', async () => {
+    const res = await fetch(`${BASE}/api/p/receipt/${encodeURIComponent(receiptNo)}`, {
+      headers: parentHeaders(),
+    });
+    const text = await res.text();
+    expectOk(res.status === 200, text);
+    const body = JSON.parse(text) as ParentReceiptDto;
+    expectOk(body.receipt.payer_name === 'Imran' && body.receipt.receipt_no === receiptNo, body);
+    const bare = JSON.stringify({ ...body, labels: null });
+    expectOk(!ULID.test(bare), 'receipt leaks a database id');
+    expectOk(!/collector|account_id|cash_session|admission_no/.test(bare), 'receipt leaks staff');
+  });
+
+  await step('GET /api/p without a token → JSON 404 with noindex', async () => {
+    const res = await fetch(`${BASE}/api/p`);
+    expectOk(res.status === 404, res.status);
+    expectOk(res.headers.get('x-robots-tag')?.includes('noindex'), 'x-robots-tag');
+    expectOk(res.headers.get('content-type')?.includes('json'), 'json');
+  });
+
+  await step('GET /p (SPA shell) carries noindex / no-store / Permissions-Policy', async () => {
+    const res = await fetch(`${BASE}/p`);
     expectOk(res.headers.get('x-robots-tag')?.includes('noindex'), [...res.headers]);
     expectOk(res.headers.get('cache-control') === 'no-store', 'cache-control');
+    expectOk(res.headers.get('permissions-policy')?.includes('microphone=()'), 'permissions');
+    expectOk(res.headers.get('content-security-policy')?.includes('frame-ancestors'), 'csp');
     return `status ${res.status}`;
   });
 
-  await step('revoke the link → GET /api/p/:token is 404', async () => {
+  await step('revoke the link → GET /api/p is 404', async () => {
     const r = await api<ParentLinkCreatedDto>(
       'POST',
       `/api/guardians/${khan?.guardian_ids[0]}/parent-link/revoke`,
     );
     expectOk(r.status === 200 && r.body.link?.status === 'revoked', r);
-    const p = await anon('GET', `/api/p/${token}`);
-    expectOk(p.status === 404, p);
+    const p = await fetch(`${BASE}/api/p`, { headers: { 'x-parent-token': token } });
+    expectOk(p.status === 404, p.status);
   });
 
   await always('cleanup: restore weekly off', async () => {

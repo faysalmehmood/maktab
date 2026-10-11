@@ -12,8 +12,16 @@ Decide first: **what went wrong, and when?**
   Fast, no files needed.
 - Database deleted, account lost, damage older than 7 days, or you want a copy elsewhere → section B.
 
-You need: a laptop with Node 22+, `age`, `gzip`, the Cloudflare login (`npx wrangler login`), and the
-**age private key** (held by two trustees; never leave it on the laptop after use).
+You need: a laptop with Node 22+, `age`, `gzip`, the Cloudflare login (`npx wrangler login`), the
+**age private key** (held by two trustees; never leave it on the laptop after use), and the
+production **`PARENT_LINK_SECRET`** value (also with the trustees).
+
+Parent links: the database (and so every backup) holds only hashes of link tokens and messages with a
+`{link}` placeholder, never a working link. The Worker recomputes a guardian's link from
+`PARENT_LINK_SECRET`, so a restore into a Worker with the **same** secret keeps every link working.
+With a different or lost secret, links already sent keep opening until revoked but can no longer be
+recomputed for new messages: after the restore, run Settings → Messages → "Revoke all parent links"
+(`POST /api/parent-links/rotate-all`, owner) and new links are made as messages are opened.
 
 ## A. Time Travel (7 days on the D1 Free plan; 30 days on Paid)
 
@@ -48,7 +56,9 @@ You need: a laptop with Node 22+, `age`, `gzip`, the Cloudflare login (`npx wran
 7. Re-point the Worker: in `apps/api/wrangler.toml`, under `[[env.production.d1_databases]]` for binding
    `DB`, set `database_id` (and optionally `database_name`) to the new database, then
    `npx wrangler deploy --env production`. Never rename the binding.
-8. Smoke test in the browser (sign in, open a student, today's attendance). Take a fresh export at once:
+8. If the Worker is new or its secrets were lost, set them first (docs/deploy.md §4):
+   `SESSION_SECRET` (staff sign in again) and the saved `PARENT_LINK_SECRET` (else revoke all links,
+   above). Smoke test in the browser (sign in, open a student, today's attendance). Take a fresh export at once:
    `npx wrangler d1 export "$DB-restored" --remote --output after-restore.sql` and keep it.
 9. Leave the old database untouched until the school confirms everything is right, then delete it.
    Update the `D1_DATABASE_NAME` repository variable if the name changed, and re-run the nightly workflow.

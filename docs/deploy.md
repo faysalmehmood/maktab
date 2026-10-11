@@ -46,19 +46,43 @@ is `SELECT count(*) FROM sqlite_master WHERE type = 'trigger'` (72 after migrati
 A missing trigger means a money rule is off: do not deploy the Worker; re-run `migrations apply`, then
 `db:verify` again.
 
-## 4. Deploy the Worker
+## 4. Secrets
+
+Set once per environment, each its own random value (never echo it, never reuse one for another):
+
+```sh
+cd apps/api
+openssl rand -base64 48 | npx wrangler secret put SESSION_SECRET --env production
+openssl rand -base64 48 | npx wrangler secret put PARENT_LINK_SECRET --env production
+```
+
+`PARENT_LINK_SECRET` (M5) keys everything about parent links: the link tokens (HMAC of a per-link
+salt), the gate tokens, PIN hashes and the access log's IP hashes. Without it (or shorter than 32
+characters) the Worker logs a config warning and every parent-link route answers 503 `misconfigured`.
+Keep a copy with the backup trustees: a restore needs the **same** value (docs/restore.md).
+
+Rotating it is how every parent link is revoked at once (a leak, a departing admin): put a new value,
+then, signed in as the owner, `POST /api/parent-links/rotate-all` (Settings → Messages → "Revoke all
+parent links"). Old links stop being recomputable, so the next "Open WhatsApp" for a guardian makes a
+fresh one; guardians need the new message. Rotation does not touch staff sessions.
+
+## 5. Deploy the Worker
 
 ```sh
 npm run build
 cd apps/api && npx wrangler deploy --env production
 ```
 
-## 5. After
+## 6. After
 
 - Sign in, open the fee counter for one family, the cash sessions list, `GET /api/fees/runs?period=<this month>`
   (`failing` must be empty; a failing group is retried by the cron every 30 minutes and shows its
   error code here).
 - `SELECT * FROM ledger_consistency` is empty.
+- Parent page: `curl -sI https://<host>/p` is 200 HTML with `x-robots-tag: noindex`,
+  `cache-control: no-store`, the CSP and `permissions-policy`; `curl -s https://<host>/api/p` is a JSON
+  404 with `x-robots-tag: noindex` (no token). Links are `https://<host>/p#<token>`: the token is a
+  URL fragment and never reaches a server log.
 
 ## First deploy notes (2026-10-10, see docs/deploy-log.md)
 
