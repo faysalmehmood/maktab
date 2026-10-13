@@ -81,7 +81,7 @@ export function DataTable<R>({
             <>
               <span className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="font-medium">{primary?.cell(r)}</span>
-                <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 text-meta">
+                <dl className="grid grid-cols-[minmax(5.5rem,auto)_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 text-meta rtl:items-center rtl:gap-y-1">
                   {columns
                     .filter((c) => c !== primary && !c.hideOnPhone)
                     .map((c) => (

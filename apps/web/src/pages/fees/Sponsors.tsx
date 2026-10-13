@@ -1,15 +1,27 @@
 import { formatPkPhone, type SponsorListItemDto, type SponsorStatementDto } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Wallet } from 'lucide-react';
+import { HeartHandshake, Plus, Wallet } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
-import { FeeLinesTable, Figure, Money } from '@/components/fees/common';
+import { DateText } from '@/components/date-text';
+import { FeeLinesTable } from '@/components/fees/common';
 import { EndSponsorshipDialog, SponsorshipDialog } from '@/components/fees/dialogs';
-import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
-import { Badge } from '@/components/ui/badge';
+import { FeesTabs } from '@/components/fees/FeesTabs';
+import { ErrorNote, Field, Num } from '@/components/form';
+import {
+  EmptyState,
+  ListRow,
+  ListSkeleton,
+  Mny,
+  Page,
+  PageHeader,
+  Panel,
+  RowList,
+  StatStrip,
+  StatusBadge,
+} from '@/components/page';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson } from '@/lib/api';
@@ -82,41 +94,41 @@ export function SponsorsPage() {
     queryFn: () => getJson<{ sponsors: SponsorListItemDto[] }>('/api/fees/sponsors'),
   });
   return (
-    <section className="flex max-w-3xl flex-col gap-4">
-      <PageTitle>{t('fee.sponsor.title')}</PageTitle>
+    <Page>
+      <PageHeader title={t('fee.sponsor.title')} />
+      <FeesTabs />
       <ErrorNote error={q.error} />
-      {q.data?.sponsors.length === 0 && (
-        <p className="text-muted-foreground">{t('fee.sponsor.none')}</p>
-      )}
-      <ul className="flex flex-col divide-y">
-        {q.data?.sponsors.map((s) => (
-          <li key={s.id}>
-            <Link
-              to={`/fees/sponsors/${s.id}`}
-              className="flex min-h-11 flex-wrap items-center gap-2 py-2 hover:bg-accent"
-            >
-              <bdi className="font-medium">{s.name}</bdi>
-              {s.phone && (
-                <bdi className="num text-sm text-muted-foreground">{formatPkPhone(s.phone)}</bdi>
-              )}
-              <span className="text-sm text-muted-foreground">
-                {t('fee.sponsor.activeStudents')} <Num>{s.active_students}</Num>
-              </span>
-              <span className="ms-auto">
-                <Money paisa={s.due} />
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <Panel>
+        {q.isPending ? (
+          <ListSkeleton rows={3} />
+        ) : q.data?.sponsors.length === 0 ? (
+          <EmptyState icon={HeartHandshake} title={t('fee.sponsor.none')} />
+        ) : (
+          <RowList>
+            {q.data?.sponsors.map((s) => (
+              <ListRow
+                key={s.id}
+                to={`/fees/sponsors/${s.id}`}
+                title={<bdi>{s.name}</bdi>}
+                meta={
+                  <>
+                    {s.phone && <bdi className="num">{formatPkPhone(s.phone)}</bdi>}
+                    {s.phone && ' · '}
+                    {t('fee.sponsor.activeStudents')} <Num>{s.active_students}</Num>
+                  </>
+                }
+                trailing={<Mny paisa={s.due} className="font-semibold" />}
+              />
+            ))}
+          </RowList>
+        )}
+      </Panel>
       {canManageFees(roles) && (
-        <Card className="gap-3 py-4">
-          <CardContent className="px-4">
-            <AddSponsor />
-          </CardContent>
-        </Card>
+        <Panel title={t('fee.sponsor.add')} bodyClassName="p-4">
+          <AddSponsor />
+        </Panel>
       )}
-    </section>
+    </Page>
   );
 }
 
@@ -131,13 +143,25 @@ export function SponsorDetail() {
     queryFn: () => getJson<SponsorStatementDto>(`/api/fees/sponsors/${id}/statement`),
     enabled: !!id,
   });
-  if (q.isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (q.isLoading)
+    return (
+      <Page>
+        <Panel>
+          <ListSkeleton rows={4} />
+        </Panel>
+      </Page>
+    );
   const s = q.data;
   if (!s) return <ErrorNote error={q.error} />;
   const today = karachiToday();
   return (
-    <section className="flex max-w-4xl flex-col gap-4">
-      <PageTitle
+    <Page>
+      <PageHeader
+        back={{ to: '/fees/sponsors', label: t('fee.sponsor.title') }}
+        title={<bdi>{s.sponsor.name}</bdi>}
+        subtitle={
+          s.sponsor.phone ? <bdi className="num">{formatPkPhone(s.sponsor.phone)}</bdi> : undefined
+        }
         actions={
           canCollect(roles) && (
             <Button asChild>
@@ -148,94 +172,78 @@ export function SponsorDetail() {
             </Button>
           )
         }
+      />
+      <StatStrip
+        className="lg:grid-cols-3"
+        items={[
+          { id: 'sp-net', label: t('fee.col.net'), value: <Mny paisa={s.totals.net} /> },
+          { id: 'sp-paid', label: t('fee.col.paid'), value: <Mny paisa={s.totals.paid} /> },
+          { id: 'sp-due', label: t('fee.col.due'), value: <Mny paisa={s.totals.due} /> },
+        ]}
+      />
+      <Panel
+        title={t('fee.sponsor.sponsorships')}
+        action={
+          canManageFees(roles) && (
+            <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+              <Plus aria-hidden />
+              {t('fee.sponsor.addSponsorship')}
+            </Button>
+          )
+        }
+        bodyClassName="flex flex-col divide-y"
       >
-        <bdi>{s.sponsor.name}</bdi>
-      </PageTitle>
-      <Card className="gap-3 py-4">
-        <CardContent className="grid grid-cols-3 gap-3 px-4">
-          <Figure label={t('fee.col.net')}>
-            <Money paisa={s.totals.net} />
-          </Figure>
-          <Figure label={t('fee.col.paid')}>
-            <Money paisa={s.totals.paid} />
-          </Figure>
-          <Figure label={t('fee.col.due')} tone="strong">
-            <Money paisa={s.totals.due} />
-          </Figure>
-        </CardContent>
-      </Card>
-      <Card className="gap-3 py-4">
-        <CardHeader className="px-4">
-          <CardTitle className="flex items-center gap-2">
-            {t('fee.sponsor.sponsorships')}
-            {canManageFees(roles) && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="ms-auto"
-                onClick={() => setAdding(true)}
-              >
-                <Plus aria-hidden />
-                {t('fee.sponsor.addSponsorship')}
-              </Button>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col divide-y px-4">
-          {s.sponsorships.map((sp) => {
-            const ended = !!sp.valid_to && sp.valid_to < today;
-            return (
-              <div key={sp.id} className="flex min-h-11 flex-wrap items-center gap-2 py-1">
-                <Link to={`/students/${sp.student_id}`} className="font-medium hover:underline">
-                  <bdi>{sp.student_name}</bdi>
-                </Link>
-                <Num>{`${sp.share_pct}%`}</Num>
-                <span className="text-sm text-muted-foreground">
-                  <Num>{sp.valid_from}</Num>
-                  {sp.valid_to && (
-                    <>
-                      {' → '}
-                      <Num>{sp.valid_to}</Num>
-                    </>
-                  )}
-                </span>
-                {ended && <Badge variant="outline">{t('fee.sponsor.ended')}</Badge>}
-                {!sp.valid_to && canManageFees(roles) && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="ms-auto"
-                    onClick={() => setEnding(sp.id)}
-                  >
-                    {t('fee.sponsor.end')}
-                  </Button>
+        {s.sponsorships.map((sp) => {
+          const ended = !!sp.valid_to && sp.valid_to < today;
+          return (
+            <div
+              key={sp.id}
+              className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2"
+            >
+              <Link to={`/students/${sp.student_id}`} className="font-medium hover:underline">
+                <bdi>{sp.student_name}</bdi>
+              </Link>
+              <Num>{`${sp.share_pct}%`}</Num>
+              <span className="text-sm text-muted-foreground">
+                <Num>{sp.valid_from}</Num>
+                {sp.valid_to && (
+                  <>
+                    {' → '}
+                    <Num>{sp.valid_to}</Num>
+                  </>
                 )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-      <Card className="gap-3 py-4">
-        <CardHeader className="px-4">
-          <CardTitle>{t('fee.sponsor.statement')}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 px-4">
-          <FeeLinesTable lines={s.charges} />
-          <ul className="flex flex-col divide-y">
+              </span>
+              {ended && <StatusBadge tone="neutral">{t('fee.sponsor.ended')}</StatusBadge>}
+              {!sp.valid_to && canManageFees(roles) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ms-auto"
+                  onClick={() => setEnding(sp.id)}
+                >
+                  {t('fee.sponsor.end')}
+                </Button>
+              )}
+            </div>
+          );
+        })}
+      </Panel>
+      <Panel title={t('fee.sponsor.statement')} bodyClassName="flex flex-col gap-3 py-2">
+        <FeeLinesTable lines={s.charges} />
+        {s.receipts.length > 0 && (
+          <RowList className="border-t">
             {s.receipts.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center gap-2">
-                <Num>{r.business_date}</Num>
-                <Link to={`/receipts/${r.id}`} className="flex min-h-11 items-center underline">
-                  <Num>{r.receipt_no}</Num>
-                </Link>
-                <span className="ms-auto">
-                  <Money paisa={r.amount} />
-                </span>
-              </li>
+              <ListRow
+                key={r.id}
+                to={`/receipts/${r.id}`}
+                title={<Num>{r.receipt_no}</Num>}
+                meta={<DateText iso={r.business_date} />}
+                trailing={<Mny paisa={r.amount} />}
+              />
             ))}
-          </ul>
-        </CardContent>
-      </Card>
+          </RowList>
+        )}
+      </Panel>
       {adding && <SponsorshipDialog open sponsorId={s.sponsor.id} onOpenChange={setAdding} />}
       {ending && (
         <EndSponsorshipDialog
@@ -244,6 +252,6 @@ export function SponsorDetail() {
           onOpenChange={(o) => !o && setEnding(null)}
         />
       )}
-    </section>
+    </Page>
   );
 }

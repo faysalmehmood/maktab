@@ -1,14 +1,15 @@
 import type { GenerateResultDto, UnbilledDto } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Play, ScanSearch } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Play, RotateCcw, ScanSearch } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Money } from '@/components/fees/common';
+import { type Column, DataTable } from '@/components/data-table';
+import { DateText } from '@/components/date-text';
 import { useFeeInvalidate } from '@/components/fees/dialogs';
 import { FeesTabs } from '@/components/fees/FeesTabs';
-import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
+import { ErrorNote, Field, Num } from '@/components/form';
+import { EmptyState, Mny, Page, PageHeader, Panel, StatusBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -20,17 +21,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/sonner';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { getJson, sendJson } from '@/lib/api';
 import { karachiToday } from '@/lib/fees';
 import { useGroups } from '@/lib/queries';
+import { cn } from '@/lib/utils';
+import '@/i18n/screens';
 
 type Counts = GenerateResultDto['counts'];
 export type GenerateSummary = {
@@ -156,7 +151,15 @@ export const billingCodeKey = (
 ): `fee.billing.codes.${BillingCode}` =>
   `fee.billing.codes.${(CODES as readonly string[]).includes(code ?? '') ? (code as BillingCode) : 'unknown'}`;
 
-/** PLAN §14.5: period → preview (dry run) → generate (loop) → fines → runs. */
+type Chunk = Runs['chunks'][number];
+const RUNS_SHOWN = 6;
+type Unbilled = UnbilledDto['items'][number];
+
+/**
+ * PLAN §14.5: period → preview (dry run) → generate (loop) → fines → runs. One "needs attention"
+ * panel collects what is wrong (groups failing, last run's failures, months finished with no fees)
+ * above the work; the month's work and the side jobs (fines, unbilled) sit side by side on desktop.
+ */
 export function BillingPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -172,12 +175,14 @@ export function BillingPage() {
   // "Generate" needs a finished preview of the same month and options; its totals are confirmed.
   const [previewed, setPreviewed] = useState<{ key: string; totals: Counts } | null>(null);
   const [confirmGen, setConfirmGen] = useState(false);
+  const [allRuns, setAllRuns] = useState(false);
   const previewKey = `${period}|${proRata}`;
   const previewReady = previewed?.key === previewKey;
+  const validPeriod = /^\d{4}-\d{2}$/.test(period);
   const runs = useQuery({
     queryKey: ['fee-runs', period],
     queryFn: () => getJson<Runs>(`/api/fees/runs?period=${period}`),
-    enabled: /^\d{4}-\d{2}$/.test(period),
+    enabled: validPeriod,
   });
   const post = (body: Record<string, unknown>) =>
     sendJson<GenerateResultDto>('POST', '/api/fees/generate', body);
@@ -198,7 +203,7 @@ export function BillingPage() {
   const unbilled = useQuery({
     queryKey: ['fee-unbilled', period],
     queryFn: () => getJson<UnbilledDto>(`/api/fees/unbilled?period=${period}`),
-    enabled: /^\d{4}-\d{2}$/.test(period),
+    enabled: validPeriod,
   });
   const invalidate = useFeeInvalidate();
   const billNow = useMutation({
@@ -235,235 +240,177 @@ export function BillingPage() {
   const s = gen.data ?? progress;
   const failing = runs.data?.failing ?? [];
   const reopenable = runs.data?.reopenable ?? [];
-  return (
-    <section className="flex max-w-3xl flex-col gap-4">
-      <PageTitle>{t('fee.billing.title')}</PageTitle>
-      <FeesTabs />
-      {(runs.data?.attention_required ?? 0) > 0 && (
-        <p
-          role="alert"
-          id="billing-attention"
-          className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          <AlertTriangle className="size-4 shrink-0" aria-hidden />
-          {t('fee.billing.attention', { count: runs.data?.attention_required ?? 0 })}
-        </p>
-      )}
-      <Card className="gap-3 py-4">
-        <CardContent className="flex flex-col gap-3 px-4">
-          <Field id="billing-period" label="fee.billing.period">
-            <Input
-              id="billing-period"
-              type="month"
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-            />
-          </Field>
-          <Checkbox
-            id="billing-prorata"
-            checked={proRata}
-            onChange={(e) => setProRata(e.target.checked)}
-            label={t('fee.billing.proRata')}
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              id="billing-preview"
-              variant="outline"
-              disabled={gen.isPending}
-              onClick={() => gen.mutate(true)}
-            >
-              <ScanSearch aria-hidden />
-              {t('fee.billing.preview')}
-            </Button>
-            <Button
-              id="billing-generate"
-              disabled={gen.isPending || !previewReady}
-              onClick={() => setConfirmGen(true)}
-            >
-              <Play aria-hidden />
-              {t('fee.billing.generate')}
-            </Button>
-          </div>
-          {!previewReady && !gen.isPending && (
-            <p className="text-xs text-muted-foreground" id="billing-preview-first">
-              {t('fee.billing.previewFirst')}
-            </p>
-          )}
-          {gen.isPending && (
-            <p role="status" className="text-sm">
-              {mode === 'preview'
-                ? t('fee.billing.previewing')
-                : t('fee.billing.generating', { count: s?.byGroup.size ?? 0 })}
-            </p>
-          )}
-          <ErrorNote error={gen.error} />
-          {s && !gen.isPending && (
-            <p role="status" id="billing-result" className="text-sm font-medium">
-              {mode === 'preview'
-                ? t('fee.billing.previewDone', s.totals)
-                : s.totals.fees + s.totals.concessions + s.totals.sponsored === 0
-                  ? t('fee.billing.nothingNew')
-                  : t('fee.billing.done', s.totals)}
-            </p>
-          )}
-          {s && s.byGroup.size > 0 && (
-            <Table id="billing-groups">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('fee.col.group')}</TableHead>
-                  <TableHead className="text-end">{t('fee.col.head')}</TableHead>
-                  <TableHead className="text-end">{t('fee.col.concession')}</TableHead>
-                  <TableHead className="text-end">{t('fee.col.sponsor')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[...s.byGroup.entries()].map(([g, c]) => (
-                  <TableRow key={g}>
-                    <TableCell>
-                      <bdi>{name(g)}</bdi>
-                    </TableCell>
-                    <TableCell className="text-end">
-                      <Num>{c.fees}</Num>
-                    </TableCell>
-                    <TableCell className="text-end">
-                      <Num>{c.concessions}</Num>
-                    </TableCell>
-                    <TableCell className="text-end">
-                      <Num>{c.sponsored}</Num>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-          {s && s.failed.length > 0 && (
-            <div
-              role="alert"
-              id="billing-failed"
-              className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-            >
-              <ul>
-                {s.failed.map((f) => (
-                  <li key={f.grp_id}>
-                    {t('fee.billing.failed')}: <bdi>{name(f.grp_id)}</bdi> ·{' '}
-                    {t(billingCodeKey(f.code))}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-1 text-xs">{t('fee.billing.failedNote')}</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+  const failed = s?.failed ?? [];
+  const attention = runs.data?.attention_required ?? 0;
+  // Failures are an alarm (red); months that only finished with no fees are a to-do (amber).
+  const alarm = attention > 0 || failing.length > 0 || failed.length > 0;
+  const needsAttention = alarm || reopenable.length > 0;
 
-      <Card className="gap-3 py-4">
-        <CardHeader className="px-4">
-          <CardTitle>{t('fee.billing.fines')}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 px-4">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              id="fines-preview"
-              variant="outline"
-              disabled={fines.isPending}
-              onClick={() => fines.mutate(true)}
+  const groupCols: Column<[string, Counts]>[] = [
+    {
+      id: 'group',
+      header: t('fee.col.group'),
+      primary: true,
+      cell: ([g]) => <bdi>{name(g)}</bdi>,
+    },
+    { id: 'fees', header: t('fee.col.head'), numeric: true, cell: ([, c]) => <Num>{c.fees}</Num> },
+    {
+      id: 'concessions',
+      header: t('fee.col.concession'),
+      numeric: true,
+      cell: ([, c]) => <Num>{c.concessions}</Num>,
+    },
+    {
+      id: 'sponsored',
+      header: t('fee.col.sponsor'),
+      numeric: true,
+      cell: ([, c]) => <Num>{c.sponsored}</Num>,
+    },
+  ];
+  const fineCols: Column<PlannedFine>[] = [
+    {
+      id: 'student',
+      header: t('fee.col.student'),
+      primary: true,
+      cell: (f) => (
+        <span className="flex flex-col items-start">
+          <bdi>{f.student_name ?? ''}</bdi>
+          {f.admission_no && (
+            <bdi className="num text-meta font-normal text-muted-foreground">{f.admission_no}</bdi>
+          )}
+        </span>
+      ),
+    },
+    { id: 'period', header: t('fee.col.period'), cell: (f) => <Num>{f.period_key}</Num> },
+    {
+      id: 'amount',
+      header: t('fee.col.fine'),
+      numeric: true,
+      cell: (f) => <Mny paisa={f.amount} />,
+    },
+  ];
+  const unbilledCols: Column<Unbilled>[] = [
+    {
+      id: 'student',
+      header: t('fee.col.student'),
+      primary: true,
+      cell: (u) => (
+        <span className="flex flex-col items-start" data-unbilled={u.student_id}>
+          <bdi>{u.student_name}</bdi>
+          <bdi className="num text-meta font-normal text-muted-foreground">{u.admission_no}</bdi>
+        </span>
+      ),
+    },
+    { id: 'group', header: t('fee.col.group'), cell: (u) => <bdi>{u.group_name}</bdi> },
+    { id: 'start', header: t('fee.col.from'), cell: (u) => <DateText iso={u.start_date} /> },
+  ];
+  const chunkStatus = (c: Chunk) => {
+    const known = c.status === 'ok' || c.status === 'failed' || c.status === 'reopened';
+    const tone = c.status === 'ok' ? 'ok' : c.status === 'failed' ? 'bad' : 'neutral';
+    return (
+      <span className="flex flex-col items-start gap-0.5" title={c.error_code ?? undefined}>
+        <StatusBadge tone={tone}>
+          {known ? t(`fee.billing.statuses.${c.status as 'ok' | 'failed' | 'reopened'}`) : c.status}
+        </StatusBadge>
+        {c.status === 'failed' && (
+          <span className="text-meta text-muted-foreground">{t(billingCodeKey(c.error_code))}</span>
+        )}
+      </span>
+    );
+  };
+  const chunkCols: Column<Chunk>[] = [
+    {
+      id: 'group',
+      header: t('fee.billing.chunk'),
+      primary: true,
+      cell: (c) => <bdi>{c.grp_id ? name(c.grp_id) : '—'}</bdi>,
+    },
+    { id: 'when', header: t('fee.col.date'), cell: (c) => <Num>{karachiTime(c.created_at)}</Num> },
+    { id: 'status', header: t('fee.col.status'), cell: chunkStatus },
+    { id: 'fees', header: t('fee.col.head'), numeric: true, cell: (c) => <Num>{c.fees}</Num> },
+    {
+      id: 'fines',
+      header: t('fee.col.fine'),
+      numeric: true,
+      hideOnPhone: true,
+      cell: (c) => <Num>{c.fines}</Num>,
+    },
+  ];
+  // A month can have dozens of chunks: the latest few first, the rest on request.
+  const chunks = runs.data?.chunks;
+  const shownChunks =
+    chunks && !allRuns ? chunks.slice(-RUNS_SHOWN).reverse() : chunks?.slice().reverse();
+
+  return (
+    <Page width="full" className="max-w-[1280px]">
+      <PageHeader title={t('fee.billing.title')} subtitle={t('screens.fees.billingHint')} />
+      <FeesTabs />
+
+      {needsAttention && (
+        <Panel
+          id="billing-attention-panel"
+          title={
+            <span className={cn('flex items-center gap-2', alarm ? 'text-bad' : 'text-warn')}>
+              <AlertTriangle className="size-4 shrink-0" aria-hidden />
+              {alarm ? t('fee.billing.banner') : t('fee.billing.reopenTitle')}
+            </span>
+          }
+          className={alarm ? 'border-bad/40' : 'border-warn/40'}
+          bodyClassName="flex flex-col divide-y"
+        >
+          {attention > 0 && (
+            <p
+              role="alert"
+              id="billing-attention"
+              className="bg-bad-soft px-4 py-3 text-sm text-bad"
             >
-              {t('fee.billing.finesPreview')}
-            </Button>
-            {fines.data?.dry_run && fines.data.enabled && fines.data.planned.length > 0 && (
-              <Button
-                id="fines-apply"
-                disabled={fines.isPending}
-                onClick={() => fines.mutate(false)}
-              >
-                {t('fee.billing.finesApply')}
-              </Button>
-            )}
-          </div>
-          <ErrorNote error={fines.error} />
-          {fines.data && (
-            <p role="status" id="fines-result" className="text-sm">
-              {!fines.data.enabled
-                ? t('fee.billing.finesOff')
-                : fines.data.dry_run
-                  ? fines.data.planned.length === 0
-                    ? t('fee.billing.finesNone')
-                    : t('fee.billing.finesPlanned', { count: fines.data.planned.length })
-                  : t('fee.billing.finesApplied', { count: fines.data.applied })}
+              {t('fee.billing.attention', { count: attention })}
             </p>
           )}
-          {fines.data?.dry_run && fines.data.planned.length > 0 && (
-            <ul className="flex flex-col divide-y text-sm" id="fines-planned">
-              {fines.data.planned.map((f) => (
-                <li key={f.id} className="flex flex-wrap gap-x-2 py-1" data-fine={f.student_id}>
-                  <bdi>{f.student_name ?? ''}</bdi>
-                  {f.admission_no && <Num>{f.admission_no}</Num>}
-                  <Num>{f.period_key}</Num>
-                  <span className="ms-auto">
-                    <Money paisa={f.amount} />
+          {failing.length > 0 && (
+            <ul className="flex flex-col divide-y" id="billing-failing">
+              {failing.map((f) => (
+                <li
+                  key={f.grp_id}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3"
+                >
+                  <bdi className="font-semibold">{name(f.grp_id)}</bdi>
+                  <StatusBadge tone={f.attention_required ? 'bad' : 'warn'}>
+                    {t(billingCodeKey(f.error_code))}
+                  </StatusBadge>
+                  <span className="text-meta text-muted-foreground">
+                    {t('fee.billing.streak')} <Num>{f.fail_streak}</Num>
                   </span>
+                  {f.retry_after && (
+                    <span className="text-meta text-muted-foreground">
+                      {t('fee.billing.retryAfter')} <Num>{karachiTime(f.retry_after)}</Num>
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
           )}
-        </CardContent>
-      </Card>
-
-      <Card className="gap-3 py-4" id="billing-unbilled">
-        <CardHeader className="px-4">
-          <CardTitle>{t('fee.billing.unbilled')}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 px-4">
-          <ErrorNote error={unbilled.error ?? billNow.error} />
-          {unbilled.data && unbilled.data.items.length === 0 && (
-            <p className="text-sm text-muted-foreground">{t('fee.billing.unbilledNone')}</p>
-          )}
-          <ul className="flex flex-col divide-y">
-            {unbilled.data?.items.map((u) => (
-              <li
-                key={u.enrolment_id}
-                className="flex flex-wrap items-center gap-x-2 py-1 text-sm"
-                data-unbilled={u.student_id}
-              >
-                <bdi className="font-medium">{u.student_name}</bdi>
-                <Num>{u.admission_no}</Num>
-                <bdi className="text-muted-foreground">{u.group_name}</bdi>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="ms-auto"
-                  id={`bill-now-${u.student_id}`}
-                  disabled={billNow.isPending}
-                  onClick={() => billNow.mutate(u.student_id)}
-                >
-                  {t('fee.billing.billNow')}
-                </Button>
-              </li>
-            ))}
-          </ul>
-          {unbilled.data?.more && (
-            <p className="text-xs text-muted-foreground">{t('fee.billing.unbilledMore')}</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="gap-3 py-4">
-        <CardHeader className="px-4">
-          <CardTitle>{t('fee.billing.runs')}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 px-4">
-          {runs.data && (
-            <p className="text-sm">
-              {runs.data.complete ? t('fee.billing.complete') : t('fee.billing.incomplete')}
-            </p>
+          {failed.length > 0 && (
+            <div role="alert" id="billing-failed" className="flex flex-col gap-1 px-4 py-3 text-sm">
+              <ul className="flex flex-col gap-1">
+                {failed.map((f) => (
+                  <li key={f.grp_id} className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-bad">{t('fee.billing.failed')}:</span>
+                    <bdi>{name(f.grp_id)}</bdi>
+                    <StatusBadge tone="bad">{t(billingCodeKey(f.code))}</StatusBadge>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-meta text-muted-foreground">{t('fee.billing.failedNote')}</p>
+            </div>
           )}
           {reopenable.length > 0 && (
-            <div className="flex flex-col gap-2 rounded-md border p-3" id="billing-reopenable">
-              <p className="text-sm font-medium">{t('fee.billing.reopenTitle')}</p>
-              <p className="text-xs text-muted-foreground">{t('fee.billing.reopenHint')}</p>
-              <ul className="flex flex-col gap-1 text-sm">
+            <div className="flex flex-col gap-2 px-4 py-3" id="billing-reopenable">
+              {alarm && <p className="text-sm font-semibold">{t('fee.billing.reopenTitle')}</p>}
+              <p className="text-meta text-muted-foreground">{t('fee.billing.reopenHint')}</p>
+              <ul className="flex flex-col divide-y">
                 {reopenable.map((g) => (
-                  <li key={g} className="flex flex-wrap items-center gap-2">
+                  <li key={g} className="flex flex-wrap items-center gap-2 py-1.5">
                     <bdi>{name(g)}</bdi>
                     <Button
                       variant="outline"
@@ -473,6 +420,7 @@ export function BillingPage() {
                       disabled={reopen.isPending}
                       onClick={() => reopen.mutate(g)}
                     >
+                      <RotateCcw aria-hidden />
                       {t('fee.billing.reopen')}
                     </Button>
                   </li>
@@ -481,73 +429,228 @@ export function BillingPage() {
               <ErrorNote error={reopen.error} />
             </div>
           )}
-          {failing.length > 0 && (
-            <ul className="flex flex-col gap-1 text-sm text-destructive" id="billing-failing">
-              {failing.map((f) => (
-                <li key={f.grp_id} className="flex flex-wrap gap-2">
-                  <bdi>{name(f.grp_id)}</bdi>
-                  <span>{t(billingCodeKey(f.error_code))}</span>
-                  <span>
-                    {t('fee.billing.streak')} <Num>{f.fail_streak}</Num>
-                  </span>
-                  {f.retry_after && (
-                    <span>
-                      {t('fee.billing.retryAfter')} <Num>{karachiTime(f.retry_after)}</Num>
-                    </span>
-                  )}
-                  {f.attention_required && <AlertTriangle className="size-4" aria-hidden />}
-                </li>
-              ))}
-            </ul>
+        </Panel>
+      )}
+
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="flex min-w-0 flex-col gap-5">
+          <Panel
+            id="billing-month"
+            title={t('screens.fees.billMonth')}
+            action={
+              runs.data && (
+                <StatusBadge tone={runs.data.complete ? 'ok' : 'warn'}>
+                  {runs.data.complete ? t('screens.fees.billed') : t('screens.fees.notBilled')}
+                </StatusBadge>
+              )
+            }
+            bodyClassName="flex flex-col gap-4 p-4"
+          >
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:items-end">
+              <Field id="billing-period" label="fee.billing.period">
+                <Input
+                  id="billing-period"
+                  type="month"
+                  className="num"
+                  value={period}
+                  onChange={(e) => setPeriod(e.target.value)}
+                />
+              </Field>
+              <Checkbox
+                id="billing-prorata"
+                checked={proRata}
+                onChange={(e) => setProRata(e.target.checked)}
+                label={t('fee.billing.proRata')}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 max-sm:[&>button]:flex-1">
+              <Button
+                id="billing-preview"
+                variant="outline"
+                disabled={gen.isPending}
+                onClick={() => gen.mutate(true)}
+              >
+                <ScanSearch aria-hidden />
+                {t('fee.billing.preview')}
+              </Button>
+              <Button
+                id="billing-generate"
+                disabled={gen.isPending || !previewReady}
+                onClick={() => setConfirmGen(true)}
+              >
+                <Play aria-hidden />
+                {t('fee.billing.generate')}
+              </Button>
+            </div>
+            {!previewReady && !gen.isPending && (
+              <p className="text-meta text-muted-foreground" id="billing-preview-first">
+                {t('fee.billing.previewFirst')}
+              </p>
+            )}
+            {gen.isPending && (
+              <p role="status" className="text-sm">
+                {mode === 'preview'
+                  ? t('fee.billing.previewing')
+                  : t('fee.billing.generating', { count: s?.byGroup.size ?? 0 })}
+              </p>
+            )}
+            <ErrorNote error={gen.error} />
+            {s && !gen.isPending && (
+              <p
+                role="status"
+                id="billing-result"
+                className="rounded-lg bg-info-soft px-3 py-2 text-sm font-medium text-info"
+              >
+                {mode === 'preview'
+                  ? t('fee.billing.previewDone', s.totals)
+                  : s.totals.fees + s.totals.concessions + s.totals.sponsored === 0
+                    ? t('fee.billing.nothingNew')
+                    : t('fee.billing.done', s.totals)}
+              </p>
+            )}
+          </Panel>
+          {s && s.byGroup.size > 0 && (
+            <Panel title={t('fee.billing.perGroup')}>
+              <DataTable
+                id="billing-groups"
+                caption={t('fee.billing.perGroup')}
+                columns={groupCols}
+                rows={[...s.byGroup.entries()]}
+                rowKey={([g]) => g}
+              />
+            </Panel>
           )}
-          {runs.data && runs.data.chunks.length === 0 && (
-            <p className="text-sm text-muted-foreground">{t('fee.billing.noRuns')}</p>
-          )}
-          {runs.data && runs.data.chunks.length > 0 && (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('fee.col.date')}</TableHead>
-                  <TableHead>{t('fee.billing.chunk')}</TableHead>
-                  <TableHead>{t('fee.col.status')}</TableHead>
-                  <TableHead className="text-end">{t('fee.col.head')}</TableHead>
-                  <TableHead className="text-end">{t('fee.col.fine')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {runs.data.chunks.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell>
-                      <Num>{karachiTime(c.created_at)}</Num>
-                    </TableCell>
-                    <TableCell>
-                      <bdi>{c.grp_id ? name(c.grp_id) : '—'}</bdi>
-                    </TableCell>
-                    <TableCell className="whitespace-normal break-words">
-                      <span title={c.error_code ?? undefined}>
-                        {c.status === 'ok' || c.status === 'failed' || c.status === 'reopened'
-                          ? t(`fee.billing.statuses.${c.status}`)
-                          : c.status}
-                      </span>
-                      {c.status === 'failed' && (
-                        <span className="block text-xs text-muted-foreground">
-                          {t(billingCodeKey(c.error_code))}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-end">
-                      <Num>{c.fees}</Num>
-                    </TableCell>
-                    <TableCell className="text-end">
-                      <Num>{c.fines}</Num>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-5">
+          <Panel
+            id="billing-fines"
+            title={t('fee.billing.fines')}
+            bodyClassName="flex flex-col gap-3 p-4"
+          >
+            <div className="flex flex-wrap gap-2">
+              <Button
+                id="fines-preview"
+                variant="outline"
+                disabled={fines.isPending}
+                onClick={() => fines.mutate(true)}
+              >
+                <ScanSearch aria-hidden />
+                {t('fee.billing.finesPreview')}
+              </Button>
+              {fines.data?.dry_run && fines.data.enabled && fines.data.planned.length > 0 && (
+                <Button
+                  id="fines-apply"
+                  disabled={fines.isPending}
+                  onClick={() => fines.mutate(false)}
+                >
+                  {t('fee.billing.finesApply')}
+                </Button>
+              )}
+            </div>
+            <ErrorNote error={fines.error} />
+            {fines.data && (
+              <p role="status" id="fines-result" className="text-sm">
+                {!fines.data.enabled
+                  ? t('fee.billing.finesOff')
+                  : fines.data.dry_run
+                    ? fines.data.planned.length === 0
+                      ? t('fee.billing.finesNone')
+                      : t('fee.billing.finesPlanned', { count: fines.data.planned.length })
+                    : t('fee.billing.finesApplied', { count: fines.data.applied })}
+              </p>
+            )}
+            {fines.data?.dry_run && fines.data.planned.length > 0 && (
+              <div className="-mx-4 -mb-4 border-t">
+                <DataTable
+                  id="fines-planned"
+                  caption={t('fee.billing.fines')}
+                  columns={fineCols}
+                  rows={fines.data.planned}
+                  rowKey={(f) => f.id}
+                />
+              </div>
+            )}
+          </Panel>
+
+          <Panel id="billing-unbilled" title={t('fee.billing.unbilled')}>
+            <ErrorNote error={unbilled.error ?? billNow.error} />
+            <DataTable
+              id="billing-unbilled-list"
+              caption={t('fee.billing.unbilled')}
+              columns={unbilledCols}
+              rows={unbilled.data?.items}
+              rowKey={(u) => u.enrolment_id}
+              loading={unbilled.isPending && validPeriod}
+              rowActions={(u) => (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  id={`bill-now-${u.student_id}`}
+                  disabled={billNow.isPending}
+                  onClick={() => billNow.mutate(u.student_id)}
+                >
+                  {t('fee.billing.billNow')}
+                </Button>
+              )}
+              empty={
+                <p className="px-4 py-3 text-sm text-muted-foreground">
+                  {t('fee.billing.unbilledNone')}
+                </p>
+              }
+            />
+            {unbilled.data?.more && (
+              <p className="border-t px-4 py-2 text-meta text-muted-foreground">
+                {t('fee.billing.unbilledMore')}
+              </p>
+            )}
+          </Panel>
+        </div>
+      </div>
+
+      <Panel
+        id="billing-runs"
+        title={t('fee.billing.runs')}
+        action={
+          runs.data && (
+            <span className="text-meta text-muted-foreground">
+              {runs.data.complete ? t('fee.billing.complete') : t('fee.billing.incomplete')}
+            </span>
+          )
+        }
+      >
+        <DataTable
+          id="billing-chunks"
+          caption={t('fee.billing.runs')}
+          columns={chunkCols}
+          rows={shownChunks}
+          rowKey={(c) => c.id}
+          loading={runs.isPending && validPeriod}
+          error={runs.error ? <ErrorNote error={runs.error} /> : undefined}
+          empty={
+            <EmptyState
+              icon={CalendarClock}
+              title={t('fee.billing.noRuns')}
+              body={t('fee.billing.previewFirst')}
+            />
+          }
+        />
+        {chunks && chunks.length > RUNS_SHOWN && (
+          <div className="border-t px-4 py-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              id="billing-runs-all"
+              aria-expanded={allRuns}
+              onClick={() => setAllRuns((a) => !a)}
+            >
+              {allRuns
+                ? t('screens.fees.runsFewer')
+                : t('screens.fees.runsAll', { count: chunks.length })}
+            </Button>
+          </div>
+        )}
+      </Panel>
 
       <Dialog open={confirmGen} onOpenChange={setConfirmGen}>
         <DialogContent>
@@ -556,7 +659,7 @@ export function BillingPage() {
             <DialogDescription id="billing-confirm-body">
               {previewed &&
                 t('fee.billing.confirmBody', {
-                  period: `\u2068${period}\u2069`,
+                  period: `⁨${period}⁩`,
                   ...previewed.totals,
                 })}
             </DialogDescription>
@@ -577,6 +680,6 @@ export function BillingPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </Page>
   );
 }
