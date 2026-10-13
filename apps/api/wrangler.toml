@@ -1,7 +1,8 @@
 # Maktab Worker: serves the built web app (static assets) and the /api/* routes.
 # Local dev needs no Cloudflare account:  npm run db:migrate:local && npm run dev
-# Secrets for local dev go in apps/api/.dev.vars (see .dev.vars.example); in production use
-#   npx wrangler secret put SESSION_SECRET --env production   (and PARENT_LINK_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
+# Secrets for local dev go in apps/api/.dev.vars (see .dev.vars.example). Two deployed installations
+# (docs/deploy.md): env gsap = the GSA pilot (a real school), env demo = the public demo.
+#   npx wrangler secret put SESSION_SECRET --env gsap   (and PARENT_LINK_SECRET, GOOGLE_CLIENT_ID, …)
 
 name = "maktab"
 main = "src/index.ts"
@@ -26,7 +27,7 @@ run_worker_first = ["/api/*", "/__scheduled", "/p", "/p/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "maktab"
-# Any id works for --local; the real id comes from `wrangler d1 create maktab` (production below).
+# Any id works for --local; the deployed ids are in [env.gsap] and [env.demo] below.
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "../../packages/db/migrations"
 
@@ -56,50 +57,39 @@ enabled = true
 crons = ["*/30 * * * *"]
 
 # ---------------------------------------------------------------------------------------------
-# Production (pilot): maktab.conceptlix.com. Bindings and vars are NOT inherited from the top
-# level, so each is repeated here. Before the first `npx wrangler deploy --env production`:
-#   1. npx wrangler d1 create maktab            -> paste database_id below
-#   2. npx wrangler r2 bucket create maktab-files ; npx wrangler r2 bucket create maktab-backups
-#   3. npx wrangler secret put SESSION_SECRET --env production   (>= 32 random chars)
-#      npx wrangler secret put PARENT_LINK_SECRET --env production   (>= 32 random chars, its own)
-#      npx wrangler secret put GOOGLE_CLIENT_ID --env production
-#      npx wrangler secret put GOOGLE_CLIENT_SECRET --env production
-#      openssl rand -hex 32 | npx wrangler secret put BACKUP_REPORT_TOKEN --env production
-#        (the same value as the GitHub secret BACKUP_REPORT_TOKEN; docs/backup.md)
-#   4. Google Cloud console: authorised redirect URI
-#      https://maktab.conceptlix.com/api/auth/google/callback ; publish the consent screen.
-#   5. npx wrangler d1 migrations apply DB --remote --env production
+# Public demo (2026-10-13): maktab.conceptlix.com. The Worker `maktab` and D1 `maktab` that were
+# the first production deploy, now DEMO_MODE (docs/demo.md): the made-up "Al-Noor Community School"
+# with "Try as principal / accountant / teacher" buttons, reset at 02:00 Karachi when a visitor
+# changed something. Never backed up (no BACKUPS binding; the backup workflows use env gsap).
+# Bindings and vars are NOT inherited from the top level, so each is repeated here.
+# Secrets (unchanged from the first deploy): SESSION_SECRET, PARENT_LINK_SECRET, GOOGLE_CLIENT_ID,
+# GOOGLE_CLIENT_SECRET (Google sign-in keeps working for the owner; the demo buttons need none).
 # ---------------------------------------------------------------------------------------------
-[env.production]
+[env.demo]
 name = "maktab"
 routes = [{ pattern = "maktab.conceptlix.com", custom_domain = true }]
 
-[env.production.triggers]
-crons = ["*/30 * * * *"]
+# Every minute: a running reset advances ~40 D1 calls a tick; otherwise one read, plus the usual
+# fee cron and daily pass (apps/api/src/index.ts). Two of the account's five free cron triggers
+# are in use (this and env gsap).
+[env.demo.triggers]
+crons = ["* * * * *"]
 
-[env.production.vars]
+[env.demo.vars]
 APP_ORIGIN = "https://maktab.conceptlix.com"
-# Set before the first sign-in; after the owner exists it no longer matters.
+# The installation owner (Google sign-in; the only account that may POST /api/demo/reset).
 OWNER_EMAIL = "thefaysalmehmood@gmail.com"
-# Cloudflare Turnstile (M7, optional): paste the widget's public site key here and set the secret
-# with `npx wrangler secret put TURNSTILE_SECRET --env production` (docs/deploy.md §8). Either one
-# missing = Turnstile off.
-# TURNSTILE_SITE_KEY = ""
+DEMO_MODE = "1"
 
-[[env.production.d1_databases]]
+[[env.demo.d1_databases]]
 binding = "DB"
 database_name = "maktab"
 database_id = "440d652e-46bc-4389-88cc-b9a9fccffc44"
 migrations_dir = "../../packages/db/migrations"
 
-# Student photos and the logo (bucket created after R2 was enabled, see docs/deploy-log.md).
-[[env.production.r2_buckets]]
+[[env.demo.r2_buckets]]
 binding = "FILES"
 bucket_name = "maktab-files"
-
-[[env.production.r2_buckets]]
-binding = "BACKUPS"
-bucket_name = "maktab-backups"
 
 # ---------------------------------------------------------------------------------------------
 # GSA pilot (2026-10-13): maktab-gsap.conceptlix.com, its own Worker, D1 and files bucket. The real

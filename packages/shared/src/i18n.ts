@@ -36,6 +36,17 @@ export const en = {
     install: 'Install',
     notNow: 'Not now',
   },
+  demo: {
+    banner: 'Demo school — made-up data, reset every night. Do not enter real details.',
+    resetting: 'The demo is being reset. Some screens may look incomplete for a few minutes.',
+    tryTitle: 'Try the demo',
+    tryBody: 'No account needed: look around as one of the school staff.',
+    asPrincipal: 'Try as principal',
+    asAccountant: 'Try as accountant',
+    asTeacher: 'Try as teacher',
+    failed: 'Could not open the demo. Wait a moment and try again.',
+    staffNote: 'Staff of this demo school can also sign in with Google.',
+  },
   auth: {
     signIn: 'Sign in',
     signInWithGoogle: 'Sign in with Google',

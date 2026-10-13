@@ -234,6 +234,8 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
               logo_v: row.logoKey ? (await sha256Hex(row.logoKey)).slice(0, 16) : null,
             }
           : null,
+        // The public demo (DEMO_MODE=1): the sign-in page shows the "Try as …" buttons.
+        ...(c.env.DEMO_MODE?.trim() === '1' ? { demo: true as const } : {}),
       };
       return c.json(body, 200, { 'cache-control': 'no-cache' });
     },

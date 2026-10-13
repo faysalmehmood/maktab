@@ -45,6 +45,8 @@ export type SchoolIdentityDto = {
     /** Versioned logo URL key (changes with every upload); null = no logo, draw the badge. */
     logo_v: string | null;
   } | null;
+  /** Present (true) only on the public demo installation (DEMO_MODE=1). */
+  demo?: true;
 };
 
 /** `school` is null until the setup wizard's first step saves it. */

@@ -88,7 +88,14 @@ export function fakeJwksServer(keys: TestKey[], cacheControl = 'public, max-age=
 }
 
 export function testApp(
-  opts: { db?: AppDb; jwks?: JwksClient; fetch?: typeof fetch; env?: Partial<Bindings> } = {},
+  opts: {
+    db?: AppDb;
+    jwks?: JwksClient;
+    fetch?: typeof fetch;
+    env?: Partial<Bindings>;
+    /** Build the app as a DEMO_MODE=1 Worker does (index.ts). */
+    demo?: boolean;
+  } = {},
 ) {
   const db = opts.db ?? createTestDb();
   const jwks = opts.jwks ?? createJwksClient({ fetch: async () => new Response('{"keys":[]}') });
@@ -96,6 +103,7 @@ export function testApp(
     getDb: () => db,
     jwks,
     ...(opts.fetch ? { fetch: opts.fetch } : {}),
+    demo: opts.demo,
   });
   // Browsers always send Origin on POST; the CSRF guard relies on it.
   const request = (path: string, init: RequestInit = {}) => {

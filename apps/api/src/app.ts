@@ -15,6 +15,7 @@ import { backupRoutes } from './routes/backup';
 import { cashRoutes } from './routes/cash';
 import { catalogRoutes } from './routes/catalog';
 import { coreRoutes } from './routes/core';
+import { demoGuard, demoRoutes } from './routes/demo';
 import { feeRoutes } from './routes/fees';
 import { groupRoutes } from './routes/groups';
 import { importRoutes } from './routes/imports';
@@ -31,6 +32,8 @@ export type AppDeps = {
   /** Injected so tests can run without the network; defaults to Google's live JWKS. */
   jwks?: JwksClient;
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
+  /** DEMO_MODE=1 (docs/demo.md): mounts the demo routes and the demo guard; off = they do not exist. */
+  demo?: boolean;
 };
 
 /** Same as apps/web/public/_headers (an asset fetched by the Worker does not get those rules). */
@@ -70,6 +73,7 @@ export function createApp(deps: AppDeps) {
   // Per-IP limits in front of the public surfaces (M7, best effort per isolate; the WAF rules in
   // docs/deploy.md §7 are the real limit), with the same exact path match (`rateClass`).
   app.use('/api/*', apiRateLimits());
+  if (deps.demo) app.use('/api/*', demoGuard());
 
   coreRoutes(app, routes);
   const fetchFn = deps.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init));
@@ -89,6 +93,7 @@ export function createApp(deps: AppDeps) {
   parentRoutes(app, routes, { fetch: fetchFn });
   settingsRoutes(app, routes);
   backupRoutes(app, routes);
+  if (deps.demo) demoRoutes(app, routes);
 
   // The parent page itself (PLAN §14.10): `/p#<token>`, the SPA's index.html served by the Worker
   // (wrangler.toml run_worker_first "/p", "/p/*") so it always carries noindex / no-referrer /
