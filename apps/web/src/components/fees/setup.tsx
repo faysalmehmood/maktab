@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ReceiptSeries } from '@/components/backup/DataPanel';
 import { AmountInput, Money } from '@/components/fees/common';
 import { ErrorNote, Field, Num } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
@@ -753,6 +754,7 @@ export function FeeSetup() {
       <RatesEditor />
       {fees && <RulesEditor fees={fees} />}
       {fees && <PrefixInfo fees={fees} />}
+      <ReceiptSeries />
       <AccountsEditor />
     </div>
   );

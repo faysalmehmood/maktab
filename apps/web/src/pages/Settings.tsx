@@ -2,7 +2,9 @@ import type { StaffRole } from '@maktab/shared';
 import { Wand2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
+import { BackupPanel } from '@/components/backup/BackupPanel';
+import { AboutPanel, RecycleBin, Retention } from '@/components/backup/DataPanel';
 import { FeeSetup } from '@/components/fees/setup';
 import { MessageSettings } from '@/components/messages/MessageSettings';
 import { AttendanceSettingsForm, HolidaysEditor } from '@/components/setup/attendance';
@@ -16,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableRow } from '@/components/ui/table';
 import { useMe } from '@/lib/api';
+import { canManageBackup } from '@/lib/backup';
 import { canManageTemplates } from '@/lib/messages';
 import { useCurrentSession, useSchool } from '@/lib/queries';
 import { canManageRoles, canManageSettings } from '@/lib/roles';
@@ -32,18 +35,26 @@ const SECTIONS = [
   'attendance',
   'fees',
   'messages',
+  'data',
+  'backup',
+  'about',
 ] as const;
 type Section = (typeof SECTIONS)[number];
 
 /**
- * owner: everything; admin: everything except roles/invite/disable (hidden inside Staff);
+ * owner: everything; admin: everything except roles/invite/disable (hidden inside Staff) and Backup;
  * accountant: "settings-lite" = account + read-only school profile; teacher: account only.
+ * About is for everyone.
  */
 export function visibleSections(roles: readonly StaffRole[]): Section[] {
   if (canManageSettings(roles))
-    return SECTIONS.filter((s) => s !== 'messages' || canManageTemplates(roles));
-  if (roles.includes('accountant')) return ['account', 'school'];
-  return ['account'];
+    return SECTIONS.filter(
+      (s) =>
+        (s !== 'messages' || canManageTemplates(roles)) &&
+        (s !== 'backup' || canManageBackup(roles)),
+    );
+  if (roles.includes('accountant')) return ['account', 'school', 'about'];
+  return ['account', 'about'];
 }
 
 function AccountCard() {
@@ -97,7 +108,11 @@ export function SettingsPage() {
   const school = useSchool();
   const current = useCurrentSession();
   const sections = visibleSections(roles);
-  const [active, setActive] = useState<Section>('account');
+  const [params] = useSearchParams();
+  const wanted = params.get('section') as Section | null;
+  const [active, setActive] = useState<Section>(
+    wanted && (SECTIONS as readonly string[]).includes(wanted) ? wanted : 'account',
+  );
   const shown = sections.includes(active) ? active : 'account';
   const manage = canManageSettings(roles);
 
@@ -181,6 +196,36 @@ export function SettingsPage() {
       {shown === 'messages' && (
         <Section title={t('msg.settings.title')}>
           <MessageSettings />
+        </Section>
+      )}
+      {shown === 'data' && (
+        <Section title={t('settings.sections.data')}>
+          <RecycleBin />
+          <Retention />
+          {sections.includes('messages') && (
+            <div className="flex flex-col gap-1">
+              <p className="text-sm text-muted-foreground">{t('backup.templatesLink')}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="self-start"
+                onClick={() => setActive('messages')}
+              >
+                {t('backup.openTemplates')}
+              </Button>
+            </div>
+          )}
+        </Section>
+      )}
+      {shown === 'backup' && (
+        <Section title={t('settings.sections.backup')}>
+          <BackupPanel />
+        </Section>
+      )}
+      {shown === 'about' && (
+        <Section title={t('backup.about.title')}>
+          <AboutPanel />
         </Section>
       )}
       {shown === 'customFields' && (

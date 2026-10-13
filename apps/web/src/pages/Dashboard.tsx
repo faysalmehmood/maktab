@@ -3,6 +3,7 @@ import { MessageSquareText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { DayOffNote, TodayList } from '@/components/attendance/common';
+import { AlarmBanner } from '@/components/backup/AlarmBanner';
 import { FeeTiles } from '@/components/fees/DashboardTiles';
 import { Num } from '@/components/form';
 import { MessagesTile } from '@/components/messages/MessagesTile';
@@ -162,6 +163,7 @@ export function Dashboard() {
         ) : (
           <p className="text-muted-foreground">{t('dashboard.setupNotFinished')}</p>
         ))}
+      <AlarmBanner />
       {canReadMessages(roles) && <MessagesTile />}
       {canReadMoney(roles) && <FeeTiles />}
       {canReadMoney(roles) && <MonthTiles />}

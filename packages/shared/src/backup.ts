@@ -187,6 +187,9 @@ export const retentionSchema = z.object({
 
 export type RetentionDto = { access_log_days: number };
 
+/** One receipt numbering series (`<series>-<year>-<n>`); `last_no` 0 = none issued yet. */
+export type ReceiptSeriesDto = { series: string; year: number; last_no: number };
+
 // ---- About -------------------------------------------------------------------------------------
 
 export const ABOUT = {

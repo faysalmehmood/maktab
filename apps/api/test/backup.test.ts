@@ -399,6 +399,13 @@ describe('recycle bin', () => {
     ).toBe(404);
   });
 
+  it('lists receipt series with the last number issued', async () => {
+    await exec(base, `INSERT INTO receipt_series (series, year, next_no) VALUES ('R', 2026, 43)`);
+    expect((await ownerApi('GET', '/api/receipt-series')).body).toEqual({
+      items: [{ series: 'R', year: 2026, last_no: 42 }],
+    });
+  });
+
   it('retention setting round trip with bounds', async () => {
     expect((await ownerApi('GET', '/api/settings/retention')).body).toEqual({
       access_log_days: 90,

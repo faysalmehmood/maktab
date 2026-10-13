@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ArchiveGroupButton } from '@/components/backup/DataPanel';
 import { ErrorNote, Field } from '@/components/form';
 import { isolate } from '@/components/students/fields';
 import { Badge } from '@/components/ui/badge';
@@ -317,6 +318,10 @@ export function GroupDialog({
               {t('group.addSubject')}
             </Button>
           </fieldset>
+          {/* Recycle bin (M6): only for a group with nobody in it; the API refuses any history. */}
+          {group && group.active_count === 0 && (
+            <ArchiveGroupButton grpId={group.id} onDone={onClose} />
+          )}
           <ErrorNote error={save.error} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>

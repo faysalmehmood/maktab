@@ -279,6 +279,7 @@ GET    /api/recycle-bin                      D A A D D D
 POST   /api/recycle-bin/restore              D A A D D D
 POST   /api/groups/:id/archive               D A A D D D
 GET    /api/settings/retention               D A A D D D
+GET    /api/receipt-series                   D A A D D D
 PUT    /api/settings/retention               D A A D D D
 `;
 // POST /api/backup/runs is a publicRoute (no session) that only BACKUP_REPORT_TOKEN opens: every

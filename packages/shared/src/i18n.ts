@@ -1,3 +1,4 @@
+import { backupEn, backupErrorsEn, backupErrorsUr, backupUr } from './i18n-backup';
 import { feeEn, feeErrorsEn, feeErrorsUr, feeUr } from './i18n-fees';
 import { msgEn, msgErrorsEn, msgErrorsUr, msgUr } from './i18n-messages';
 import { moneyEn, moneyErrorsEn, moneyErrorsUr, moneyUr } from './i18n-money';
@@ -67,8 +68,10 @@ export const en = {
   fee: feeEn,
   money: moneyEn,
   msg: msgEn,
+  backup: backupEn,
   errors: {
     ...feeErrorsEn,
+    ...backupErrorsEn,
     ...moneyErrorsEn,
     ...msgErrorsEn,
     holiday: 'This date is a school holiday',
@@ -488,6 +491,9 @@ export const en = {
       attendance: 'Attendance',
       fees: 'Fees',
       messages: 'Messages',
+      data: 'Recycle bin & data',
+      backup: 'Backup',
+      about: 'About',
     },
   },
 } as const;
@@ -554,8 +560,10 @@ export const ur: Messages = {
   fee: feeUr,
   money: moneyUr,
   msg: msgUr,
+  backup: backupUr,
   errors: {
     ...feeErrorsUr,
+    ...backupErrorsUr,
     ...moneyErrorsUr,
     ...msgErrorsUr,
     holiday: 'یہ تاریخ اسکول کی چھٹی ہے',
@@ -977,6 +985,9 @@ export const ur: Messages = {
       attendance: 'حاضری',
       fees: 'فیس',
       messages: 'پیغامات',
+      data: 'ری سائیکل بن اور ڈیٹا',
+      backup: 'بیک اپ',
+      about: 'تعارف',
     },
   },
 };

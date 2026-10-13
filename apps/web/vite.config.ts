@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -28,7 +30,24 @@ const manifest: Partial<ManifestOptions> & {
   ],
 };
 
+/** Settings → About shows these (src/lib/backup.ts BUILD). No git (a tarball build) → 'unknown'. */
+function gitCommit(): string {
+  if (process.env.MAKTAB_COMMIT) return process.env.MAKTAB_COMMIT;
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+  version: string;
+};
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_COMMIT__: JSON.stringify(gitCommit()),
+  },
   plugins: [
     react(),
     tailwindcss(),

@@ -1,6 +1,7 @@
 import {
   newId,
   RECYCLE_KINDS,
+  type ReceiptSeriesDto,
   type RecycleBinDto,
   type RecycleItemDto,
   type RecycleKind,
@@ -140,6 +141,21 @@ export function settingsRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         }),
       ]);
       return c.json({ ok: true });
+    },
+  );
+
+  /** Receipt series (read-only): numbers are issued inside each receipt's batch, never edited. */
+  defineRoute(
+    app,
+    table,
+    { method: 'GET', path: '/api/receipt-series', access: manage },
+    async (c) => {
+      const items = await c
+        .get('db')
+        .all<ReceiptSeriesDto>(
+          sql`SELECT series, year, next_no - 1 AS last_no FROM receipt_series ORDER BY year DESC, series`,
+        );
+      return c.json({ items });
     },
   );
 
