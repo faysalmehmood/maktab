@@ -100,3 +100,38 @@ bucket_name = "maktab-files"
 [[env.production.r2_buckets]]
 binding = "BACKUPS"
 bucket_name = "maktab-backups"
+
+# ---------------------------------------------------------------------------------------------
+# GSA pilot (2026-10-13): maktab-gsap.conceptlix.com, its own Worker, D1 and files bucket. The real
+# school's installation: backed up nightly (.github/workflows/nightly-backup.yml, --env gsap), never
+# DEMO_MODE. Secrets (each its own value, piped from openssl, never echoed):
+#   SESSION_SECRET, PARENT_LINK_SECRET, BACKUP_REPORT_TOKEN (= the GitHub secret), GOOGLE_CLIENT_ID,
+#   GOOGLE_CLIENT_SECRET. Google Cloud console: add the authorised redirect URI
+#   https://maktab-gsap.conceptlix.com/api/auth/google/callback (docs/deploy.md).
+# Later (M8): GSA's own Cloudflare account behind a front-door Worker.
+# ---------------------------------------------------------------------------------------------
+[env.gsap]
+name = "maktab-gsap"
+routes = [{ pattern = "maktab-gsap.conceptlix.com", custom_domain = true }]
+
+[env.gsap.triggers]
+crons = ["*/30 * * * *"]
+
+[env.gsap.vars]
+APP_ORIGIN = "https://maktab-gsap.conceptlix.com"
+# GSA's owner (Shahid Iqbal): his first Google sign-in claims the empty installation and runs the wizard.
+OWNER_EMAIL = "shahid.ics.pu@gmail.com"
+
+[[env.gsap.d1_databases]]
+binding = "DB"
+database_name = "maktab-gsap"
+database_id = "3e0f42ab-c488-475b-8aea-28e85b5e4549"
+migrations_dir = "../../packages/db/migrations"
+
+[[env.gsap.r2_buckets]]
+binding = "FILES"
+bucket_name = "maktab-gsap-files"
+
+[[env.gsap.r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "maktab-backups"
