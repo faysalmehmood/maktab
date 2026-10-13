@@ -5,6 +5,7 @@
  * layout, so it cannot tell a blank second page from a clean one.
  *
  *   node apps/web/scripts/print-pages.mjs <url-or-file> [--expect N] [--wait-for <css selector>]
+ *     [--cookie name=value]   (e.g. a dev session from `npm run -s dev:session -w @maktab/api`)
  *
  * Prints `pages=<n> sizes=<w×h pt,…>`; exit 1 when --expect is given and differs. Used for the
  * thermal receipt (M4 fix pass, C2): `/receipts/<id>?paper=thermal` must print exactly 1 page.
@@ -29,6 +30,7 @@ const opt = (name) => {
 };
 const expect = opt('--expect') ? Number(opt('--expect')) : null;
 const waitFor = opt('--wait-for') ?? null;
+const cookie = opt('--cookie') ?? null;
 const url = /^[a-z]+:\/\//.test(target) ? target : pathToFileURL(resolve(target)).href;
 const chrome =
   process.env.CHROME ??
@@ -95,6 +97,15 @@ try {
   const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
   const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
   await send('Page.enable', {}, sessionId);
+  if (cookie) {
+    const eq = cookie.indexOf('=');
+    await send('Network.enable', {}, sessionId);
+    await send(
+      'Network.setCookie',
+      { name: cookie.slice(0, eq), value: cookie.slice(eq + 1), url },
+      sessionId,
+    );
+  }
   await send('Page.navigate', { url }, sessionId);
   const evaluate = async (expression) =>
     (

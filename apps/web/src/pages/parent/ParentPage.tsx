@@ -98,8 +98,14 @@ const parentFetch = <T,>(
 /** The parent receipt (a whitelist) in the shape the shared paper receipt renders. */
 function printShape(p: ParentReceiptDto): ReceiptPrintDto {
   return {
-    // The logo URL needs a staff session; the parent copy prints without it.
-    school: { ...p.school, has_logo: false },
+    // The logo comes from /api/p/logo (token header → blob URL) in ReceiptView.
+    school: {
+      name: p.school.name,
+      name_ur: p.school.name_ur,
+      address: p.school.address,
+      phone: p.school.phone,
+      has_logo: !!p.school.logo_v,
+    },
     labels: p.labels,
     lang: p.lang,
     receipt: {
@@ -461,6 +467,35 @@ function Dues({ dues, lang }: { dues: NonNullable<ParentPageDto['dues']>; lang: 
   );
 }
 
+/**
+ * The school logo for the parent receipt: an <img> cannot send X-Parent-Token, so it is fetched
+ * (the versioned URL lets the browser cache it for a week) and shown from a blob URL.
+ */
+function useParentLogo(token: string, version: string | null): string | null {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!version) return;
+    let url: string | null = null;
+    let live = true;
+    fetch(`/api/p/logo?v=${encodeURIComponent(version)}`, {
+      credentials: 'omit',
+      headers: { [PARENT_TOKEN_HEADER]: token },
+    })
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => {
+        if (!live || !b) return;
+        url = URL.createObjectURL(b);
+        setSrc(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [token, version]);
+  return src;
+}
+
 function ReceiptView({
   token,
   no,
@@ -480,6 +515,7 @@ function ReceiptView({
     retry: false,
   });
   const lang = i18n.language === 'ur' ? 'ur' : 'en';
+  const logo = useParentLogo(token, q.data?.school.logo_v ?? null);
   return (
     <section className="mx-auto flex max-w-3xl flex-col gap-3 p-4">
       <div className="flex flex-wrap gap-2 print:hidden">
@@ -498,7 +534,16 @@ function ReceiptView({
       <ErrorNote error={q.error} />
       {q.data && (
         <div className="overflow-x-auto">
-          <ReceiptPrint data={printShape(q.data)} fmt="a5" lang={lang} publicCopy />
+          <ReceiptPrint
+            data={{
+              ...printShape(q.data),
+              school: { ...printShape(q.data).school, has_logo: !!logo },
+            }}
+            fmt="a5"
+            lang={lang}
+            publicCopy
+            logoSrc={logo ?? undefined}
+          />
         </div>
       )}
     </section>

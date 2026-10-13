@@ -33,9 +33,11 @@ import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
 import { defaultAccount, familyMessageStatements, receiptPrint } from '../lib/fees';
 import { idParam, jsonBody, notFoundError, queryParams, todayPk, userId } from '../lib/http';
+import { parentSecret, schoolMsg } from '../lib/messaging';
 import { withD1Retry } from '../lib/retry';
 import { tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
+import { currentOrNewLink } from './messages';
 
 async function payerExists(
   c: { get: (k: 'db') => import('@maktab/db').AppDb },
@@ -317,6 +319,36 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         }),
       );
       return c.json({ message_id: m, queued: true }, 201);
+    },
+  );
+
+  /**
+   * The parent-page link to send with a receipt ("Share" on the staff receipt, M7): the payer
+   * family's first guardian's current link, or a new one when the school's default gate allows it
+   * without staff input (birth year / none; a PIN gate needs the guardian panel). `url: null`
+   * otherwise. The URL is returned, never stored (M5: no live link at rest).
+   */
+  defineRoute(
+    app,
+    table,
+    {
+      method: 'POST',
+      path: '/api/receipts/:id/parent-link',
+      access: requires('receipt', 'create'),
+    },
+    async (c) => {
+      const db = c.get('db');
+      const r = await receiptDetail(db, idParam(c));
+      if (!r) throw notFoundError('Receipt');
+      if (r.payer_type !== 'family' || r.kind !== 'payment') return c.json({ url: null });
+      parentSecret(c.env);
+      const [g] = await db.all<{ id: string }>(
+        sql`SELECT id FROM guardian WHERE family_id = ${r.payer_id}
+            ORDER BY priority, created_at, id LIMIT 1`,
+      );
+      if (!g) return c.json({ url: null });
+      const link = await currentOrNewLink(c, g.id, await schoolMsg(db), 'unless_pin');
+      return c.json({ url: link?.url ?? null });
     },
   );
 

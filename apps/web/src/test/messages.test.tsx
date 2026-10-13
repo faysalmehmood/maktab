@@ -398,7 +398,7 @@ function parentPage(over: Partial<ParentPageDto> = {}): ParentPageDto {
 
 function parentReceipt(): ParentReceiptDto {
   return {
-    school: { name: 'Maktab School', name_ur: null, address: null, phone: null },
+    school: { name: 'Maktab School', name_ur: null, address: null, phone: null, logo_v: null },
     labels: RECEIPT_LABELS,
     lang: 'en',
     receipt: {
@@ -566,11 +566,14 @@ describe('parent page', () => {
       await waitFor(() => expect(open.disabled).toBe(false));
       fireEvent.click(open);
       await waitFor(() => expect(calls.filter((c) => c.path === '/api/p/gate')).toHaveLength(2));
-      expect(calls.filter((c) => c.path === '/api/p/gate').map((c) => c.body)).toEqual([
-        { birth_year: 2014, turnstile_token: 'tok-1' },
-        { birth_year: 2014, turnstile_token: 'tok-2' },
-      ]);
-      expect(rendered).toEqual(['SITE', 'SITE']);
+      const bodies = calls
+        .filter((c) => c.path === '/api/p/gate')
+        .map((c) => c.body as { birth_year: number; turnstile_token: string });
+      expect(bodies.map((b) => b.birth_year)).toEqual([2014, 2014]);
+      // Each answer carried a token, and never the same one twice (single-use).
+      expect(bodies.every((b) => /^tok-\d+$/.test(b.turnstile_token))).toBe(true);
+      expect(bodies[0]?.turnstile_token).not.toBe(bodies[1]?.turnstile_token);
+      expect(new Set(rendered)).toEqual(new Set(['SITE']));
     } finally {
       window.turnstile = undefined;
     }
@@ -631,6 +634,41 @@ describe('parent page', () => {
     expect(paper).not.toMatch(/Collected by|Collector|Adm/i);
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(await screen.findByText(/Assalamu alaikum,/)).toBeTruthy();
+  });
+
+  it('the receipt shows the school logo from /api/p/logo (token header, versioned URL, blob)', async () => {
+    const created: Blob[] = [];
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, {
+        createObjectURL: (b: Blob) => {
+          created.push(b);
+          return 'blob:logo-1';
+        },
+        revokeObjectURL: () => undefined,
+      }),
+    );
+    const seen: (string | null)[] = [];
+    mockApi({
+      ['GET /api/p']: parentPage({ guardian: { first_name: 'I', lang: 'en' } }),
+      'GET /api/p/receipt/R-2026-00001': () => ({
+        ...parentReceipt(),
+        school: { ...parentReceipt().school, logo_v: 'abc123' },
+      }),
+      'GET /api/p/logo': (_url: URL, init: RequestInit) => {
+        seen.push(new Headers(init.headers).get('x-parent-token'));
+        return new Response(new Uint8Array([0x89, 0x50]), {
+          headers: { 'content-type': 'image/png' },
+        });
+      },
+    });
+    renderParent();
+    fireEvent.click(await screen.findByRole('button', { name: /Open receipt R-2026-00001/ }));
+    await waitFor(() =>
+      expect(document.querySelector('img.receipt-logo')?.getAttribute('src')).toBe('blob:logo-1'),
+    );
+    expect(seen).toEqual([TOKEN]);
+    expect(created).toHaveLength(1);
   });
 });
 

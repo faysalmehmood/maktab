@@ -52,7 +52,7 @@ describe('sign-out while offline', () => {
 
   it('while queued, /api/me is not asked: the app is signed out even though the cookie is valid', async () => {
     await queueLogout(offlineFetch);
-    const fetchSpy = vi.fn(async () => {
+    const fetchSpy = vi.fn(async (_url: string, _init?: RequestInit): Promise<Response> => {
       throw new TypeError('offline');
     });
     vi.stubGlobal('fetch', fetchSpy);

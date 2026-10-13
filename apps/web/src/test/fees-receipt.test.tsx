@@ -20,10 +20,12 @@ function open(
   query: string,
   data = receiptPrint(),
   roles: Parameters<typeof renderAt>[3] = ['owner'],
+  link: string | null = null,
 ) {
   const api = mockApi({
     [`GET /api/receipts/${receiptId}`]: data,
     [`POST /api/receipts/${receiptId}/notify`]: { message_id: 'M1', queued: true },
+    [`POST /api/receipts/${receiptId}/parent-link`]: { url: link },
   });
   renderAt(`/receipts/${receiptId}${query}`, '/receipts/:id', <ReceiptPage />, roles);
   return api;
@@ -71,6 +73,17 @@ describe('receipt view', () => {
     // default page (shell, toaster) forced a blank Letter/A4 second page in Chrome
     // (scripts/print-pages.mjs: 2 pages before, 1 after).
     expect(style?.textContent).toContain('@media print { html, body { page: receipt-thermal; } }');
+  });
+
+  it('A5 in English: the whole document prints on the A5 page (no second, default-size page)', async () => {
+    open('?fmt=a5&lang=en');
+    const p = await paper();
+    expect(p.dataset.fmt).toBe('a5');
+    const style = document.querySelector('style[data-receipt-page="a5"]');
+    // Same root cause as thermal C2: the shell / toaster left on the default page forced a page-type
+    // switch (scripts/print-pages.mjs --expect 1 on /fees/receipts/<id>?fmt=a5&lang=en).
+    expect(style?.textContent).toBe('@media print { html, body { page: receipt-a5; } }');
+    expect(document.querySelectorAll('style[data-receipt-page]')).toHaveLength(1);
   });
 
   it('58 mm: the child name / admission no. row is a td row that print does not hide', async () => {
@@ -178,6 +191,21 @@ describe('receipt view', () => {
 });
 
 describe('share: text only (no file, no staff URL)', () => {
+  it("the Share text ends with the guardian's parent-page link, alone on the last line", async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, share, onLine: true, language: 'en' });
+    const api = open('?lang=en', receiptPrint(), ['owner'], 'https://s.pk/p#TOKEN');
+    await paper();
+    fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+    await waitFor(() => expect(share).toHaveBeenCalledOnce());
+    const text = String((share.mock.calls[0]?.[0] as { text: string }).text);
+    expect(text.split('\n')).toEqual([
+      'Al-Noor: receipt \u2068AN-2026-00001\u2069, \u2068PKR 7,000\u2069 received on \u20682026-10-10\u2069.',
+      'https://s.pk/p#TOKEN',
+    ]);
+    expect(api.calls.some((c) => c.path === `/api/receipts/${receiptId}/parent-link`)).toBe(true);
+  });
+
   it('no Web Share → copy the text; Web Share → the share sheet with text', () => {
     expect(shareMode({} as Navigator)).toBe('copy');
     expect(shareMode({ share: () => Promise.resolve() } as unknown as Navigator)).toBe('text');

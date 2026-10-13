@@ -31,19 +31,31 @@ export function shareMode(nav: Navigator = navigator): ShareMode {
 }
 
 /**
- * The link a guardian may open for this receipt. Staff URLs (/receipts/:id) need a staff session,
- * so nothing is shared until the parent page exists.
- * TODO(M5): return the parent magic-link page for this receipt (PLAN §14.10) and append it below.
+ * The link a guardian may open for this receipt: the family's parent page (PLAN §14.10), never a
+ * staff URL. The API returns the guardian's current link, or makes one when the school's default
+ * gate allows (M7); null for a non-family receipt, a PIN-only school without a link, or offline.
  */
-export const parentReceiptLink = (_r: ReceiptPrintDto['receipt']): string | null => null;
+export async function parentReceiptLink(r: ReceiptPrintDto['receipt']): Promise<string | null> {
+  if (r.payer_type !== 'family' || r.kind !== 'payment') return null;
+  try {
+    const { url } = await sendJson<{ url: string | null }>(
+      'POST',
+      `/api/receipts/${r.id}/parent-link`,
+    );
+    return url;
+  } catch {
+    return null;
+  }
+}
 
-/** The text "Share" sends: school, receipt no., amount and date (plus the M5 parent link). */
+/** The text "Share" sends: school, receipt no., amount and date, then the parent link alone. */
 export function shareText(
   data: ReceiptPrintDto,
   t: (
     k: 'fee.receipt.shareText',
     o: { school: string; no: string; amount: string; date: string },
   ) => string,
+  link: string | null = null,
 ): string {
   const r = data.receipt;
   const text = t('fee.receipt.shareText', {
@@ -52,7 +64,6 @@ export function shareText(
     amount: `\u2068${money(r.amount)}\u2069`,
     date: `\u2068${r.business_date}\u2069`,
   });
-  const link = parentReceiptLink(r);
   return link ? `${text}\n${link}` : text;
 }
 
@@ -158,7 +169,7 @@ export function ReceiptPage() {
   if (!data) return <ErrorNote error={q.error} />;
   const r = data.receipt;
   const share = async () => {
-    const text = shareText(data, (k, o) => t(k, o));
+    const text = shareText(data, (k, o) => t(k, o), await parentReceiptLink(r));
     try {
       if (shareMode(navigator) === 'text') await navigator.share({ text });
       else {

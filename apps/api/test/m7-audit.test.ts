@@ -14,7 +14,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { todayPk } from '../src/lib/http';
-import { signedInAs, testApp } from './helpers';
+import { fakeR2, signedInAs, testApp } from './helpers';
 
 // M7 permission audit (PLAN §10, §15 M7): every registered route × every role, a parent-token
 // column over HTTP, and row scope on every read that returns people or money — teachers see only
@@ -44,7 +44,8 @@ const year = Number(today.slice(0, 4));
 
 /** Two groups, a teacher on one, two families (one per group) with one receipt each. */
 async function fixture() {
-  const t = testApp();
+  const r2 = fakeR2();
+  const t = testApp({ env: { FILES: r2.bucket } });
   const owner = await signedInAs(t.db, ['owner']);
   const teacher = await signedInAs(t.db, ['teacher']);
   const acct = await signedInAs(t.db, ['accountant']);
@@ -111,7 +112,7 @@ async function fixture() {
   };
   const ra = await pay(a.family_id, RS(1111));
   const rb = await pay(b.family_id, RS(2237));
-  return { ...t, api, owner, teacher, acct, gA, gB, a, b, ra, rb, bank, st };
+  return { ...t, r2, api, owner, teacher, acct, gA, gB, a, b, ra, rb, bank, st };
 }
 
 /** Every value of a 0333-7654321 phone a response could carry. */
@@ -170,7 +171,12 @@ describe('M7 audit: route grants', () => {
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const asParent = client(f.request, { [PARENT_TOKEN_HEADER]: token });
     const anon = client(f.request, {});
-    const open = new Set(['GET /api/p', 'POST /api/p/gate', 'GET /api/p/receipt/:no']);
+    const open = new Set([
+      'GET /api/p',
+      'POST /api/p/gate',
+      'GET /api/p/receipt/:no',
+      'GET /api/p/logo',
+    ]);
     const publicRoutes = new Set(
       f.routes
         .list()
@@ -329,5 +335,89 @@ describe('M7 audit: publicRoute allow-list (grep)', () => {
         'core.ts /api/health',
       ].sort(),
     );
+  });
+});
+
+describe('M7 receipts: parent link on the staff receipt, logo on the parent receipt', () => {
+  it("POST /api/receipts/:id/parent-link: the guardian's current link, made once, null for a PIN school", async () => {
+    const f = await fixture();
+    const first = await f.api<{ url: string | null }>(
+      'POST',
+      `/api/receipts/${f.ra.id}/parent-link`,
+    );
+    expect(first.status, first.text).toBe(200);
+    expect(first.body.url).toMatch(/^http:\/\/localhost:5173\/p#[A-Za-z0-9_-]{43}$/);
+    // The same link again (recomputed, not a new one), and it really opens the family's page.
+    const again = await f.api<{ url: string | null }>(
+      'POST',
+      `/api/receipts/${f.ra.id}/parent-link`,
+    );
+    expect(again.body.url).toBe(first.body.url);
+    const links = await f.db.all<{ n: number }>(sql`SELECT count(*) AS n FROM parent_link`);
+    expect(links[0]?.n).toBe(1);
+    const page = await f.request('/api/p', {
+      headers: { [PARENT_TOKEN_HEADER]: first.body.url?.split('#')[1] ?? '' },
+    });
+    expect(page.status).toBe(200);
+    // Default gate PIN: no link is made without staff choosing a PIN.
+    const set = await f.api('PUT', '/api/school/messages', {
+      reminder_cooldown_days: 7,
+      parent_gate: 'pin',
+      announcement_groups_note: null,
+    });
+    expect(set.status, set.text).toBe(200);
+    const pin = await f.api<{ url: string | null }>('POST', `/api/receipts/${f.rb.id}/parent-link`);
+    expect(pin.status).toBe(200);
+    expect(pin.body.url).toBeNull();
+    // …but an existing link is still returned.
+    expect(
+      (await f.api<{ url: string | null }>('POST', `/api/receipts/${f.ra.id}/parent-link`)).body
+        .url,
+    ).toBe(first.body.url);
+    // Collectors only: the accountant may, a teacher may not.
+    const acct = client(f.request, { cookie: f.acct.cookie });
+    expect((await acct('POST', `/api/receipts/${f.ra.id}/parent-link`)).status).toBe(200);
+    const teacher = client(f.request, { cookie: f.teacher.cookie });
+    expect((await teacher('POST', `/api/receipts/${f.ra.id}/parent-link`)).status).toBe(403);
+  });
+
+  it('GET /api/p/logo: token-gated, image only, cacheable; the parent receipt carries its version', async () => {
+    const f = await fixture();
+    const link = await f.api<{ url: string }>('POST', `/api/receipts/${f.ra.id}/parent-link`);
+    const token = link.body.url.split('#')[1] ?? '';
+    const gate = await f.request('/api/p/gate', {
+      method: 'POST',
+      headers: { [PARENT_TOKEN_HEADER]: token, 'content-type': 'application/json' },
+      body: JSON.stringify({ birth_year: 2015 }),
+    });
+    expect(gate.status).toBe(200);
+    const { gate_token } = (await gate.json()) as { gate_token: string };
+    const asParent = (path: string) =>
+      f.request(path, { headers: { [PARENT_TOKEN_HEADER]: token, 'x-parent-gate': gate_token } });
+    expect((await asParent('/api/p/logo')).status).toBe(404); // no logo yet
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    await f.r2.bucket.put('school/logo-1', png, { httpMetadata: { contentType: 'image/png' } });
+    await f.db.run(sql`UPDATE school SET logo_key = 'school/logo-1'`);
+    const r = await asParent(`/api/p/receipt/${f.ra.receipt_no}`);
+    expect(r.status).toBe(200);
+    const v = ((await r.json()) as { school: { logo_v: string | null } }).school.logo_v;
+    expect(v).toMatch(/^[0-9a-f]{16}$/);
+    const logo = await asParent(`/api/p/logo?v=${v}`);
+    expect(logo.status).toBe(200);
+    expect(logo.headers.get('content-type')).toBe('image/png');
+    expect(logo.headers.get('cache-control')).toBe('private, max-age=604800, immutable');
+    expect(logo.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(new Uint8Array(await logo.arrayBuffer())).toEqual(png);
+    // No token, a bad token: nothing.
+    expect((await f.request('/api/p/logo')).status).toBe(404);
+    expect(
+      (await f.request('/api/p/logo', { headers: { [PARENT_TOKEN_HEADER]: 'x'.repeat(43) } }))
+        .status,
+    ).toBe(404);
+    // A non-image object under the logo key is never served.
+    await f.r2.bucket.put('school/logo-1', png, { httpMetadata: { contentType: 'text/html' } });
+    expect((await asParent('/api/p/logo')).status).toBe(404);
+    // Other /api/p answers stay no-store.
+    expect((await asParent('/api/p')).headers.get('cache-control')).toBe('no-store');
   });
 });

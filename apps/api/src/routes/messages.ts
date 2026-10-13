@@ -232,11 +232,24 @@ const autoGate = (s: SchoolMsg): ParentGate =>
   s.parent_gate === 'pin' ? 'birth_year' : s.parent_gate;
 
 /** The guardian's current link URL (creating or renewing one if needed) and its token hash. */
-async function ensureLink(
+export async function ensureLink(
   c: Context<AppEnv>,
   guardianId: string,
   s: SchoolMsg,
 ): Promise<{ url: string; hash: string }> {
+  return (await currentOrNewLink(c, guardianId, s, true)) as { url: string; hash: string };
+}
+
+/**
+ * The guardian's live link when it can be recomputed; otherwise a new one when `create` (and the
+ * school's default gate can be set without staff input — a PIN cannot), else null.
+ */
+export async function currentOrNewLink(
+  c: Context<AppEnv>,
+  guardianId: string,
+  s: SchoolMsg,
+  create: boolean | 'unless_pin',
+): Promise<{ url: string; hash: string } | null> {
   const db = c.get('db');
   const secret = parentSecret(c.env);
   const now = nowIso();
@@ -247,6 +260,7 @@ async function ensureLink(
     if ((await sha256Hex(token)) === live.token_hash)
       return { url: linkUrl(c.env.APP_ORIGIN, token), hash: live.token_hash };
   }
+  if (!create || (create === 'unless_pin' && s.parent_gate === 'pin')) return null;
   const n = await newLinkStatements({
     secret,
     guardianId,

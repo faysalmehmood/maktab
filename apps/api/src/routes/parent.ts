@@ -87,7 +87,10 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable, deps: { fetch
 
   const headers = async (c: Context<AppEnv>, next: () => Promise<void>) => {
     await next();
-    for (const [k, v] of Object.entries(PARENT_HEADERS)) c.res.headers.set(k, v);
+    // The logo is the one cacheable answer here (versioned URL, no personal data).
+    const cacheable = c.req.path === '/api/p/logo' && c.res.status === 200;
+    for (const [k, v] of Object.entries(PARENT_HEADERS))
+      if (!(cacheable && k === 'Cache-Control')) c.res.headers.set(k, v);
   };
   app.use('/api/p', headers);
   app.use('/api/p/*', headers);
@@ -371,6 +374,39 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable, deps: { fetch
     return c.json(body);
   });
 
+  /** A short, stable version of the current logo object key (it changes on every upload). */
+  async function logoVersion(c: Context<AppEnv>): Promise<string | null> {
+    const [row] = await c
+      .get('db')
+      .all<{ k: string | null }>(sql`SELECT logo_key AS k FROM school ORDER BY created_at LIMIT 1`);
+    return row?.k ? (await sha256Hex(row.k)).slice(0, 16) : null;
+  }
+
+  /**
+   * The school logo for the parent receipt (M5 gap, M7): token-gated like every /api/p route (no
+   * gate answer needed — it is the school's, not the family's), image types only, and cacheable
+   * by the browser for a week under its versioned URL (`?v=` from the receipt). No session.
+   */
+  defineRoute(app, table, { method: 'GET', path: '/api/p/logo', access: view }, async (c) => {
+    await resolve(c);
+    const [row] = await c
+      .get('db')
+      .all<{ k: string | null }>(sql`SELECT logo_key AS k FROM school ORDER BY created_at LIMIT 1`);
+    const notFound = () => new ApiError(404, 'not_found', 'No logo');
+    if (!row?.k || !c.env.FILES) throw notFound();
+    const obj = await c.env.FILES.get(row.k);
+    const type = obj?.httpMetadata?.contentType ?? '';
+    if (!obj || !/^image\/(png|jpeg|webp)$/.test(type)) throw notFound();
+    return new Response(obj.body, {
+      headers: {
+        'content-type': type,
+        'cache-control': 'private, max-age=604800, immutable',
+        'x-content-type-options': 'nosniff',
+        'content-security-policy': "default-src 'none'; sandbox",
+      },
+    });
+  });
+
   /**
    * A payment receipt of this family by its number, as a whitelist: school header, first names, the
    * lines and totals. No ids, no collector or account, no note or reference, no admission numbers.
@@ -399,6 +435,7 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable, deps: { fetch
           name_ur: p.school.name_ur,
           address: p.school.address,
           phone: p.school.phone,
+          logo_v: await logoVersion(c),
         },
         labels: RECEIPT_LABELS,
         lang: p.lang,

@@ -468,7 +468,14 @@ export type ParentPageDto = {
 
 /** A receipt as the parent page prints it: the whitelist (no staff names, no ids, first names). */
 export type ParentReceiptDto = {
-  school: { name: string; name_ur: string | null; address: string | null; phone: string | null };
+  school: {
+    name: string;
+    name_ur: string | null;
+    address: string | null;
+    phone: string | null;
+    /** Version of the school logo for `GET /api/p/logo?v=…` (cache key); null = no logo. */
+    logo_v: string | null;
+  };
   labels: typeof RECEIPT_LABELS;
   lang: MessageLang;
   receipt: {

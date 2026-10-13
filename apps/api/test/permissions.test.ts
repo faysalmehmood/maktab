@@ -206,6 +206,7 @@ POST   /api/receipts                             D A A A D D
 GET    /api/receipts/:id                         D A A A D D
 POST   /api/receipts/:id/reverse                 D A A D D D
 POST   /api/receipts/:id/notify                  D A A A D D
+POST   /api/receipts/:id/parent-link             D A A A D D
 POST   /api/refunds                              D A A D D D
 GET    /api/cash/sessions                        D A A A D D
 POST   /api/cash/sessions                        D A A A D D
@@ -267,6 +268,7 @@ POST   /api/parent-links/rotate-all          D A D D D D
 GET    /api/p                                A A A A A A
 POST   /api/p/gate                           A A A A A A
 GET    /api/p/receipt/:no                    A A A A A A
+GET    /api/p/logo                           A A A A A A
 POST   /api/backup/export                    D A D D D D
 GET    /api/backup/export/:id/part           D A D D D D
 POST   /api/backup/export/:id/finish         D A D D D D
@@ -352,7 +354,12 @@ describe('route × role', () => {
       )
       .map((r) => `${r.method} ${r.path}`)
       .sort();
-    expect(viaPublicGrant).toEqual(['GET /api/p', 'GET /api/p/receipt/:no', 'POST /api/p/gate']);
+    expect(viaPublicGrant).toEqual([
+      'GET /api/p',
+      'GET /api/p/logo',
+      'GET /api/p/receipt/:no',
+      'POST /api/p/gate',
+    ]);
     // …and every /api/p/* route goes through that grant (none is an unconditional publicRoute).
     for (const r of routes.list().filter((x) => x.path.startsWith('/api/p/')))
       expect(r.access.kind, r.path).toBe('requires');
