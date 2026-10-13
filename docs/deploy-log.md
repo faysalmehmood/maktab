@@ -64,3 +64,53 @@ Checks (curl --resolve with the IP from `dig @1.1.1.1`):
 - `/p`: 200 `text/html` (the SPA shell) with `x-robots-tag: noindex, nofollow`, `cache-control: no-store`,
   the CSP (`frame-ancestors 'none'`), `permissions-policy: camera=(self), microphone=(), geolocation=()`,
   `referrer-policy: no-referrer`, `x-content-type-options: nosniff`, `x-frame-options: DENY`.
+
+# Deploy log: M6 settings & backup (2026-10-13)
+
+Commits `718b354` … `a95af43` (pushed to main). From apps/api, CI=1 WRANGLER_SEND_METRICS=false.
+
+    npx wrangler d1 migrations apply maktab --remote --env production   # 0022_m6_settings_backup ✅
+    npm run db:verify -- --remote --env production                      # repo root
+    (umask 077; openssl rand -hex 32 > <tmp>)                            # one value, never displayed
+    npx wrangler secret put BACKUP_REPORT_TOKEN --env production < <tmp>
+    gh secret set BACKUP_REPORT_TOKEN -R faysalmehmood/maktab < <tmp>; rm -P <tmp>
+    npm run build && npx wrangler deploy --env production
+
+- `db:verify --remote`: 94 triggers (expected 94), 8 views (expected 8). 0022 adds tables
+  `export_job`, `backup_run`, `alarm_event` and columns `grp.archived_at`, `school.access_log_days`
+  (ADD COLUMN only, no rebuild).
+- Bindings now: DB, FILES (`maktab-files`), **BACKUPS (`maktab-backups`)**, ASSETS. R2 is enabled;
+  both buckets exist.
+- Secrets now: SESSION_SECRET, PARENT_LINK_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+  **BACKUP_REPORT_TOKEN**.
+- Worker version `12c72192-08a0-4adc-b856-f8045c85e1b5`, cron `*/30 * * * *` (the M6 daily alarm /
+  retention pass rides on it: once per Karachi day after 03:00).
+- age key pair: `npm run backup:keygen -w @maktab/db` → private key in
+  `~/Homelab/maktab-backup-key.txt` (0600, on the maintainer's machine only), public recipient
+  `age1pce8e4ckmpn2ynpawgqeljjutarprdufvlzq4k5c4m9lyywhdqasu4vslz`.
+
+Checks (curl --resolve with the IP from `dig @1.1.1.1`):
+- `/api/health` 200 `{"status":"ok"}`.
+- `/api/alarms`, `/api/alarms/latest`, `/api/backup/status`, `/api/recycle-bin`, `POST /api/backup/export`
+  without a session: 401 `unauthenticated`.
+- `POST /api/backup/runs` without a token and with a wrong token: 401 (not 503: the secret is set).
+
+GitHub (set from this machine, names only): secrets `AGE_RECIPIENT`, `CLOUDFLARE_ACCOUNT_ID`,
+`BACKUP_REPORT_TOKEN`; variable `BACKUP_ENABLED=true`.
+
+## Pending (user) — the nightly job fails (and opens an issue) until 1 is done
+
+1. **Cloudflare API token** (the value must never pass through an agent): dashboard → My Profile →
+   API Tokens → Create Token → *Create Custom Token*. Permissions: *Account · D1 · Edit*,
+   *Account · Workers R2 Storage · Edit*, *Account · Workers Scripts · Read*. Account resources:
+   *Include · Faysalmehmood@hotmail.com's Account*. Create, copy, then
+   `pbpaste | gh secret set CLOUDFLARE_API_TOKEN -R faysalmehmood/maktab` and clear the clipboard.
+   Then Actions → nightly-backup → Run workflow once; Settings → Backup should show the run.
+2. **R2 lifecycle rule** on `maktab-backups`: prefix `daily/`, delete after 95 days (docs/backup.md §4).
+3. Give the trustees `~/Homelab/maktab-backup-key.txt` and `PARENT_LINK_SECRET`; keep one escrow copy.
+4. Optional: Backblaze B2 (`B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET`, `B2_ENDPOINT`; until then runs are
+   "partial"), Google Sheet (`GOOGLE_SA_JSON`, `SHEET_ID`; docs/backup.md §6).
+5. Restore drill: create the protected environment `backup-drill` (required reviewer = owner, branch
+   `main`), add `AGE_SECRET_KEY` there only
+   (`gh secret set AGE_SECRET_KEY -R faysalmehmood/maktab --env backup-drill < ~/Homelab/maktab-backup-key.txt`),
+   run Actions → restore-drill after the first nightly run, then record the drill in Settings → Backup.
