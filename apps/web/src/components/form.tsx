@@ -28,6 +28,7 @@ export function Field({
   required,
   className,
   children,
+  tour,
 }: {
   id: string;
   label: I18nKey;
@@ -36,10 +37,12 @@ export function Field({
   required?: boolean;
   className?: string;
   children: ReactNode;
+  /** `data-tour` name for a guide tour step. */
+  tour?: string;
 }) {
   const { t } = useTranslation();
   return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
+    <div className={cn('flex flex-col gap-1.5', className)} data-tour={tour}>
       <Label htmlFor={id}>
         {t(label)}
         {required && (
@@ -70,10 +73,20 @@ export function ErrorNote({ error }: { error: unknown }) {
   );
 }
 
-export function PageTitle({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
+export function PageTitle({
+  children,
+  actions,
+  help,
+}: {
+  children: ReactNode;
+  actions?: ReactNode;
+  /** The "?" (a `<HelpButton>`; passed in so this first-load module does not import it). */
+  help?: ReactNode;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <h1 className="text-title">{children}</h1>
+      {help}
       {actions && <div className="ms-auto flex flex-wrap gap-2">{actions}</div>}
     </div>
   );

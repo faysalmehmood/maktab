@@ -9,6 +9,7 @@ import { Download } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
+import { HelpButton } from '@/components/HelpButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -145,7 +146,7 @@ export function ImportPage() {
   const toCreate = report?.dry_run ? report.summary.students : 0;
   return (
     <section className="flex max-w-3xl flex-col gap-4">
-      <PageTitle>{t('import.title')}</PageTitle>
+      <PageTitle help={<HelpButton task="admit-student" />}>{t('import.title')}</PageTitle>
       <p className="text-sm text-muted-foreground">{t('import.help')}</p>
       <Button asChild variant="outline" className="self-start">
         <a href="/api/imports/students/template.csv" download="maktab-students.csv">

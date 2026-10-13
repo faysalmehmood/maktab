@@ -17,6 +17,8 @@ export const screensEn = {
     firstWeek: 'Your first week',
     firstWeekDone: '{{done}} of {{total}} done',
     stepDone: 'Done',
+    stepHelp: 'How to: {{step}}',
+    firstWeekGuide: 'Step-by-step help',
     steps: {
       setup: 'Finish setting up the school',
       admission: 'Admit the first student',

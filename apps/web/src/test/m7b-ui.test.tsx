@@ -115,8 +115,9 @@ describe('navigation per role', () => {
   it('sidebar headings only for groups the role can see', () => {
     const heads = (r: StaffRole[]) => navGroups(r).groups.map((g) => g.id);
     expect(heads(['owner'])).toEqual(['people', 'daily', 'money', 'school']);
-    // A teacher has no Settings / Audit entry: no "School" heading.
-    expect(heads(['teacher'])).toEqual(['people', 'daily', 'money']);
+    // A teacher has no Settings / Audit entry: "School" holds only the guide.
+    expect(heads(['teacher'])).toEqual(['people', 'daily', 'money', 'school']);
+    expect(navGroups(['teacher']).groups[3]?.items.map((i) => i.to)).toEqual(['/guide']);
     expect(navGroups(['teacher']).groups[2]?.items.map((i) => i.to)).toEqual([
       '/fees/defaulters',
       '/my/payslips',
@@ -152,6 +153,7 @@ describe('navigation per role', () => {
       '/reports',
       '/settings',
       '/audit',
+      '/guide',
     ]);
     // The account is reachable on the phone too.
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeTruthy();

@@ -42,7 +42,7 @@ function NightlyStatus() {
   if (!s) return <p className="text-sm text-muted-foreground">{t('common.loading')}</p>;
   const last = s.last_nightly;
   return (
-    <div className="flex flex-col gap-3" id="backup-status">
+    <div className="flex flex-col gap-3" id="backup-status" data-tour="backup-status">
       <H>{t('backup.status.title')}</H>
       {!s.report_configured && (
         <p className="rounded-md bg-warn-soft p-3 text-sm">{t('backup.status.notConfigured')}</p>
@@ -152,6 +152,7 @@ export function DownloadEverything() {
       <Button
         type="button"
         id="download-everything"
+        data-tour="backup-everything"
         className="self-start"
         disabled={run.isPending}
         onClick={() => run.mutate()}
@@ -197,7 +198,7 @@ function RestoreDrill() {
     record.mutate();
   };
   return (
-    <div className="flex flex-col gap-2" id="restore-drill">
+    <div className="flex flex-col gap-2" id="restore-drill" data-tour="backup-drill">
       <H>{t('backup.drill.title')}</H>
       <p className="text-sm">
         {last ? (

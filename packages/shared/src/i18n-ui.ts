@@ -15,7 +15,9 @@ export const shellEn = {
     payroll: 'Payroll',
     more: 'More',
     moreTitle: 'Everything else',
+    guide: 'Help & guide',
   },
+  help: 'Help for this screen',
   search: {
     label: 'Search students',
     placeholder: 'Search students, admission no. or phone',

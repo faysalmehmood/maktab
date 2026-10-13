@@ -53,6 +53,11 @@ const ParentPage = lazy(() =>
 const GroupsPage = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupsPage })));
 const GroupDetail = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupDetail })));
 
+const GuideHome = lazy(() => import('@/pages/guide/Guide').then((m) => ({ default: m.GuideHome })));
+const GuideTaskPage = lazy(() =>
+  import('@/pages/guide/Guide').then((m) => ({ default: m.GuideTaskPage })),
+);
+
 const lazyFees = <K extends string>(load: () => Promise<Record<K, () => ReactNode>>, name: K) =>
   lazy(() => load().then((m) => ({ default: m[name] })));
 const FeesHome = lazyFees(() => import('@/pages/fees/FeesHome'), 'FeesHome');
@@ -284,6 +289,23 @@ export function App() {
                 <DiagPage />
               </Loading>
             </RequireGrant>
+          }
+        />
+        {/* Help & guide: every staff role; each task page checks the role itself (GuideTaskPage). */}
+        <Route
+          path="guide"
+          element={
+            <Loading>
+              <GuideHome />
+            </Loading>
+          }
+        />
+        <Route
+          path="guide/:taskId"
+          element={
+            <Loading>
+              <GuideTaskPage />
+            </Loading>
           }
         />
         <Route

@@ -122,6 +122,7 @@ export function SettingsPage() {
     <Page>
       <PageHeader
         title={t('settings.title')}
+        help="first-week"
         actions={
           roles.includes('owner') && (
             <Button asChild variant="outline">

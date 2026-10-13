@@ -574,6 +574,7 @@ export function ExpensesPage() {
     <Page>
       <PageHeader
         title={t('money.expense.title')}
+        help="income-expense"
         actions={
           <>
             <ReportActions id="expenses" csv={`/api/expenses?${f.qs}&format=csv`} />

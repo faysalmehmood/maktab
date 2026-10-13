@@ -14,6 +14,7 @@ import { type FormEvent, type ReactNode, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
+import { HelpButton } from '@/components/HelpButton';
 import {
   CustomFieldInputs,
   type Extra,
@@ -295,7 +296,7 @@ export function AdmissionPage() {
   if (result) {
     return (
       <section className="flex max-w-2xl flex-col gap-4">
-        <PageTitle>{t('admission.title')}</PageTitle>
+        <PageTitle help={<HelpButton task="admit-student" />}>{t('admission.title')}</PageTitle>
         <Success result={result} onSibling={() => startSibling(result)} />
       </section>
     );
@@ -303,7 +304,9 @@ export function AdmissionPage() {
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex max-w-2xl flex-col gap-4">
-      <PageTitle>{readmitId ? t('admission.readmitTitle') : t('admission.title')}</PageTitle>
+      <PageTitle help={<HelpButton task="admit-student" />}>
+        {readmitId ? t('admission.readmitTitle') : t('admission.title')}
+      </PageTitle>
 
       {readmitId ? (
         <p>
@@ -336,6 +339,7 @@ export function AdmissionPage() {
                 <div className="flex items-end gap-2">
                   <Field
                     id="lookup-phone"
+                    tour="adm-phone"
                     label="family.lookupTitle"
                     error={lookupError}
                     hint={<PhoneHint value={lookup} />}
@@ -362,6 +366,7 @@ export function AdmissionPage() {
                   <Button
                     type="button"
                     variant="secondary"
+                    data-tour="adm-find"
                     disabled={search.isPending}
                     onClick={doLookup}
                   >
@@ -387,6 +392,7 @@ export function AdmissionPage() {
                     <Button
                       type="button"
                       className="self-start"
+                      data-tour="adm-same-family"
                       onClick={() => {
                         setFamily({ kind: 'existing', id: h.id, name: h.name });
                         setGuardians([]);

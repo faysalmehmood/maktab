@@ -8,6 +8,7 @@ import {
   HandCoins,
   House,
   Layers,
+  LifeBuoy,
   LogOut,
   type LucideIcon,
   MessageSquareText,
@@ -21,7 +22,7 @@ import {
   Users,
   Wallet,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,7 @@ import { useIsPhone } from '@/lib/media';
 import { useSchool } from '@/lib/queries';
 import { type GrantRef, holds, isTeacherOnly, useRoles } from '@/lib/roles';
 import { setThemePref, THEMES, type ThemePref, useBrand, useThemePref } from '@/lib/theme';
+import { useActiveTour } from '@/lib/tour';
 import { cn } from '@/lib/utils';
 import { API_CACHE } from '@/offline/api-cache';
 import { queueLogout } from '@/offline/logout';
@@ -145,6 +147,14 @@ export const NAV: NavItem[] = [
     icon: ScrollText,
     group: 'school',
     grants: [['audit', 'read']],
+  },
+  // Help & guide: every staff role (the guide shows each role its own tasks).
+  {
+    to: '/guide',
+    label: 'shell.nav.guide',
+    icon: LifeBuoy,
+    group: 'school',
+    grants: [['self', 'read']],
   },
 ];
 
@@ -355,6 +365,19 @@ export function SchoolIdentity({
   );
 }
 
+const TourRunner = lazy(() => import('@/guide/TourRunner'));
+
+/** The running "Show me" tour, if any (the engine loads only when a tour starts). */
+function TourHost() {
+  const active = useActiveTour();
+  if (!active) return null;
+  return (
+    <Suspense fallback={null}>
+      <TourRunner key={active.key} task={active.task} />
+    </Suspense>
+  );
+}
+
 const THEME_ICON: Record<ThemePref, LucideIcon> = { system: Monitor, light: Sun, dark: Moon };
 
 /** Light / dark / match the phone, as one segmented control (account menu and More sheet). */
@@ -466,6 +489,7 @@ function SyncState() {
   return (
     <span
       id="sync-state"
+      data-tour="sync-state"
       aria-live="polite"
       className={cn(
         'flex shrink-0 items-center gap-1.5 text-meta',
@@ -618,7 +642,10 @@ export function AppShell() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 flex min-h-14 items-center gap-2 border-b bg-card px-3 pt-[env(safe-area-inset-top)] md:gap-3 md:px-6 print:hidden">
+          <header
+            data-tour-bar
+            className="sticky top-0 z-20 flex min-h-14 items-center gap-2 border-b bg-card px-3 pt-[env(safe-area-inset-top)] md:gap-3 md:px-6 print:hidden"
+          >
             {/* Phone: badge + short name (+ city when it fits); the whole chip is a 44 px link. */}
             <NavLink
               to="/"
@@ -698,6 +725,8 @@ export function AppShell() {
           </DialogContent>
         </Dialog>
       )}
+
+      <TourHost />
 
       <Sheet open={more} onOpenChange={setMore}>
         <SheetContent

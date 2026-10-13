@@ -1274,7 +1274,9 @@ export const shellUr: Shape<typeof shellEn> = {
     payroll: 'تنخواہیں',
     more: 'مزید',
     moreTitle: 'باقی سب',
+    guide: 'رہنمائی',
   },
+  help: 'اس اسکرین کی رہنمائی',
   search: {
     label: 'طلبہ تلاش کریں',
     placeholder: 'نام، داخلہ نمبر یا فون سے طالب علم تلاش کریں',
@@ -1451,6 +1453,8 @@ export const screensUr: Shape<typeof screensEn> = {
     firstWeek: 'آپ کا پہلا ہفتہ',
     firstWeekDone: '{{total}} میں سے {{done}} مکمل',
     stepDone: 'مکمل',
+    stepHelp: 'طریقہ: {{step}}',
+    firstWeekGuide: 'قدم بہ قدم رہنمائی',
     steps: {
       setup: 'اسکول کی ترتیب مکمل کریں',
       admission: 'پہلے طالب علم کا داخلہ کریں',

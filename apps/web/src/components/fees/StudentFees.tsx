@@ -133,6 +133,7 @@ export function StudentFeesCard({
                   size="sm"
                   variant="outline"
                   id="student-reduce-fee"
+                  data-tour="student-reduce-fee"
                   onClick={() => setOpen({ k: 'reduce' })}
                 >
                   {t('fee.family.reduceFee')}

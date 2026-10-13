@@ -120,6 +120,7 @@ function TodayRow({ i, date }: { i: TodayItem; date: string }) {
   return (
     <ListRow
       to={registerPath(i.grp_id, date, i.grp_subject_id || null)}
+      tour="att-group"
       className="min-h-16"
       title={
         <>

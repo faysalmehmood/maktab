@@ -141,7 +141,7 @@ function FamilySearch({ onPick }: { onPick: (id: string) => void }) {
   };
   return (
     <Panel bodyClassName="flex flex-col gap-3 p-4">
-      <form onSubmit={submit} className="flex flex-col gap-2">
+      <form onSubmit={submit} className="flex flex-col gap-2" data-tour="counter-search">
         <label htmlFor="counter-search" className="text-sm font-medium">
           {t('fee.counter.searchLabel')}
         </label>
@@ -326,6 +326,7 @@ export function PayerCard({
   return (
     <Panel
       id="payer-card"
+      tour="counter-family"
       title={<bdi>{payer.name}</bdi>}
       action={
         payer.type === 'family' && (
@@ -777,7 +778,13 @@ function CollectForm({
       <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-18">
         <Panel title={t('screens.fees.payment')} bodyClassName="p-4">
           <fieldset disabled={locked} className="flex min-w-0 flex-col gap-4" id="counter-inputs">
-            <Field id="counter-amount" label="fee.counter.amount" required error={errors.amount}>
+            <Field
+              id="counter-amount"
+              tour="counter-amount"
+              label="fee.counter.amount"
+              required
+              error={errors.amount}
+            >
               <div className="flex flex-col gap-2">
                 <AmountInput
                   id="counter-amount"
@@ -833,7 +840,7 @@ function CollectForm({
                 </div>
               </div>
             </Field>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5" data-tour="counter-method">
               <span className="text-sm font-medium">{t('fee.counter.method')}</span>
               <MethodChips
                 value={method}
@@ -1018,6 +1025,7 @@ function CollectForm({
             type="submit"
             size="lg"
             id="counter-confirm"
+            data-tour="counter-confirm"
             className="ms-auto min-w-40 md:w-full"
             // Offline the family view is a read-only copy (M7): no new collection until the phone is
             // back online. An attempt already made keeps its own retry (same idempotency key).
@@ -1134,6 +1142,7 @@ export function CounterPage() {
     <Page width={family || sponsor ? 'detail' : 'form'}>
       <PageHeader
         title={t('fee.counter.title')}
+        help="collect-fee"
         actions={
           (family || sponsor) && (
             <Button variant="outline" onClick={() => setParams({})}>

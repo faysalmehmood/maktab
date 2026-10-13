@@ -135,6 +135,7 @@ export function Tabs<V extends string>({
             type="button"
             role="tab"
             id={`${idBase}-tab-${it.value}`}
+            data-tour={`${idBase}-tab-${it.value}`}
             aria-selected={on}
             aria-controls={`${idBase}-panel-${it.value}`}
             tabIndex={on ? 0 : -1}

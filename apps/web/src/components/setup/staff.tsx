@@ -58,7 +58,12 @@ export function InviteForm() {
     invite.mutate(draft);
   };
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-3 rounded-md border p-3">
+    <form
+      onSubmit={submit}
+      noValidate
+      data-tour="staff-invite"
+      className="flex flex-col gap-3 rounded-md border p-3"
+    >
       <h3 className="font-medium">{t('staff.invite')}</h3>
       <Field
         id="invite-email"

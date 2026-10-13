@@ -87,7 +87,7 @@ export function ParentLinkPanel({
   const pinOk = gate !== 'pin' || /^\d{4,6}$/.test(pin);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" data-tour="parent-link">
       <Button
         type="button"
         variant="ghost"

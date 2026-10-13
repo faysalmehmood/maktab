@@ -13,6 +13,7 @@ import { Link, useParams, useSearchParams } from 'react-router';
 import { PrintBadge } from '@/components/brand/SchoolBadge';
 import { Money, ReasonDialog } from '@/components/fees/common';
 import { ErrorNote, Field, PageTitle } from '@/components/form';
+import { HelpButton } from '@/components/HelpButton';
 import { MoneyErrorNote, PayslipStatusBadge, ReportActions } from '@/components/money/common';
 import { Page, PageHeader } from '@/components/page';
 import { RowMenu } from '@/components/row-menu';
@@ -225,6 +226,7 @@ export function SalaryPage() {
   return (
     <section className="flex min-w-0 max-w-5xl flex-col gap-4">
       <PageTitle
+        help={<HelpButton task="payslips" />}
         actions={
           <>
             <Button asChild variant="outline">
@@ -239,12 +241,13 @@ export function SalaryPage() {
         {t('money.salary.title')}
       </PageTitle>
       <div className="flex flex-wrap items-end gap-2">
-        <Field id="salary-period" label="money.common.month">
+        <Field id="salary-period" tour="salary-month" label="money.common.month">
           <MonthInput id="salary-period" value={period} onChange={(v) => setPeriod(v)} />
         </Field>
         {canPreparePayroll(roles) && (
           <Button
             id="salary-generate"
+            data-tour="salary-prepare"
             disabled={generate.isPending || !/^\d{4}-\d{2}$/.test(period)}
             onClick={() => generate.mutate()}
           >

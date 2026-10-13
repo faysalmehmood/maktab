@@ -130,6 +130,7 @@ export function StudentsList() {
     <Page width="full" className="max-w-[1240px]">
       <PageHeader
         title={t('student.title')}
+        help="admit-student"
         subtitle={data ? <span>{t('common.total', { n: data.total })}</span> : undefined}
         actions={
           canWriteStudents(roles) && (
@@ -141,7 +142,7 @@ export function StudentsList() {
                 </Link>
               </Button>
               <Button asChild>
-                <Link to="/students/new">
+                <Link to="/students/new" data-tour="students-admit">
                   <Plus aria-hidden />
                   {t('student.admit')}
                 </Link>
@@ -206,7 +207,7 @@ export function StudentsList() {
         </Field>
       </FilterBar>
 
-      <Panel bodyClassName="flex flex-col">
+      <Panel bodyClassName="flex flex-col" tour="students-list">
         <DataTable
           id="students-table"
           caption={t('student.title')}

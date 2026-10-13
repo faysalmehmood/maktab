@@ -26,6 +26,7 @@ export function TodayPage() {
     <Page width="form">
       <PageHeader
         title={t('attendance.title')}
+        help="take-attendance"
         subtitle={<DateText iso={date} kind="long" />}
         actions={
           <>
@@ -54,12 +55,12 @@ export function TodayPage() {
           <ListSkeleton rows={4} />
         </Panel>
       ) : today.data ? (
-        <>
+        <div data-tour="att-today" className="flex flex-col gap-5">
           <DayOffNote dayOff={today.data.day_off} />
           {/* The asked-for date, not the response's: offline, the cached list may be yesterday's,
               and its links must still open today's register. */}
           <TodayPanels items={today.data.items} date={date} />
-        </>
+        </div>
       ) : (
         <ErrorNote error={today.error} />
       )}

@@ -33,6 +33,7 @@ export function FilterBar({
   onClearAll,
   className,
   id = 'filters',
+  tour,
 }: {
   search?: ReactNode;
   /** The filter controls (Field + Select/Input…), rendered inline or in the sheet. */
@@ -41,6 +42,8 @@ export function FilterBar({
   onClearAll?: () => void;
   className?: string;
   id?: string;
+  /** `data-tour` name for a guide tour step. */
+  tour?: string;
 }) {
   const { t } = useTranslation();
   const phone = useIsPhone();
@@ -50,6 +53,7 @@ export function FilterBar({
     return (
       <div
         id={id}
+        data-tour={tour}
         data-layout="inline"
         className={cn('flex flex-col gap-3 print:hidden', className)}
       >
@@ -59,7 +63,12 @@ export function FilterBar({
     );
 
   return (
-    <div id={id} data-layout="sheet" className={cn('flex flex-col gap-2 print:hidden', className)}>
+    <div
+      id={id}
+      data-tour={tour}
+      data-layout="sheet"
+      className={cn('flex flex-col gap-2 print:hidden', className)}
+    >
       <div className="flex items-end gap-2">
         {search && <div className="min-w-0 flex-1">{search}</div>}
         <Button

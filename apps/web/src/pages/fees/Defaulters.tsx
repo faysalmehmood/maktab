@@ -192,6 +192,7 @@ export function DefaultersPage() {
   return (
     <Page width="full" className="defaulters-list max-w-[1200px]">
       <PageHeader
+        help="defaulters"
         title={
           <>
             {t('fee.defaulters.title')}
@@ -206,6 +207,7 @@ export function DefaultersPage() {
           <Button
             variant="outline"
             id="defaulters-print"
+            data-tour="def-print"
             onClick={() => void printWhenReady()}
             className="print:hidden"
           >
@@ -218,7 +220,12 @@ export function DefaultersPage() {
       <p className="hidden text-sm print:block">
         {t('fee.print.printedOn')} <Num>{karachiToday()}</Num>
       </p>
-      <FilterBar id="def-filters" active={active} onClearAll={() => apply(EMPTY)}>
+      <FilterBar
+        id="def-filters"
+        tour="def-filters"
+        active={active}
+        onClearAll={() => apply(EMPTY)}
+      >
         <Field id="def-group" label="fee.defaulters.group">
           <Select
             id="def-group"
@@ -313,6 +320,7 @@ export function DefaultersPage() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-card p-3 print:hidden">
           <Button
             id="remind-all"
+            data-tour="def-remind"
             onClick={() => remind.mutate()}
             disabled={remind.isPending || !data?.defaulters.length}
           >

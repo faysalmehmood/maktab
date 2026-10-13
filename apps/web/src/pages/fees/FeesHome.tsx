@@ -84,7 +84,7 @@ export function FeesHome() {
   const roles = useRoles();
   return (
     <Page>
-      <PageHeader title={t('fee.nav.home')} />
+      <PageHeader title={t('fee.nav.home')} help="collect-fee" />
       <FeesTabs />
       <ul className="grid gap-3 sm:grid-cols-2">
         {FEE_TILES.filter((x) => x.show(roles)).map(({ to, label, hint, icon: Icon }) => (

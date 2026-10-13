@@ -1,4 +1,5 @@
 import { formatPKR } from '@maktab/shared';
+import type { GuideTaskId } from '@maktab/shared/guide-audience';
 import { ArrowDown, ArrowUp, ChevronRight, type LucideIcon, Minus } from 'lucide-react';
 import type * as React from 'react';
 import type { ReactNode } from 'react';
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { HelpButton } from './HelpButton';
 
 /*
  * Shared page parts (M7b, UI plan §5.4): one header, panels instead of nested cards, one stat strip,
@@ -44,17 +46,22 @@ export function Page({
   );
 }
 
-/** Title, optional subtitle, one primary action and secondary actions. */
+/**
+ * Title, optional subtitle, one primary action and secondary actions. `help` puts a "?" next to the
+ * title that opens that guide task in a sheet (for the roles the task is for).
+ */
 export function PageHeader({
   title,
   subtitle,
   actions,
   back,
+  help,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
   back?: { to: string; label: string };
+  help?: GuideTaskId;
 }) {
   return (
     <header className="flex flex-col gap-1">
@@ -69,7 +76,10 @@ export function PageHeader({
       )}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-col">
-          <h1 className="text-title text-balance">{title}</h1>
+          <div className="flex min-w-0 items-center gap-1">
+            <h1 className="min-w-0 text-title text-balance">{title}</h1>
+            {help && <HelpButton task={help} />}
+          </div>
           {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
         </div>
         {actions && <div className="ms-auto flex flex-wrap items-center gap-2">{actions}</div>}
@@ -83,6 +93,7 @@ export function Panel({
   title,
   action,
   id,
+  tour,
   className,
   bodyClassName,
   children,
@@ -90,6 +101,8 @@ export function Panel({
   title?: ReactNode;
   action?: ReactNode;
   id?: string;
+  /** `data-tour` name for a guide tour step. */
+  tour?: string;
   className?: string;
   bodyClassName?: string;
   children: ReactNode;
@@ -97,6 +110,7 @@ export function Panel({
   return (
     <section
       id={id}
+      data-tour={tour}
       className={cn('min-w-0 rounded-xl border bg-card text-card-foreground', className)}
       aria-label={typeof title === 'string' ? title : undefined}
     >
@@ -220,6 +234,7 @@ export function ListRow({
   trailing,
   chevron = !!to,
   className,
+  tour,
 }: {
   to?: string;
   leading?: ReactNode;
@@ -228,6 +243,8 @@ export function ListRow({
   trailing?: ReactNode;
   chevron?: boolean;
   className?: string;
+  /** `data-tour` name for a guide tour step. */
+  tour?: string;
 }) {
   const inner = (
     <>
@@ -247,7 +264,7 @@ export function ListRow({
   );
   const cls = cn('flex min-h-12 min-w-0 items-center gap-3 px-4 py-2', className);
   return (
-    <li className="min-w-0">
+    <li className="min-w-0" data-tour={tour}>
       {to ? (
         <Link to={to} className={cn(cls, 'hover:bg-accent focus-visible:bg-accent')}>
           {inner}

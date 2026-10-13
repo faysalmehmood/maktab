@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Money } from '@/components/fees/common';
 import { Field, PageTitle } from '@/components/form';
+import { HelpButton } from '@/components/HelpButton';
 import { AccountSelect, MoneyErrorNote, ReportActions } from '@/components/money/common';
 import { MonthInput } from '@/components/month-input';
 import { Page, PageHeader } from '@/components/page';
@@ -70,7 +71,7 @@ export function ReportsHub() {
   ];
   return (
     <section className="flex max-w-4xl flex-col gap-4">
-      <PageTitle>{t('money.reports.title')}</PageTitle>
+      <PageTitle help={<HelpButton task="income-expense" />}>{t('money.reports.title')}</PageTitle>
       <ul className="grid gap-2 sm:grid-cols-2">
         {links
           .filter(([, , g]) => holds(roles, g))
@@ -78,6 +79,7 @@ export function ReportsHub() {
             <li key={to}>
               <Link
                 to={to}
+                data-tour={`reports-${to.split('/').pop()}`}
                 className="flex min-h-11 items-center rounded-md border px-4 py-3 font-medium hover:bg-accent"
               >
                 {t(label)}
@@ -186,10 +188,11 @@ export function IncomeExpensePage() {
             csv={valid ? `/api/reports/income-expense?${qs}&format=csv` : null}
           />
         }
+        help={<HelpButton task="income-expense" />}
       >
         {t('money.reports.incomeExpense')}
       </PageTitle>
-      <div className="grid gap-2 sm:grid-cols-2 print:hidden">
+      <div className="grid gap-2 sm:grid-cols-2 print:hidden" data-tour="ie-range">
         <Field id="ie-from" label="money.common.from">
           <MonthInput id="ie-from" value={from} onChange={(v) => setFrom(v)} />
         </Field>
@@ -201,7 +204,11 @@ export function IncomeExpensePage() {
       <MoneyErrorNote error={q.error} />
       {r && (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" id="ie-totals">
+          <div
+            className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+            id="ie-totals"
+            data-tour="ie-totals"
+          >
             <Card className="gap-1 py-3">
               <CardContent className="px-4">
                 <p className="text-xs text-muted-foreground">{t('money.reports.income')}</p>

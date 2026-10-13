@@ -390,6 +390,7 @@ export function RegisterPage() {
     <Page width="form" className="pb-28 md:pb-0">
       <PageHeader
         back={{ to: back, label: t('attendance.title') }}
+        help="take-attendance"
         title={<bdi>{`${r.programme_name} ${r.grp_name}`}</bdi>}
         subtitle={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -417,7 +418,7 @@ export function RegisterPage() {
       <DayOffNote dayOff={r.day_off} />
 
       {total > 0 && (
-        <Panel bodyClassName="flex flex-col gap-2 p-4">
+        <Panel bodyClassName="flex flex-col gap-2 p-4" tour="att-progress">
           <p id="register-progress" className="text-section font-semibold" aria-live="polite">
             {t('screens.att.marked', { present: counts.P, total })}
           </p>
@@ -492,6 +493,7 @@ export function RegisterPage() {
             return (
               <li
                 key={row.student_id}
+                data-tour="att-row"
                 data-status={d.status}
                 className={cn(
                   'flex items-center gap-1 pe-2 first:rounded-t-xl last:rounded-b-xl',
@@ -551,6 +553,7 @@ export function RegisterPage() {
           </span>
           <Button
             size="lg"
+            data-tour="att-save"
             className="ms-auto min-w-40"
             disabled={closed || tooBig || saving || correct.isPending || r.rows.length === 0}
             onClick={() => (isCorrection ? setCorrecting(true) : void save())}

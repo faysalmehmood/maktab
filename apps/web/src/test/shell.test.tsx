@@ -77,6 +77,7 @@ describe('app shell', () => {
       '/reports',
       '/settings',
       '/audit',
+      '/guide',
     ]);
     // The audit trail is the owner's alone (PLAN §5.4).
     expect(paths(['admin'])).toEqual(paths(['owner']).filter((p) => p !== '/audit'));
@@ -88,6 +89,7 @@ describe('app shell', () => {
       '/messages',
       '/fees/defaulters',
       '/my/payslips',
+      '/guide',
     ]);
     expect(navFor(['teacher']).find((n) => n.to === '/groups')?.label).toBe('nav.myGroups');
     expect(paths(['accountant'])).toEqual([
@@ -99,6 +101,7 @@ describe('app shell', () => {
       '/salary',
       '/reports',
       '/settings',
+      '/guide',
     ]);
     expect(paths([])).toEqual([]);
   });

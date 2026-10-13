@@ -8,8 +8,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarCheck,
   CheckCircle2,
+  ChevronRight,
   Circle,
   CircleAlert,
+  CircleHelp,
   MessageSquareText,
   RotateCw,
   Wallet,
@@ -601,18 +603,20 @@ function FirstWeekCard() {
   });
   const d = q.data;
   if (!d) return null;
-  const steps: { id: keyof FirstWeekDto; to: string }[] = [
-    { id: 'setup', to: '/setup' },
-    { id: 'admission', to: '/students/new' },
-    { id: 'fees', to: '/fees/billing' },
-    { id: 'register', to: '/attendance' },
-    { id: 'message', to: '/messages' },
+  // `guide`: the matching step of the guide's "Your first week" (/guide/first-week#step-…).
+  const steps: { id: keyof FirstWeekDto; to: string; guide: string }[] = [
+    { id: 'setup', to: '/setup', guide: 'setup' },
+    { id: 'admission', to: '/students/new', guide: 'admission' },
+    { id: 'fees', to: '/fees/billing', guide: 'fee' },
+    { id: 'register', to: '/attendance', guide: 'register' },
+    { id: 'message', to: '/messages', guide: 'message' },
   ];
   const done = steps.filter((s) => d[s.id]).length;
   if (done === steps.length) return null;
   return (
     <Panel
       id="home-first-week"
+      tour="home-first-week"
       title={t('screens.home.firstWeek')}
       action={
         <span className="text-meta text-muted-foreground">
@@ -634,15 +638,34 @@ function FirstWeekCard() {
               trailing={<span className="sr-only">{t('screens.home.stepDone')}</span>}
             />
           ) : (
-            <ListRow
-              key={s.id}
-              to={s.to}
-              leading={<Circle className="size-5 shrink-0 text-muted-foreground" aria-hidden />}
-              title={t(`screens.home.steps.${s.id}`)}
-            />
+            // The step's screen, and beside it the guide's step for it (two separate targets).
+            <li key={s.id} className="flex min-w-0 items-center">
+              <Link
+                to={s.to}
+                className="flex min-h-12 min-w-0 flex-1 items-center gap-3 px-4 py-2 hover:bg-accent focus-visible:bg-accent"
+              >
+                <Circle className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="truncate font-medium">{t(`screens.home.steps.${s.id}`)}</span>
+                <ChevronRight
+                  className="ms-auto size-4 shrink-0 text-muted-foreground rtl:-scale-x-100"
+                  aria-hidden
+                />
+              </Link>
+              <Link
+                to={`/guide/first-week#step-${s.guide}`}
+                className="me-1 grid size-11 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-brand"
+                aria-label={t('screens.home.stepHelp', { step: t(`screens.home.steps.${s.id}`) })}
+                data-step-help={s.guide}
+              >
+                <CircleHelp className="size-5" aria-hidden />
+              </Link>
+            </li>
           ),
         )}
       </RowList>
+      <div className="border-t px-4 py-1">
+        <GoLink to="/guide/first-week">{t('screens.home.firstWeekGuide')}</GoLink>
+      </div>
     </Panel>
   );
 }

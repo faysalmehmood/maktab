@@ -273,6 +273,7 @@ function QueueRow({
             ) : (
               <Button
                 id={`msg-primary-${m.id}`}
+                data-tour="msg-open-wa"
                 size={large ? 'lg' : 'default'}
                 disabled={busy}
                 onClick={() => onOpen(m, true)}
@@ -295,6 +296,7 @@ function QueueRow({
             {!skipping && (
               <Button
                 id={noNumber ? `msg-primary-${m.id}` : `msg-skip-${m.id}`}
+                data-tour={noNumber ? undefined : 'msg-skip'}
                 variant="ghost"
                 disabled={busy}
                 onClick={() => setSkipping(true)}
@@ -646,6 +648,7 @@ export function MessagesPage() {
       <PageHeader
         title={t('msg.queue.title')}
         subtitle={t('msg.queue.intro')}
+        help="send-messages"
         actions={
           <>
             {canCompose(roles) && (
@@ -654,7 +657,7 @@ export function MessagesPage() {
               </Button>
             )}
             {canSend && status === 'queued' && left.length > 0 && (
-              <Button id="msg-focus-start" onClick={() => setFocus(true)}>
+              <Button id="msg-focus-start" data-tour="msg-start" onClick={() => setFocus(true)}>
                 <Play aria-hidden className="rtl:-scale-x-100" />
                 {t('screens.msg.start')}
               </Button>
@@ -663,7 +666,10 @@ export function MessagesPage() {
         }
       />
 
-      <dl className="grid grid-cols-3 divide-x overflow-hidden rounded-xl border bg-card rtl:divide-x-reverse">
+      <dl
+        data-tour="msg-counts"
+        className="grid grid-cols-3 divide-x overflow-hidden rounded-xl border bg-card rtl:divide-x-reverse"
+      >
         <Counter id="count-pending" label={t('msg.queue.pending')} n={shownCounts?.queued} />
         <Counter id="count-sent" label={t('msg.queue.sentToday')} n={shownCounts?.sent_today} />
         <Counter

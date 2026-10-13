@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { AmountInput, Figure, Money, ReasonDialog } from '@/components/fees/common';
 import { FeesTabs } from '@/components/fees/FeesTabs';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
+import { HelpButton } from '@/components/HelpButton';
 import { StatusBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -103,7 +104,7 @@ function TodayDrawer() {
     close.mutate({ id: s.id, paisa: countedPaisa });
   };
   return (
-    <Card className="gap-3 py-4" id="cash-today">
+    <Card className="gap-3 py-4" id="cash-today" data-tour="cash-today">
       <CardHeader className="px-4">
         <CardTitle className="flex items-center gap-2">
           {t('fee.cash.today')} · <Num>{today}</Num>
@@ -169,7 +170,13 @@ function TodayDrawer() {
             )}
             {!s.closed_at ? (
               <form onSubmit={submitClose} className="flex flex-col gap-2" noValidate>
-                <Field id="cash-counted" label="fee.cash.counted" required error={err}>
+                <Field
+                  id="cash-counted"
+                  tour="cash-counted"
+                  label="fee.cash.counted"
+                  required
+                  error={err}
+                >
                   <AmountInput id="cash-counted" value={counted} onChange={setCounted} />
                 </Field>
                 {countedPaisa !== null && (
@@ -195,7 +202,12 @@ function TodayDrawer() {
                   </p>
                 )}
                 <ErrorNote error={close.error} />
-                <Button type="submit" id="cash-close" disabled={close.isPending}>
+                <Button
+                  type="submit"
+                  id="cash-close"
+                  data-tour="cash-close"
+                  disabled={close.isPending}
+                >
                   {t('fee.cash.close')}
                 </Button>
               </form>
@@ -488,7 +500,7 @@ export function CashPage() {
   const { t } = useTranslation();
   return (
     <section className="flex max-w-3xl flex-col gap-4">
-      <PageTitle>{t('fee.cash.title')}</PageTitle>
+      <PageTitle help={<HelpButton task="close-cash" />}>{t('fee.cash.title')}</PageTitle>
       <FeesTabs />
       <TodayDrawer />
       <TransferForm />

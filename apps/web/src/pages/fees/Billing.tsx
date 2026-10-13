@@ -343,7 +343,11 @@ export function BillingPage() {
 
   return (
     <Page width="full" className="max-w-[1280px]">
-      <PageHeader title={t('fee.billing.title')} subtitle={t('screens.fees.billingHint')} />
+      <PageHeader
+        title={t('fee.billing.title')}
+        subtitle={t('screens.fees.billingHint')}
+        help="generate-fees"
+      />
       <FeesTabs />
 
       {needsAttention && (
@@ -436,6 +440,7 @@ export function BillingPage() {
         <div className="flex min-w-0 flex-col gap-5">
           <Panel
             id="billing-month"
+            tour="billing-month"
             title={t('screens.fees.billMonth')}
             action={
               runs.data && (
@@ -460,6 +465,7 @@ export function BillingPage() {
             <div className="flex flex-wrap gap-2 max-sm:[&>button]:flex-1">
               <Button
                 id="billing-preview"
+                data-tour="billing-preview"
                 variant="outline"
                 disabled={gen.isPending}
                 onClick={() => gen.mutate(true)}
@@ -469,6 +475,7 @@ export function BillingPage() {
               </Button>
               <Button
                 id="billing-generate"
+                data-tour="billing-generate"
                 disabled={gen.isPending || !previewReady}
                 onClick={() => setConfirmGen(true)}
               >
@@ -519,12 +526,14 @@ export function BillingPage() {
         <div className="flex min-w-0 flex-col gap-5">
           <Panel
             id="billing-fines"
+            tour="billing-fines"
             title={t('fee.billing.fines')}
             bodyClassName="flex flex-col gap-3 p-4"
           >
             <div className="flex flex-wrap gap-2">
               <Button
                 id="fines-preview"
+                data-tour="fines-preview"
                 variant="outline"
                 disabled={fines.isPending}
                 onClick={() => fines.mutate(true)}
