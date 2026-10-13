@@ -2,6 +2,30 @@
 
 Production deploys are a human decision (PLAN §15: ask first). This is the order, every time.
 
+## Two installations (since 2026-10-13)
+
+| | GSA pilot (the real school) | Public demo |
+|---|---|---|
+| URL | https://maktab-gsap.conceptlix.com | https://maktab.conceptlix.com |
+| wrangler env | `--env gsap` | `--env demo` |
+| Worker | `maktab-gsap` | `maktab` |
+| D1 | `maktab-gsap` (`3e0f42ab-…`) | `maktab` (`440d652e-…`) |
+| R2 files | `maktab-gsap-files` | `maktab-files` |
+| Backups | nightly to `maktab-backups` (GitHub Actions, `--env gsap`) | never |
+| `OWNER_EMAIL` | shahid.ics.pu@gmail.com (GSA's owner) | thefaysalmehmood@gmail.com |
+| `DEMO_MODE` | never (a test enforces it) | `1` (docs/demo.md) |
+| Cron | `*/30 * * * *` | `* * * * *` (drives the nightly reset) |
+
+Each has its own `SESSION_SECRET`, `PARENT_LINK_SECRET`, Google client secrets, and (gsap only)
+`BACKUP_REPORT_TOKEN`. Everything below is written for the pilot (`--env gsap`). For the demo,
+see docs/demo.md. Later (M8), GSA moves to its own Cloudflare account behind a front-door Worker.
+
+**Google OAuth (user, by hand).** Add the authorised redirect URI
+`https://maktab-gsap.conceptlix.com/api/auth/google/callback` to the OAuth client, then
+`npx wrangler secret put GOOGLE_CLIENT_ID --env gsap` and `GOOGLE_CLIENT_SECRET` (the same client's
+values). Until then gsap's Google sign-in answers 500 `misconfigured`. The demo keeps the
+`maktab.conceptlix.com` redirect URI it already has, and its demo buttons need no Google.
+
 ## 1. Before
 
 - `main` is green: `npm run typecheck && npm run lint && npm test && npm run build`, and
@@ -18,8 +42,8 @@ Production deploys are a human decision (PLAN §15: ask first). This is the orde
 
 ```sh
 cd apps/api
-npx wrangler d1 migrations list DB --remote --env production    # what will run
-npx wrangler d1 migrations apply DB --remote --env production
+npx wrangler d1 migrations list DB --remote --env gsap    # what will run
+npx wrangler d1 migrations apply DB --remote --env gsap
 ```
 
 Migrations that rebuild a money table (0008, 0010) drop the ledger views and the triggers that read
@@ -29,7 +53,7 @@ by the same `apply`; if it stops between the two, run `apply` again before anyth
 ## 3. Verify the rules are all there
 
 ```sh
-npm run db:verify -- --remote --env production    # from the repo root
+npm run db:verify -- --remote --env gsap    # from the repo root
 ```
 
 It reads `sqlite_master` and compares it with what `packages/db/sql/*.sql` creates (the files the
@@ -54,8 +78,8 @@ Set once per environment, each its own random value (never echo it, never reuse 
 
 ```sh
 cd apps/api
-openssl rand -base64 48 | npx wrangler secret put SESSION_SECRET --env production
-openssl rand -base64 48 | npx wrangler secret put PARENT_LINK_SECRET --env production
+openssl rand -base64 48 | npx wrangler secret put SESSION_SECRET --env gsap
+openssl rand -base64 48 | npx wrangler secret put PARENT_LINK_SECRET --env gsap
 ```
 
 `PARENT_LINK_SECRET` (M5) keys everything about parent links: the link tokens (HMAC of a per-link
@@ -78,7 +102,7 @@ route answers 503 and Settings → Backup says reporting is off. The Worker also
 
 ```sh
 npm run build
-cd apps/api && npx wrangler deploy --env production
+cd apps/api && npx wrangler deploy --env gsap
 ```
 
 ## 6. After
@@ -106,9 +130,9 @@ Match paths precisely, never with a bare `starts_with(path, "/p")` (that would a
 
 | # | Rule name | If incoming requests match (expression) | Characteristics | Rate | Action | Duration |
 |---|---|---|---|---|---|---|
-| 1 | maktab parent page | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
-| 2 | maktab sign-in | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 20 requests / 1 minute | Block (429) | 1 minute |
-| 3 | maktab API writes | `(http.host eq "maktab.conceptlix.com" and http.request.method eq "POST" and starts_with(http.request.uri.path, "/api/"))` | IP | 300 requests / 1 minute | Block (429) | 1 minute |
+| 1 | maktab parent page | `(http.host eq "maktab-gsap.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
+| 2 | maktab sign-in | `(http.host eq "maktab-gsap.conceptlix.com" and ((http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 20 requests / 1 minute | Block (429) | 1 minute |
+| 3 | maktab API writes | `(http.host eq "maktab-gsap.conceptlix.com" and http.request.method eq "POST" and starts_with(http.request.uri.path, "/api/"))` | IP | 300 requests / 1 minute | Block (429) | 1 minute |
 
 **Free plan: one rule only** (and a 10 s period, so "60 / 1 minute" becomes "10 / 10 seconds", and
 "20 / 1 minute" becomes "4 / 10 seconds" — Cloudflare counts per period). Rules 1 and 2 cannot keep
@@ -117,7 +141,7 @@ sign-in rate and record it in docs/deploy-log.md:
 
 | Rule name | Expression | Characteristics | Rate | Action | Duration |
 |---|---|---|---|---|---|
-| maktab public surfaces | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/") or (http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 10 requests / 10 seconds | Block (429) | 10 seconds |
+| maktab public surfaces | `(http.host eq "maktab-gsap.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/") or (http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 10 requests / 10 seconds | Block (429) | 10 seconds |
 
 A parent page load is about 3–4 requests (shell, `/api/p`, the logo, a gate attempt) and a sign-in
 is 2–3, so 10 per 10 s per IP leaves room for a whole office on one NAT IP; the Worker's own per-IP
@@ -133,7 +157,7 @@ personal data, cacheable, but unauthenticated, so they sit under the same per-IP
 Worker's own in-isolate limiter does not cover `/api/identity*`; the WAF rule is the limit there.) Rule 3 also covers `POST /api/backup/runs` (token-only; no Turnstile needed there). A school
 behind one NAT IP (all office phones on one Wi-Fi) stays far below 300 POSTs a minute; if a busy
 counter ever hits it, raise rule 3, never remove it. Check: `for i in $(seq 70); do curl -s -o
-/dev/null -w '%{http_code}\n' https://maktab.conceptlix.com/api/p; done | sort | uniq -c` shows 429s,
+/dev/null -w '%{http_code}\n' https://maktab-gsap.conceptlix.com/api/p; done | sort | uniq -c` shows 429s,
 and the same loop on `/api/payroll` (a 401, signed out) never does.
 
 ## 8. Turnstile (optional; set by hand)
@@ -142,16 +166,16 @@ Off until both values exist; with either missing everything behaves as before. O
 (`POST /api/p/gate`, birth year / PIN) needs a Turnstile token before an attempt is counted, and
 `GET /api/auth/google/start` first shows a one-click check page, then goes on to Google.
 
-1. Dashboard → **Turnstile** → Add widget. Name `maktab`; Hostnames `maktab.conceptlix.com`
+1. Dashboard → **Turnstile** → Add widget. Name `maktab`; Hostnames `maktab-gsap.conceptlix.com`
    (add `localhost` only on a separate test widget); Widget mode **Managed**; pre-clearance off.
    Create. Copy the **Site key** (public) and the **Secret key**.
 2. Site key: in `apps/api/wrangler.toml` under `[env.production.vars]` set
    `TURNSTILE_SITE_KEY = "<site key>"` (public, fine in git) and commit.
-3. Secret (never in git or chat): `cd apps/api && npx wrangler secret put TURNSTILE_SECRET --env production`
+3. Secret (never in git or chat): `cd apps/api && npx wrangler secret put TURNSTILE_SECRET --env gsap`
    and paste it at the prompt.
-4. `npm run build && cd apps/api && npx wrangler deploy --env production`.
-5. Check: `curl -s https://maktab.conceptlix.com/api/auth/google/start | grep cf-turnstile` finds the
-   widget; `curl -sI https://maktab.conceptlix.com/p | grep -i content-security` lists
+4. `npm run build && cd apps/api && npx wrangler deploy --env gsap`.
+5. Check: `curl -s https://maktab-gsap.conceptlix.com/api/auth/google/start | grep cf-turnstile` finds the
+   widget; `curl -sI https://maktab-gsap.conceptlix.com/p | grep -i content-security` lists
    `https://challenges.cloudflare.com`; open a parent link with a gate on a phone: the widget shows
    under the birth-year box and "Open" waits for it.
 
@@ -164,12 +188,12 @@ closed** ("try again"): the gate's real limiter is the atomic 5-attempt lockout 
 Turnstile outage only delays a parent, it never opens extra guesses. An explicit `success: false`
 fails closed on both.
 
-To turn it off again: `npx wrangler secret delete TURNSTILE_SECRET --env production` (or remove the
+To turn it off again: `npx wrangler secret delete TURNSTILE_SECRET --env gsap` (or remove the
 var) and deploy. Testing keys for a local check (`apps/api/.dev.vars`): site key
 `1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA` always pass (they answer with hostname
 `example.com`, so the hostname check is skipped only while `APP_ORIGIN` is `http://localhost…`).
 
-## First deploy notes (2026-10-10, see docs/deploy-log.md)
+## First deploy notes (2026-10-10, see docs/deploy-log.md; that host is now the demo)
 
 - Production host is `maktab.conceptlix.com`. wrangler created the DNS record and certificate itself
   (custom domain), as the zone is on the same Cloudflare account; the local resolver may lag a few

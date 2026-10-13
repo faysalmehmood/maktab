@@ -5,6 +5,8 @@
   </picture>
 </p>
 
+**Try the demo:** https://maktab.conceptlix.com (made-up school, no account needed; docs/demo.md)
+
 <p align="center"><b>Free, open-source school and academy management for Pakistani community schools.</b><br>
 Maktab · مکتب</p>
 
