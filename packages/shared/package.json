@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./i18n-ur": "./src/i18n-ur.ts"
+    "./i18n-ur": "./src/i18n-ur.ts",
+    "./i18n-screens": "./src/i18n-screens.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

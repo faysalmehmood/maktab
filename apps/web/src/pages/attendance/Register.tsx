@@ -8,14 +8,15 @@ import {
   type RegisterResponse,
 } from '@maktab/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CloudOff, History, MessageSquareText, StickyNote } from 'lucide-react';
+import { CloudOff, History, MessageSquareText, PencilLine, StickyNote } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router';
-import { Counts, DayOffNote, StatusChip, todayPk } from '@/components/attendance/common';
+import { todayPk } from '@/components/attendance/common';
+import { Counts, DayOffNote, MarkBar, StatusChip } from '@/components/attendance/parts';
 import { Avatar } from '@/components/avatar';
-import { ErrorNote, Num, PageTitle, useErrorText } from '@/components/form';
-import { Badge } from '@/components/ui/badge';
+import { ErrorNote, Num, useErrorText } from '@/components/form';
+import { ListSkeleton, Page, PageHeader, Panel, StatusBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -45,9 +46,19 @@ import {
   useRegister,
   useRejectionText,
 } from '@/lib/attendance';
+import { longDate } from '@/lib/dates';
+import { useOnline } from '@/lib/media';
 import { useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 import { onAnswer, type SaveOutcome, saveRegister, useOutboxStatus } from '@/offline/sync';
+
+/** A quiet tint on rows that are not present, so the exceptions stand out on a long roster. */
+const ROW_TINT: Record<MarkStatus, string> = {
+  P: '',
+  A: 'bg-bad-soft/70',
+  L: 'bg-warn-soft/70',
+  E: 'bg-info-soft/70',
+};
 
 type Draft = Record<string, { status: MarkStatus; note: string }>;
 
@@ -152,9 +163,9 @@ function HistorySheet({ r, onClose }: { r: RegisterResponse; onClose: () => void
                 <span className="flex flex-wrap items-center gap-2">
                   <bdi className="font-medium">{h.taken_by_name ?? '—'}</bdi>
                   <Num>{timeOf(h.taken_at)}</Num>
-                  {h.is_current && <Badge>{t('attendance.current')}</Badge>}
+                  {h.is_current && <StatusBadge tone="ok">{t('attendance.current')}</StatusBadge>}
                   {h.kind === 'correct' && (
-                    <Badge variant="outline">{t('attendance.correction')}</Badge>
+                    <StatusBadge tone="info">{t('attendance.correction')}</StatusBadge>
                   )}
                 </span>
                 {h.reason && (
@@ -163,6 +174,7 @@ function HistorySheet({ r, onClose }: { r: RegisterResponse; onClose: () => void
                   </span>
                 )}
                 <Counts counts={h.counts} />
+                <MarkBar counts={h.counts} className="h-1.5" />
               </li>
             ))}
           </ol>
@@ -219,7 +231,8 @@ type Saved =
   | { kind: 'paused'; clientId: string };
 
 export function RegisterPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const online = useOnline();
   const errorText = useErrorText();
   const { grpId } = useParams();
   const [params] = useSearchParams();
@@ -344,7 +357,14 @@ export function RegisterPage() {
     },
   });
 
-  if (reg.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (reg.isPending)
+    return (
+      <Page width="form">
+        <Panel>
+          <ListSkeleton rows={6} />
+        </Panel>
+      </Page>
+    );
   if (!reg.data || !draft || !counts)
     return <ErrorNote error={reg.error ?? new Error('not_found')} />;
   const r = reg.data;
@@ -363,54 +383,76 @@ export function RegisterPage() {
 
   const noteStudent = noteFor ? r.rows.find((x) => x.student_id === noteFor) : undefined;
 
+  const back = office && date !== todayPk() ? `/attendance?date=${date}` : '/attendance';
+  const total = r.rows.length;
+
   return (
-    <section className="flex max-w-2xl flex-col gap-3 pb-28">
-      <PageTitle
+    <Page width="form" className="pb-28 md:pb-0">
+      <PageHeader
+        back={{ to: back, label: t('attendance.title') }}
+        title={<bdi>{`${r.programme_name} ${r.grp_name}`}</bdi>}
+        subtitle={
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <bdi>{longDate(date, i18n.language)}</bdi>
+            {r.current ? (
+              <StatusBadge tone="ok">
+                <span>
+                  {t('attendance.taken')} · <bdi>{r.current.taken_by_name ?? ''}</bdi>{' '}
+                  <Num>{timeOf(r.current.taken_at)}</Num>
+                </span>
+              </StatusBadge>
+            ) : (
+              <StatusBadge tone="warn">{t('attendance.notTaken')}</StatusBadge>
+            )}
+          </span>
+        }
         actions={
-          <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+          <Button variant="outline" onClick={() => setHistoryOpen(true)}>
             <History aria-hidden />
             {t('attendance.history')}
             {r.history.length > 0 && <Num>({r.history.length})</Num>}
           </Button>
         }
-      >
-        <bdi>{r.programme_name}</bdi> · <bdi>{r.grp_name}</bdi>
-      </PageTitle>
-      <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        <Num>{date}</Num>
-        {r.current ? (
-          // One inline span: Badge is inline-flex, which would drop the spaces between parts.
-          <Badge variant="secondary">
-            <span>
-              {t('attendance.taken')} · <bdi>{r.current.taken_by_name ?? ''}</bdi>{' '}
-              <Num>{timeOf(r.current.taken_at)}</Num>
-            </span>
-          </Badge>
-        ) : (
-          <Badge variant="destructive">{t('attendance.notTaken')}</Badge>
-        )}
-      </p>
+      />
       <DayOffNote dayOff={r.day_off} />
 
+      {total > 0 && (
+        <Panel bodyClassName="flex flex-col gap-2 p-4" id="register-progress">
+          <p className="text-section font-semibold">
+            {t('screens.att.marked', { present: counts.P, total })}
+          </p>
+          <MarkBar counts={counts} />
+        </Panel>
+      )}
+
+      {isCorrection && !closed && (
+        <p
+          id="correction-mode"
+          className="flex items-start gap-2 rounded-lg bg-info-soft p-3 text-sm text-info"
+        >
+          <PencilLine className="mt-0.5 size-4 shrink-0" aria-hidden />
+          {t('screens.att.correctionMode')}
+        </p>
+      )}
       {saved?.kind === 'offline' && (
         <p
           role="status"
-          className="flex items-center gap-2 rounded-md bg-warn-soft p-3 text-sm text-warn"
+          className="flex items-center gap-2 rounded-lg bg-warn-soft p-3 text-sm text-warn"
         >
           <CloudOff className="size-4 shrink-0" aria-hidden />
           {t('attendance.savedOffline')}
         </p>
       )}
       {saved?.kind === 'paused' && (
-        <p role="alert" className="rounded-md bg-warn-soft p-3 text-sm text-warn">
+        <p role="alert" className="rounded-lg bg-warn-soft p-3 text-sm text-warn">
           {t('attendance.signInAgain')}{' '}
-          <Link to="/login" className="underline">
+          <Link to="/login" className="font-semibold underline">
             {t('attendance.signIn')}
           </Link>
         </p>
       )}
       {saved?.kind === 'answered' && saved.result.status === 'rejected' && (
-        <p role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+        <p role="alert" className="rounded-lg bg-bad-soft p-3 text-sm text-bad">
           {rejection(saved.result.error, date)}
         </p>
       )}
@@ -421,14 +463,14 @@ export function RegisterPage() {
         </p>
       )}
       {tooBig && (
-        <p role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+        <p role="alert" className="rounded-lg bg-bad-soft p-3 text-sm text-bad">
           {t('attendance.rosterTooBig', { n: r.rows.length, max: MAX_MARKS_PER_REGISTER })}
         </p>
       )}
       {queued > 0 && (
         <p
           role="status"
-          className="flex flex-wrap items-center gap-2 rounded-md bg-muted p-3 text-sm"
+          className="flex flex-wrap items-center gap-2 rounded-lg bg-muted p-3 text-sm"
         >
           <MessageSquareText className="size-4 shrink-0" aria-hidden />
           <span className="flex-1">{t('attendance.queued', { count: queued })}</span>
@@ -442,54 +484,71 @@ export function RegisterPage() {
 
       {!closed && <p className="text-sm text-muted-foreground">{t('attendance.tapHint')}</p>}
 
-      <ul className="flex flex-col divide-y rounded-lg border">
-        {r.rows.map((row) => {
-          const d = draft[row.student_id];
-          if (!d) return null;
-          return (
-            <li key={row.student_id} className="flex items-center gap-1 pe-2">
-              <button
-                type="button"
-                disabled={closed}
-                onClick={() => cycle(row.student_id)}
-                aria-label={`${row.name}: ${t(`attendance.status.${d.status}`)}`}
+      <Panel>
+        <ul className="flex flex-col divide-y">
+          {r.rows.map((row) => {
+            const d = draft[row.student_id];
+            if (!d) return null;
+            return (
+              <li
+                key={row.student_id}
+                data-status={d.status}
                 className={cn(
-                  'flex min-h-16 min-w-0 flex-1 items-center gap-3 px-3 text-start hover:bg-accent disabled:opacity-60',
-                  d.status !== 'P' && 'bg-bad-soft/60',
+                  'flex items-center gap-1 pe-2 first:rounded-t-xl last:rounded-b-xl',
+                  ROW_TINT[d.status],
                 )}
               >
-                <StudentAvatar id={row.student_id} name={row.name} hasPhoto={row.has_photo} />
-                <span className="w-8 shrink-0 text-sm text-muted-foreground">
-                  <Num>{row.roll_no ?? '—'}</Num>
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <bdi className="truncate">{row.name}</bdi>
-                  {d.note && <bdi className="truncate text-xs text-muted-foreground">{d.note}</bdi>}
-                </span>
-                <StatusChip status={d.status} solid className="size-12" />
-              </button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={closed}
-                aria-label={t('attendance.noteFor', { name: row.name })}
-                onClick={() => setNoteFor(row.student_id)}
-              >
-                <StickyNote aria-hidden className={cn(d.note && 'text-primary')} />
-              </Button>
-            </li>
-          );
-        })}
-      </ul>
+                <button
+                  type="button"
+                  disabled={closed}
+                  onClick={() => cycle(row.student_id)}
+                  aria-label={`${row.name}: ${t(`attendance.status.${d.status}`)}`}
+                  className="flex min-h-16 min-w-0 flex-1 items-center gap-3 rounded-[inherit] ps-3 text-start hover:bg-accent/60 disabled:opacity-60"
+                >
+                  <StudentAvatar id={row.student_id} name={row.name} hasPhoto={row.has_photo} />
+                  <span className="w-7 shrink-0 text-center text-sm text-muted-foreground">
+                    <Num>{row.roll_no ?? '—'}</Num>
+                  </span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <bdi className="truncate font-medium">{row.name}</bdi>
+                    {d.note && (
+                      <bdi className="truncate text-xs text-muted-foreground">{d.note}</bdi>
+                    )}
+                  </span>
+                  <StatusChip status={d.status} solid className="size-12" />
+                </button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={closed}
+                  aria-label={t('attendance.noteFor', { name: row.name })}
+                  onClick={() => setNoteFor(row.student_id)}
+                >
+                  <StickyNote aria-hidden className={cn(d.note && 'text-brand')} />
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      </Panel>
 
       <div
         data-action-bar
         style={{ bottom: 'var(--tabbar-h, 0px)' }}
-        className="fixed inset-x-0 z-10 border-t bg-background/95 p-3 backdrop-blur md:static md:border-0 md:bg-transparent md:p-0"
+        className="fixed inset-x-0 z-10 border-t bg-card/95 p-3 backdrop-blur md:sticky md:rounded-xl md:border md:shadow-sm"
       >
-        <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-3">
-          <Counts counts={counts} />
+        <div className="mx-auto flex max-w-[680px] flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="flex min-w-0 flex-col gap-1">
+            <span className="sr-only">{t('screens.att.marksLabel')}</span>
+            <Counts counts={counts} />
+            {!online && (
+              <span className="flex items-center gap-1 text-meta text-warn">
+                <CloudOff className="size-3.5 shrink-0" aria-hidden />
+                {t('attendance.offline')}
+              </span>
+            )}
+          </span>
           <Button
             size="lg"
             className="ms-auto min-w-40"
@@ -528,6 +587,6 @@ export function RegisterPage() {
           onSubmit={(reason) => correct.mutate(reason)}
         />
       )}
-    </section>
+    </Page>
   );
 }

@@ -1,10 +1,8 @@
-import type { DayOff, MarkCounts, MarkStatus, TodayItem } from '@maktab/shared';
-import { CalendarOff, ChevronRight, CloudOff, LogIn, TriangleAlert } from 'lucide-react';
+import { CloudOff, LogIn, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Num } from '@/components/form';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -14,139 +12,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  registerPath,
-  STATUS_CLASS,
-  STATUS_SOLID,
-  timeOf,
-  useRejectionText,
-} from '@/lib/attendance';
+import { useRejectionText } from '@/lib/attendance';
 import { useRoles } from '@/lib/roles';
-import { cn, isolate } from '@/lib/utils';
 import type { OutboxEntry } from '@/offline/outbox';
 import { discardFailed, failedEntries, retryFailed, useOutboxStatus } from '@/offline/sync';
 
-/**
- * The coloured letter; the full word is the accessible name. `solid` is the register's current mark
- * (solid fill, white letter); everywhere else it is a soft badge.
+/*
+ * The attendance parts the shell needs (entry chunk): the sync banner and the school day. The
+ * register's own parts (marks, counts, the day lists) live in ./parts.tsx, a lazy chunk (M7b-2).
  */
-export function StatusChip({
-  status,
-  solid = false,
-  className,
-}: {
-  status: MarkStatus;
-  solid?: boolean;
-  className?: string;
-}) {
-  const { t } = useTranslation();
-  return (
-    <span
-      title={t(`attendance.status.${status}`)}
-      data-solid={solid || undefined}
-      className={cn(
-        'inline-flex size-11 shrink-0 items-center justify-center rounded-md font-sans text-lg font-bold',
-        (solid ? STATUS_SOLID : STATUS_CLASS)[status],
-        className,
-      )}
-    >
-      <span aria-hidden>{t(`attendance.letter.${status}`)}</span>
-      <span className="sr-only">{t(`attendance.status.${status}`)}</span>
-    </span>
-  );
-}
-
-/** "P 28 · A 2 · L 1 · E 0" with each letter coloured. */
-export function Counts({ counts }: { counts: MarkCounts }) {
-  const { t } = useTranslation();
-  return (
-    <span className="flex flex-wrap gap-1.5 text-xs">
-      {(['P', 'A', 'L', 'E'] as const).map((s) => (
-        // dir=ltr: reads "P 28" in Urdu too, like the letter on the register button.
-        <span
-          key={s}
-          dir="ltr"
-          className={cn('rounded px-1.5 py-0.5 font-sans', STATUS_CLASS[s])}
-          title={t(`attendance.status.${s}`)}
-        >
-          {t(`attendance.letter.${s}`)} <Num>{counts[s]}</Num>
-        </span>
-      ))}
-    </span>
-  );
-}
-
-export function DayOffNote({ dayOff }: { dayOff: DayOff | null }) {
-  const { t, i18n } = useTranslation();
-  if (!dayOff) return null;
-  const name =
-    dayOff.kind === 'holiday'
-      ? i18n.language === 'ur' && dayOff.name_ur
-        ? dayOff.name_ur
-        : dayOff.name_en
-      : '';
-  return (
-    <p className="flex items-center gap-2 rounded-md bg-muted p-3 text-sm">
-      <CalendarOff className="size-4 shrink-0" aria-hidden />
-      {dayOff.kind === 'holiday' ? (
-        <span>{t('attendance.dayOffHoliday', { name: isolate(name) })}</span>
-      ) : (
-        t('attendance.dayOffWeekly')
-      )}
-    </p>
-  );
-}
-
-/** One row per register to take: group (· subject), students, taken / not taken, counts. */
-export function TodayList({ items, date }: { items: TodayItem[]; date: string }) {
-  const { t } = useTranslation();
-  if (!items.length) return <p className="text-muted-foreground">{t('attendance.noGroups')}</p>;
-  return (
-    <ul className="flex flex-col gap-2">
-      {items.map((i) => (
-        <li key={`${i.grp_id}|${i.grp_subject_id}`}>
-          <Link
-            to={registerPath(i.grp_id, date, i.grp_subject_id || null)}
-            className="flex min-h-16 items-center gap-3 rounded-lg border p-3 hover:bg-accent"
-          >
-            <span className="flex min-w-0 flex-1 flex-col gap-1">
-              <span className="font-medium">
-                <bdi>{i.programme_name}</bdi> · <bdi>{i.grp_name}</bdi>
-                {i.subject_name && (
-                  <>
-                    {' · '}
-                    <bdi>{i.subject_name}</bdi>
-                  </>
-                )}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {t('attendance.students', { count: i.student_count })}
-                {i.class_teacher_name && (
-                  <>
-                    {' · '}
-                    <bdi>{i.class_teacher_name}</bdi>
-                  </>
-                )}
-              </span>
-              {i.status === 'taken' && (
-                <span className="flex flex-wrap items-center gap-2">
-                  <Counts counts={i.counts} />
-                  <span className="text-xs text-muted-foreground">
-                    <bdi>{i.taken_by_name ?? ''}</bdi> <Num>{timeOf(i.taken_at)}</Num>
-                  </span>
-                </span>
-              )}
-            </span>
-            <Badge variant={i.status === 'taken' ? 'secondary' : 'destructive'}>
-              {t(i.status === 'taken' ? 'attendance.taken' : 'attendance.notTaken')}
-            </Badge>
-            <ChevronRight className="size-5 shrink-0 rtl:-scale-x-100" aria-hidden />
-          </Link>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 /**
  * Header banners for saved-but-unsent attendance: offline, waiting count, refused registers, and

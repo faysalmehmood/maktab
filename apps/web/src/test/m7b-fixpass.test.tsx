@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { Route, Routes } from 'react-router';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppShell, ThemeSwitch } from '@/components/AppShell';
-import { StatusChip } from '@/components/attendance/common';
+import { StatusChip } from '@/components/attendance/parts';
 import { Avatar, initials } from '@/components/avatar';
 import { DataTable } from '@/components/data-table';
 import { FilterBar } from '@/components/filter-bar';

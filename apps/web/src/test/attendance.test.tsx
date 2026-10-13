@@ -425,21 +425,31 @@ describe('today list', () => {
     ],
   };
 
-  it('renders in Urdu, right to left, with taken / not-taken badges and Latin digits', async () => {
+  it('renders in Urdu, right to left: progress first, then To take (not-taken badge) and Taken, Latin digits', async () => {
     await act(() => setLanguage('ur'));
     mockApi({ 'GET /api/attendance/today': today });
     renderAt('/attendance', '/attendance', <TodayPage />, ['teacher']);
-    expect(await screen.findByText('لی گئی')).toBeTruthy();
-    expect(screen.getByText('نہیں لی گئی')).toBeTruthy();
+    // Progress first: "1 of 2 registers taken", as a progressbar with Latin-digit values.
+    const bar = await screen.findByRole('progressbar');
+    expect(bar.getAttribute('aria-valuenow')).toBe('1');
+    expect(bar.getAttribute('aria-valuemax')).toBe('2');
+    expect(screen.getByText('2 میں سے 1 رجسٹر ہو گئے')).toBeTruthy();
+    // The two lists, each with its own heading; the register still to take carries the badge.
+    const toTake = screen.getByRole('region', { name: 'باقی رجسٹر' });
+    expect(within(toTake).getByText('نہیں لی گئی')).toBeTruthy();
+    const taken = screen.getByRole('region', { name: 'ہو چکے' });
+    expect(within(taken).queryByText('نہیں لی گئی')).toBeNull();
     expect(document.documentElement.dir).toBe('rtl');
     const links = screen
       .getAllByRole('link')
       .filter((a) => a.getAttribute('href')?.includes('/register/'));
-    // Links open today's register even if the (possibly cached) list is from another day.
+    // Links open today's register even if the (possibly cached) list is from another day; the
+    // register still to take is listed first.
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
-      `/attendance/register/${ids.group}?date=${todayPk()}`,
       `/attendance/register/01JAAAAAAAAAAAAAAAAAAAAAG2?date=${todayPk()}`,
+      `/attendance/register/${ids.group}?date=${todayPk()}`,
     ]);
+    expect(within(taken).getByText('2 غیر حاضر')).toBeTruthy();
     expect(screen.getByText(/^30 طلبہ/)).toBeTruthy();
     // Names sit in their own bidi isolate inside the Urdu row.
     expect(screen.getAllByText('Ms Sana')[0]?.tagName).toBe('BDI');

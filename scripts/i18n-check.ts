@@ -14,6 +14,7 @@
 
 import { RECEIPT_LABELS } from '../packages/shared/src/fees';
 import { en } from '../packages/shared/src/i18n';
+import { screensEn } from '../packages/shared/src/i18n-screens';
 import { ur } from '../packages/shared/src/i18n-ur';
 import { DEFAULT_TEMPLATES, MONTH_NAMES } from '../packages/shared/src/messaging';
 
@@ -81,7 +82,7 @@ const ARABIC_LETTER =
 const enFlat = new Map<string, string>();
 const urFlat = new Map<string, string>();
 const pairs: [string, unknown, unknown][] = [
-  ['ui', en, ur],
+  ['ui', { ...en, screens: screensEn }, ur],
   ['templates', DEFAULT_TEMPLATES, null],
   ['receipt', RECEIPT_LABELS.en, RECEIPT_LABELS.ur],
   ['months', MONTH_NAMES.en, MONTH_NAMES.ur],

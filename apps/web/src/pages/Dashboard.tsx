@@ -4,7 +4,7 @@ import { CalendarCheck, CircleAlert, MessageSquareText, RotateCw, Wallet } from 
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { DayOffNote, TodayList } from '@/components/attendance/common';
+import { DayOffNote, TodayList } from '@/components/attendance/parts';
 import { useFeeDashboard } from '@/components/fees/DashboardTiles';
 import { Num } from '@/components/form';
 import { MonthTiles } from '@/components/money/MonthTiles';
@@ -31,6 +31,7 @@ import {
   useToday,
 } from '@/lib/attendance';
 import { alarmHint, canManageBackup, useLatestAlarm } from '@/lib/backup';
+import { longDate } from '@/lib/dates';
 import { canCollect, canGenerate, canReadMoney, canUseCash, karachiToday } from '@/lib/fees';
 import { useOnline } from '@/lib/media';
 import { canReadMessages, useMessageCounts } from '@/lib/messages';
@@ -41,17 +42,7 @@ import { cn } from '@/lib/utils';
 /** Hour of day on the school clock (Asia/Karachi, UTC+5, no DST). */
 const karachiHour = (now = Date.now()) => new Date(now + 5 * 3600_000).getUTCHours();
 
-/** "Tuesday, 13 Oct 2026" in the UI language, Latin digits always. */
-export function longDate(iso: string, lang: string): string {
-  const d = new Date(`${iso}T12:00:00Z`);
-  return new Intl.DateTimeFormat(lang === 'ur' ? 'ur-PK-u-nu-latn' : 'en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(d);
-}
+export { longDate } from '@/lib/dates';
 
 function Greeting({ action }: { action?: ReactNode }) {
   const { t, i18n } = useTranslation();

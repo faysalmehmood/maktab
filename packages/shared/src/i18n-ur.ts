@@ -7,6 +7,7 @@ import type { backupEn, backupErrorsEn } from './i18n-backup';
 import type { feeEn, feeErrorsEn } from './i18n-fees';
 import type { msgEn, msgErrorsEn } from './i18n-messages';
 import type { moneyEn, moneyErrorsEn } from './i18n-money';
+import type { screensEn } from './i18n-screens';
 import type { brandEn, doorEn, homeEn, shellEn, wizardEn } from './i18n-ui';
 
 type Shape<T> = { readonly [K in keyof T]: T[K] extends string ? string : Shape<T[K]> };
@@ -1414,7 +1415,31 @@ export const homeUr: Shape<typeof homeEn> = {
   },
 };
 
-export const ur: Messages = {
+/** M7b part 2 screens (merged as `screens`; English is lazy, see i18n-screens.ts). */
+export const screensUr: Shape<typeof screensEn> = {
+  att: {
+    progress: '{{total}} میں سے {{done}} رجسٹر ہو گئے',
+    progressLabel: 'رجسٹر جو ہو گئے',
+    absentSoFar_one: 'اب تک {{count}} غیر حاضر',
+    absentSoFar_other: 'اب تک {{count}} غیر حاضر',
+    toTake: 'باقی رجسٹر',
+    takenList: 'ہو چکے',
+    classes_one: '{{count}} رجسٹر',
+    classes_other: '{{count}} رجسٹر',
+    allTaken: 'اس دن کے سب رجسٹر ہو چکے ہیں۔',
+    allPresent: 'سب حاضر',
+    absentN: '{{n}} غیر حاضر',
+    presentN: '{{n}} حاضر',
+    noClassTeacher: 'کلاس ٹیچر مقرر نہیں',
+    marked: '{{total}} میں سے {{present}} حاضر',
+    marksLabel: 'اب تک کی حاضری',
+    correctionMode:
+      'یہ رجسٹر پہلے ہو چکا ہے۔ محفوظ کرنے پر یہ درستی بنے گی: وجہ پوچھی جائے گی اور پہلا رجسٹر ریکارڈ میں رہے گا۔',
+    noteSaved: 'نوٹ',
+  },
+};
+
+export const ur: Messages & { screens: Shape<typeof screensEn> } = {
   app: { name: 'مکتب', tagline: 'اسکول اور اکیڈمی کا انتظام' },
   nav: {
     dashboard: 'ڈیش بورڈ',
@@ -1500,6 +1525,7 @@ export const ur: Messages = {
   door: doorUr,
   wizard: wizardUr,
   home: homeUr,
+  screens: screensUr,
   errors: {
     ...feeErrorsUr,
     ...backupErrorsUr,
