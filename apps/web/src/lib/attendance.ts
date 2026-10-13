@@ -35,7 +35,7 @@ export const nextStatus = (s: MarkStatus): MarkStatus =>
 export const STATUS_CLASS: Record<MarkStatus, string> = {
   P: 'bg-ok-soft text-ok ring-1 ring-ok/40',
   A: 'bg-bad-soft text-bad ring-1 ring-bad/40',
-  L: 'bg-warn-soft0 text-black',
+  L: 'bg-warn-soft text-warn ring-1 ring-warn/40',
   E: 'bg-info-soft text-info ring-1 ring-info/40',
 };
 

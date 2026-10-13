@@ -1256,7 +1256,7 @@ export const shellUr: Shape<typeof shellEn> = {
   account: {
     menu: 'اکاؤنٹ مینو',
     theme: 'رنگ و روپ',
-    themes: { system: 'فون کے مطابق', light: 'روشن', dark: 'گہرا' },
+    themes: { system: 'خودکار', light: 'روشن', dark: 'گہرا' },
   },
 };
 
@@ -1343,13 +1343,13 @@ export const homeUr: Shape<typeof homeEn> = {
       billing: 'بلنگ',
       system: 'نظام',
     },
-    registers: '{{n}} رجسٹر ابھی باقی ہیں',
+    registers: 'باقی رجسٹر: {{n}}',
     registersGo: 'رجسٹر لیں',
-    defaulters: '{{n}} طلبہ کی فیس کی آخری تاریخ گزر چکی ہے',
+    defaulters: 'آخری تاریخ گزرنے والے طلبہ: {{n}}',
     defaultersGo: 'نادہندگان دیکھیں',
     drawer: 'آپ کا کیش دراز کھلا ہے',
     drawerGo: 'دراز کھولیں',
-    billing: '{{n}} گروپوں کی ماہانہ بلنگ بار بار ناکام ہو رہی ہے',
+    billing: 'جن گروپوں کی ماہانہ بلنگ بار بار ناکام ہو رہی ہے: {{n}}',
     billingGo: 'بلنگ کھولیں',
     alarm: '{{kind}}: {{n}}',
     alarmGo: 'بیک اپ کھولیں',

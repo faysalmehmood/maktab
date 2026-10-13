@@ -272,11 +272,11 @@ html[data-brand="green"] {
   }
   /* …and the size utilities (text-sm etc.) carry their own Latin line heights: lift them in Urdu. */
   html:lang(ur) {
-    --text-xs--line-height: 1.9;
-    --text-sm--line-height: 1.9;
+    --text-xs--line-height: 2.1;
+    --text-sm--line-height: 2.1;
     --text-base--line-height: 2;
     --text-lg--line-height: 1.9;
-    --text-meta--line-height: 1.9;
+    --text-meta--line-height: 2.1;
     --text-section--line-height: 1.9;
     --text-title--line-height: 1.8;
   }

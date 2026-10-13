@@ -32,7 +32,7 @@ export const shellEn = {
   account: {
     menu: 'Account menu',
     theme: 'Theme',
-    themes: { system: 'Match the phone', light: 'Light', dark: 'Dark' },
+    themes: { system: 'Auto', light: 'Light', dark: 'Dark' },
   },
 } as const;
 
@@ -119,13 +119,13 @@ export const homeEn = {
       billing: 'Billing',
       system: 'System',
     },
-    registers: '{{n}} registers not taken yet',
+    registers: 'Registers not taken yet: {{n}}',
     registersGo: 'Take them',
-    defaulters: '{{n}} students are past the due date',
+    defaulters: 'Students past the due date: {{n}}',
     defaultersGo: 'See defaulters',
     drawer: 'Your cash drawer is open',
     drawerGo: 'Open drawer',
-    billing: 'Monthly billing keeps failing for {{n}} groups',
+    billing: 'Groups where monthly billing keeps failing: {{n}}',
     billingGo: 'Open billing',
     alarm: '{{kind}}: {{n}}',
     alarmGo: 'Open backup',

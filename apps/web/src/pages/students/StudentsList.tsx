@@ -59,7 +59,7 @@ export function StudentsList() {
     <Page width="full" className="max-w-[1240px]">
       <PageHeader
         title={t('student.title')}
-        subtitle={data ? <Num>{t('common.total', { n: data.total })}</Num> : undefined}
+        subtitle={data ? <span>{t('common.total', { n: data.total })}</span> : undefined}
         actions={
           canWriteStudents(roles) && (
             <>

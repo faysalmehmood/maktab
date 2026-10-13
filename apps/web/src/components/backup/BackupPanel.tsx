@@ -45,9 +45,7 @@ function NightlyStatus() {
     <div className="flex flex-col gap-3" id="backup-status">
       <H>{t('backup.status.title')}</H>
       {!s.report_configured && (
-        <p className="rounded-md bg-warn-soft0/10 p-3 text-sm">
-          {t('backup.status.notConfigured')}
-        </p>
+        <p className="rounded-md bg-warn-soft p-3 text-sm">{t('backup.status.notConfigured')}</p>
       )}
       {last ? (
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">

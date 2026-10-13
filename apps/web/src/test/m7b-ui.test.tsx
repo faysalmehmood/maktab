@@ -89,7 +89,7 @@ describe('theme', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true);
     expect(localStorage.getItem(THEME_KEY)).toBe('dark');
     expect(screen.getByRole('button', { name: /Dark/ }).getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: /Match the phone/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Auto/ }));
     expect(localStorage.getItem(THEME_KEY)).toBe('system');
     expect(document.documentElement.classList.contains('dark')).toBe(false);
   });

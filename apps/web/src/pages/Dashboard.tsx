@@ -60,7 +60,7 @@ function Greeting({ action }: { action?: ReactNode }) {
   return (
     <PageHeader
       title={t(`home.greeting.${key}`, { name: first })}
-      subtitle={<Num>{longDate(karachiToday(), i18n.language)}</Num>}
+      subtitle={longDate(karachiToday(), i18n.language)}
       actions={action}
     />
   );
@@ -122,7 +122,7 @@ function RegistersCard() {
             {d.day_off ? '—' : t('home.registers.none')}
           </span>
         ) : (
-          <Num>{t('home.registers.takenOf', { taken, total })}</Num>
+          <span>{t('home.registers.takenOf', { taken, total })}</span>
         )
       }
       action={
@@ -239,7 +239,7 @@ function MessagesCard() {
     <TodayCard
       id="dash-messages"
       title={t('home.messages.title')}
-      figure={<Num>{t('home.messages.waiting', { n: c.queued })}</Num>}
+      figure={<span>{t('home.messages.waiting', { n: c.queued })}</span>}
       action={
         c.queued > 0 && (
           <Button asChild variant="outline">
@@ -310,7 +310,7 @@ function NeedsAttention() {
       id: 'attn-registers',
       tone: 'warn',
       tag: t('home.attention.tags.attendance'),
-      text: <Num>{t('home.attention.registers', { n: notTaken })}</Num>,
+      text: <span>{t('home.attention.registers', { n: notTaken })}</span>,
       to: '/attendance',
       go: t('home.attention.registersGo'),
     });
@@ -321,7 +321,7 @@ function NeedsAttention() {
       tag: t('home.attention.tags.fees'),
       text: (
         <>
-          <Num>{t('home.attention.defaulters', { n: fees.defaulters })}</Num>
+          <span>{t('home.attention.defaulters', { n: fees.defaulters })}</span>
           {', '}
           <Mny paisa={fees.dues_outstanding} />
         </>
@@ -348,7 +348,7 @@ function NeedsAttention() {
       id: 'attn-billing',
       tone: 'bad',
       tag: t('home.attention.tags.billing'),
-      text: <Num>{t('home.attention.billing', { n: billing })}</Num>,
+      text: <span>{t('home.attention.billing', { n: billing })}</span>,
       to: '/fees/billing',
       go: t('home.attention.billingGo'),
     });
@@ -360,11 +360,11 @@ function NeedsAttention() {
         tag: t('home.attention.tags.system'),
         // The stale-backup alarm carries its own explanation (M6: since when, what to check).
         text: (
-          <Num>
+          <span>
             {a.kind === 'backup_stale'
               ? alarmHint(t, a)
               : t('home.attention.alarm', { kind: t(`backup.alarms.kinds.${a.kind}`), n: a.count })}
-          </Num>
+          </span>
         ),
         to: '/settings?section=backup',
         go: t('home.attention.alarmGo'),

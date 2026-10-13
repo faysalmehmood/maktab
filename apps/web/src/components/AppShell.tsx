@@ -603,20 +603,22 @@ export function AppShell() {
       <div className="flex min-h-dvh print:block print:min-h-0">
         <aside
           id="sidebar"
-          className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col bg-side text-side-fg md:flex print:hidden"
+          className="hidden w-60 shrink-0 bg-side text-side-fg md:block print:hidden"
         >
-          <NavLink
-            to="/"
-            className="flex items-center px-4 pt-4 pb-3 focus-visible:outline-2 focus-visible:outline-white"
-          >
-            <SchoolIdentity school={school} />
-          </NavLink>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <SidebarNav />
-          </div>
-          <div className="border-t border-side-on p-2.5">
-            <AccountMenu onSignOut={requestSignOut} />
-            <RunsOnMaktab className="px-2 pt-2 text-side-mut" />
+          <div className="sticky top-0 flex h-dvh flex-col">
+            <NavLink
+              to="/"
+              className="flex items-center px-4 pt-4 pb-3 focus-visible:outline-2 focus-visible:outline-white"
+            >
+              <SchoolIdentity school={school} />
+            </NavLink>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <SidebarNav />
+            </div>
+            <div className="border-t border-side-on p-2.5">
+              <AccountMenu onSignOut={requestSignOut} />
+              <RunsOnMaktab className="px-2 pt-2 text-side-mut" />
+            </div>
           </div>
         </aside>
 
