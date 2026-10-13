@@ -16,7 +16,8 @@
     "smoke:m3": "tsx scripts/smoke-m3.ts",
     "smoke:m3b": "tsx scripts/smoke-m3b.ts",
     "smoke:m4": "tsx scripts/smoke-m4.ts",
-    "smoke:m5": "tsx scripts/smoke-m5.ts"
+    "smoke:m5": "tsx scripts/smoke-m5.ts",
+    "smoke:m6": "tsx scripts/smoke-m6.ts"
   },
   "dependencies": {
     "@maktab/db": "0.0.0",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261010.1",
     "@types/node": "22.20.5",
+    "fflate": "0.8.2",
     "tsx": "4.23.15",
     "wrangler": "4.149.0"
   }
