@@ -8,7 +8,8 @@
       "!**/.wrangler",
       "!**/dev-dist",
       "!packages/db/migrations/meta",
-      "!docs/PLAN.md"
+      "!docs/PLAN.md",
+      "!docs/design"
     ]
   },
   "formatter": {

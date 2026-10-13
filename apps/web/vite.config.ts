@@ -9,7 +9,6 @@ import { markSchemasPure } from './pure-schemas';
 import { manifest } from './pwa-manifest';
 import { API_CACHE, isOfflineApi } from './src/offline/api-cache';
 
-
 /** Build-only: tests and the API read the shared files untouched (see pure-schemas.ts). */
 function pureZodSchemas(): Plugin {
   const shared = fileURLToPath(new URL('../../packages/shared/src/', import.meta.url));

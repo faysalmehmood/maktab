@@ -198,7 +198,8 @@ describe('share: text only (no file, no staff URL)', () => {
     await paper();
     fireEvent.click(screen.getByRole('button', { name: 'Share' }));
     await waitFor(() => expect(share).toHaveBeenCalledOnce());
-    const text = String((share.mock.calls[0]?.[0] as { text: string }).text);
+    const arg = share.mock.calls[0]?.[0] as { text: string } | undefined;
+    const text = String(arg?.text);
     expect(text.split('\n')).toEqual([
       'Al-Noor: receipt \u2068AN-2026-00001\u2069, \u2068PKR 7,000\u2069 received on \u20682026-10-10\u2069.',
       'https://s.pk/p#TOKEN',
