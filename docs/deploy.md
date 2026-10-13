@@ -9,6 +9,8 @@ Production deploys are a human decision (PLAN §15: ask first). This is the orde
   no edited migration).
 - Take a backup you can restore (docs/restore.md §B). Migrations are forward-only; the way back is
   Time Travel or the backup, never a down-migration.
+- Migration 0024 (M7b: `school.short_name`, `city`, `brand_color`) only adds nullable columns; no
+  rebuild, no trigger change (docs/deploy-log.md, M7b part 1).
 - Never deploy during school hours: a migration that rebuilds a table (0004, 0008, 0010) holds the
   database for its duration.
 
@@ -104,7 +106,7 @@ Match paths precisely, never with a bare `starts_with(path, "/p")` (that would a
 
 | # | Rule name | If incoming requests match (expression) | Characteristics | Rate | Action | Duration |
 |---|---|---|---|---|---|---|
-| 1 | maktab parent page | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
+| 1 | maktab parent page | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
 | 2 | maktab sign-in | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 20 requests / 1 minute | Block (429) | 1 minute |
 | 3 | maktab API writes | `(http.host eq "maktab.conceptlix.com" and http.request.method eq "POST" and starts_with(http.request.uri.path, "/api/"))` | IP | 300 requests / 1 minute | Block (429) | 1 minute |
 
@@ -115,7 +117,7 @@ sign-in rate and record it in docs/deploy-log.md:
 
 | Rule name | Expression | Characteristics | Rate | Action | Duration |
 |---|---|---|---|---|---|
-| maktab public surfaces | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 10 requests / 10 seconds | Block (429) | 10 seconds |
+| maktab public surfaces | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/") or (http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 10 requests / 10 seconds | Block (429) | 10 seconds |
 
 A parent page load is about 3–4 requests (shell, `/api/p`, the logo, a gate attempt) and a sign-in
 is 2–3, so 10 per 10 s per IP leaves room for a whole office on one NAT IP; the Worker's own per-IP
@@ -124,7 +126,11 @@ Rule 3 is then not available; the D1 budget and the Worker limiter are what stan
 `POST /api/*` until the zone moves to Pro.
 
 Notes: rule 1 matches `/p` and `/p#…` (the fragment never reaches the server) and every `/api/p/…`
-call. Rule 3 also covers `POST /api/backup/runs` (token-only; no Turnstile needed there). A school
+call, including the public school badge `GET /api/p/badge` and logo `GET /api/p/logo` (M7b). It
+also covers the sign-in page's public identity routes added in M7b, `GET /api/identity` (name,
+city, short name, colour, office phone, logo version) and `GET /api/identity/logo`: no session, no
+personal data, cacheable, but unauthenticated, so they sit under the same per-IP limit. (The
+Worker's own in-isolate limiter does not cover `/api/identity*`; the WAF rule is the limit there.) Rule 3 also covers `POST /api/backup/runs` (token-only; no Turnstile needed there). A school
 behind one NAT IP (all office phones on one Wi-Fi) stays far below 300 POSTs a minute; if a busy
 counter ever hits it, raise rule 3, never remove it. Check: `for i in $(seq 70); do curl -s -o
 /dev/null -w '%{http_code}\n' https://maktab.conceptlix.com/api/p; done | sort | uniq -c` shows 429s,

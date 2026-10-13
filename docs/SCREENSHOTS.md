@@ -13,6 +13,24 @@ Placeholder: no images yet. Planned screens (English and Urdu/RTL, phone and des
 - Reports (collections, dues, attendance)
 - Language toggle (English / اردو)
 
+## M7b part 1 (captured): `docs/design/m7b-1/`
+
+Captured from a local `wrangler dev` with smoke data (demo names only), GSA identity (badge `GSA`,
+Pakpattan) and Al-Noor (uploaded logo). They need migration **0024_m7b_school_identity**
+(`school.short_name`, `city`, `brand_color`; nullable columns, no rebuild) applied to the local D1
+(`npm run db:migrate:local`) before the identity fields show. Name pattern:
+`<school>-<screen>-<phone|desktop>-<en|ur>-<light|dark>.png`.
+
+- Sign-in, home (owner, teacher), More sheet, search, A5 receipt (earlier captures).
+- Setup in Urdu, dark: `gsa-setup-1-school`, `-2-classes` (groups part), `-3-fees`, `-4-staff`,
+  `-5-done`, and `-5-done-no-groups` (the `no_groups` guard: "make at least one group first").
+- Shared parts: `gsa-students-*` (DataTable + FilterBar; phone cards with the Filters sheet),
+  `gsa-expenses-*` (DataTable with the bill action in the row and Void in the RowMenu),
+  `gsa-settings-tabs-*` (Tabs).
+- Payslip print proof (not an image): `node apps/web/scripts/print-pages.mjs
+  "<origin>/payslips/<id>/print?lang=en|ur" --expect 1 --wait-for '[data-lang]' --cookie <dev session>`
+  gives `pages=1 sizes=420×595` (A5) in both languages.
+
 ## To capture (onboarding guide)
 
 Referenced from `docs/onboarding.md` by id. None captured yet. Use demo data only (seed), never a

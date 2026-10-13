@@ -154,3 +154,20 @@ Commits `b33048d`…`0a30f93` (pushed to main). No migration in this milestone. 
 2. Turnstile widget → `TURNSTILE_SITE_KEY` in wrangler.toml + `TURNSTILE_SECRET` secret, deploy (§8).
 3. The M6 items above (API token → first nightly run → restore drill, R2 lifecycle rule, key escrow,
    B2), now tracked in docs/pilot-checklist.md.
+
+# M7b (UI/UX polish), part 1: NOT deployed yet (branch `m7b-ui`)
+
+Recorded ahead of the deploy so it is not missed. Migration **0024_m7b_school_identity** adds three
+nullable columns to `school`: `short_name`, `city`, `brand_color` (plain `ALTER TABLE … ADD COLUMN`,
+no table rebuild, no CHECK, no trigger change; `db:verify` still expects 97 triggers, 8 views). Safe
+during school hours. When the branch is merged and deployed, from apps/api:
+
+    npx wrangler d1 migrations list DB --remote --env production   # expect 0024_m7b_school_identity
+    npx wrangler d1 migrations apply DB --remote --env production
+    npm run db:verify -- --remote --env production                 # repo root
+    npm run build && npx wrangler deploy --env production
+
+Then: set the short name, city and colour in Settings → School (GSA: `GSA`, Pakpattan, blue), and add
+`/api/identity*` to the WAF parent rule (docs/deploy.md §7) if the rule predates M7b.
+No other schema change: `GET /api/dashboard/month` gains a `previous` object (last month's income,
+spending, net) for the home strip's comparison, computed from the same five report queries.

@@ -44,7 +44,8 @@ docs/deploy.md, docs/backup.md, docs/restore.md, docs/android-checks.md.
 ## 2. Security
 
 - [ ] **Cloudflare WAF rate-limiting rules** (docs/deploy.md "Rate limiting"):
-  `/p*` and `/api/p*` 60 requests/min per IP; `/api/auth/*` 20/min per IP; POST `/api/*` 300/min per
+  `/p*`, `/api/p*` (incl. `/api/p/badge`, `/api/p/logo`) and `/api/identity*` (M7b sign-in page
+  identity + logo) 60 requests/min per IP; `/api/auth/*` 20/min per IP; POST `/api/*` 300/min per
   IP. Verify: the three rules are active in the zone's Security → WAF → Rate limiting rules; a quick
   burst of 70 requests to `/api/p` from one IP gets blocked. — Maintainer
 - [ ] **Turnstile** (docs/deploy.md "Turnstile"): widget created for `maktab.conceptlix.com`; site key
