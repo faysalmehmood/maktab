@@ -1,0 +1,150 @@
+# Restore drill (PLAN §9: once a term; checklist in Settings → Backup; runbook docs/backup.md).
+# Manual only. Downloads the newest nightly dump from R2, checks its sha256, decrypts it with the age
+# PRIVATE key, imports it into a scratch D1 database `maktab-drill`, runs db:verify (triggers, views,
+# indexes) + row counts + ledger_consistency, reports the result to Maktab, and deletes the scratch
+# database whatever happened.
+#
+# AGE_SECRET_KEY (the contents of maktab-backup-key.txt) is an ENVIRONMENT secret of the protected
+# environment `backup-drill` (Settings → Environments: required reviewer = the owner, deployment
+# branch = main). It is never a repository secret, so no other workflow or branch can read it.
+# Other secrets as in nightly-backup.yml: CLOUDFLARE_API_TOKEN (D1 Edit + R2 Edit),
+# CLOUDFLARE_ACCOUNT_ID, BACKUP_REPORT_TOKEN.
+name: restore-drill
+on:
+  workflow_dispatch:
+    inputs:
+      object:
+        description: "R2 key to restore (blank = the newest, daily/LATEST)"
+        required: false
+        default: ""
+permissions:
+  contents: read
+concurrency: { group: restore-drill, cancel-in-progress: false }
+env:
+  R2_BUCKET: ${{ vars.BACKUP_R2_BUCKET || 'maktab-backups' }}
+  APP_URL: ${{ vars.APP_URL || 'https://maktab.conceptlix.com' }}
+  DRILL_DB: maktab-drill
+  WRANGLER_SEND_METRICS: "false"
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+jobs:
+  drill:
+    runs-on: ubuntu-24.04
+    environment: backup-drill
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: npm }
+      - name: Install (repo, age)
+        run: |
+          set -euo pipefail
+          echo "STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          npm ci --ignore-scripts   # as ci.yml: prebuilt binaries, no install scripts needed
+          sudo apt-get update -qq && sudo apt-get install -y -qq age
+          mkdir -p apps/web/dist
+
+      - name: Download the dump and check its checksum
+        working-directory: apps/api
+        env:
+          INPUT_OBJECT: ${{ inputs.object }}
+        run: |
+          set -euo pipefail
+          KEY="$INPUT_OBJECT"
+          if [ -z "$KEY" ]; then
+            npx wrangler r2 object get "$R2_BUCKET/daily/LATEST" --remote --file "$RUNNER_TEMP/latest"
+            KEY=$(tr -d '[:space:]' < "$RUNNER_TEMP/latest")
+          fi
+          [[ "$KEY" =~ ^(daily|monthly)/[0-9]{4}-[0-9]{2}-[0-9]{2}\.sql\.gz\.age$ ]] || { echo "::error::bad key $KEY"; exit 1; }
+          echo "KEY=$KEY" >> "$GITHUB_ENV"
+          F=$(basename "$KEY")
+          npx wrangler r2 object get "$R2_BUCKET/$KEY" --remote --file "$RUNNER_TEMP/$F"
+          npx wrangler r2 object get "$R2_BUCKET/$KEY.sha256" --remote --file "$RUNNER_TEMP/$F.sha256"
+          cd "$RUNNER_TEMP"
+          sha256sum -c "$F.sha256"
+          echo "F=$F" >> "$GITHUB_ENV"
+          echo "SHA=$(cut -d' ' -f1 "$F.sha256")" >> "$GITHUB_ENV"
+          echo "BYTES=$(stat -c%s "$F")" >> "$GITHUB_ENV"
+
+      - name: Decrypt (the key file never touches the workspace)
+        env:
+          AGE_SECRET_KEY: ${{ secrets.AGE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$AGE_SECRET_KEY" || { echo "::error::AGE_SECRET_KEY missing (environment backup-drill)"; exit 1; }
+          printf '%s\n' "$AGE_SECRET_KEY" > "$RUNNER_TEMP/key.txt"
+          age -d -i "$RUNNER_TEMP/key.txt" "$RUNNER_TEMP/$F" | gunzip > "$RUNNER_TEMP/dump.sql"
+          shred -u "$RUNNER_TEMP/key.txt"
+          test -s "$RUNNER_TEMP/dump.sql"
+          echo "statements: $(grep -c '^INSERT' "$RUNNER_TEMP/dump.sql")"
+
+      - name: Create the scratch database
+        working-directory: apps/api
+        run: |
+          set -euo pipefail
+          # A drill that died half way may have left one behind.
+          npx wrangler d1 delete "$DRILL_DB" --skip-confirmation 2>/dev/null || true
+          npx wrangler d1 create "$DRILL_DB"
+          ID=$(npx wrangler d1 list --json | jq -r --arg n "$DRILL_DB" '.[] | select(.name == $n) | .uuid')
+          test -n "$ID"
+          cat > "$RUNNER_TEMP/drill.toml" <<EOF
+          name = "maktab-drill"
+          compatibility_date = "2026-09-01"
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "$DRILL_DB"
+          database_id = "$ID"
+          migrations_dir = "$GITHUB_WORKSPACE/packages/db/migrations"
+          EOF
+          sed -i 's/^ *//' "$RUNNER_TEMP/drill.toml"
+
+      - name: Import the dump
+        working-directory: apps/api
+        run: npx wrangler d1 execute DB --remote --config "$RUNNER_TEMP/drill.toml" --file "$RUNNER_TEMP/dump.sql" --yes
+
+      - name: Verify (db:verify, counts, ledger_consistency)
+        id: verify
+        working-directory: apps/api
+        run: |
+          set -euo pipefail
+          (cd "$GITHUB_WORKSPACE" && npm run db:verify -- --remote --config "$RUNNER_TEMP/drill.toml") | tee "$RUNNER_TEMP/verify.txt"
+          q() { npx wrangler d1 execute DB --remote --config "$RUNNER_TEMP/drill.toml" --json --command "$1" | jq -c '.[0].results[0]'; }
+          COUNTS=$(q "SELECT (SELECT count(*) FROM student) AS students, (SELECT count(*) FROM family) AS families,
+            (SELECT count(*) FROM receipt) AS receipts, (SELECT coalesce(sum(amount),0) FROM receipt) AS receipts_sum,
+            (SELECT count(*) FROM charge) AS charges, (SELECT count(*) FROM att_mark) AS att_marks,
+            (SELECT count(*) FROM message) AS messages, (SELECT count(*) FROM message_template) AS templates,
+            (SELECT count(*) FROM parent_link) AS parent_links, (SELECT max(receipt_no) FROM receipt) AS last_receipt")
+          LEDGER=$(q "SELECT count(*) AS n FROM ledger_consistency" | jq -r .n)
+          echo "counts: $COUNTS"
+          echo "ledger_consistency rows: $LEDGER"
+          echo "COUNTS=$COUNTS" >> "$GITHUB_ENV"
+          echo "LEDGER=$LEDGER" >> "$GITHUB_ENV"
+          test "$LEDGER" = 0 || { echo "::error::ledger_consistency is not empty in the backup"; exit 1; }
+
+      - name: Delete the scratch database and the plain-text dump
+        if: always()
+        working-directory: apps/api
+        run: |
+          npx wrangler d1 delete "$DRILL_DB" --skip-confirmation || echo "::warning::could not delete $DRILL_DB; delete it in the dashboard"
+          shred -u "$RUNNER_TEMP/dump.sql" "$RUNNER_TEMP/key.txt" 2>/dev/null || true
+
+      - name: Report the drill to Maktab (Settings → Backup)
+        if: always()
+        env:
+          TOKEN: ${{ secrets.BACKUP_REPORT_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          if [ -z "${TOKEN:-}" ]; then echo "::warning::BACKUP_REPORT_TOKEN not set; drill not reported"; exit 0; fi
+          STATUS=$([ "$JOB_STATUS" = success ] && echo ok || echo failed)
+          BODY=$(jq -nc --arg status "$STATUS" --arg started "$STARTED" --arg key "${KEY:-}" \
+            --arg sha "${SHA:-}" --arg bytes "${BYTES:-0}" --arg url "$RUN_URL" \
+            --argjson counts "${COUNTS:-null}" --arg ledger "${LEDGER:-}" \
+            '{kind:"drill", status:$status, started_at:$started, run_url:$url,
+              details:{counts:$counts, ledger_consistency:$ledger}}
+             + (if $sha != "" then {object_key:$key, sha256:$sha, bytes:($bytes|tonumber)} else {} end)')
+          echo "$BODY"
+          curl -fsS -X POST "$APP_URL/api/backup/runs" -H "authorization: Bearer $TOKEN" \
+            -H 'content-type: application/json' --data "$BODY" || echo "::warning::report failed"

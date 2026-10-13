@@ -1,15 +1,19 @@
-# Nightly encrypted backup of the D1 database (PLAN §9 layer 2). Adapted from experiment 5; the
-# cloud half has not run yet. Runbook: docs/restore.md
+# Nightly encrypted backup of the D1 database (PLAN §9 layers 2 and 3). Runbook: docs/backup.md,
+# restore: docs/restore.md, practice: .github/workflows/restore-drill.yml.
 #
-# Enable by setting repository variable BACKUP_ENABLED=true (forks and clones stay quiet otherwise).
-# Repository variables (Settings → Secrets and variables → Variables):
-#   D1_DATABASE_NAME   default "maktab"           BACKUP_R2_BUCKET   default "maktab-backups"
+# Enable by setting the repository variable BACKUP_ENABLED=true (forks and clones stay quiet).
+# Variables (optional): D1_DATABASE_NAME (default maktab), BACKUP_R2_BUCKET (default maktab-backups),
+#   APP_URL (default https://maktab.conceptlix.com: where the run is reported).
 # Secrets:
-#   CLOUDFLARE_API_TOKEN  (Account > D1 > Edit ; Account > Workers R2 Storage > Edit)
+#   CLOUDFLARE_API_TOKEN   Account > D1 > Edit; Account > Workers R2 Storage > Edit;
+#                          Account > Workers Scripts > Read
 #   CLOUDFLARE_ACCOUNT_ID
-#   AGE_RECIPIENT         age public key "age1..."; the PRIVATE key stays offline with two trustees
-#   B2_KEY_ID, B2_APP_KEY, B2_BUCKET, B2_ENDPOINT (e.g. https://s3.us-west-004.backblazeb2.com)
-# R2 retention: set a lifecycle rule (daily/ 95 days, monthly/ 740 days) instead of pruning here.
+#   AGE_RECIPIENT          the PUBLIC age key "age1…"; the private key stays offline with two trustees
+#   BACKUP_REPORT_TOKEN    same value as the Worker secret; POST /api/backup/runs
+#   B2_KEY_ID, B2_APP_KEY, B2_BUCKET, B2_ENDPOINT   optional second provider (absent → run "partial")
+#   GOOGLE_SA_JSON, SHEET_ID                        optional read-only Google Sheet copy
+# Retention: R2 lifecycle rules (daily/ deleted after 95 days; monthly/ kept), set once in the
+# Cloudflare dashboard (docs/backup.md). B2 is pruned here (90 daily, 24 monthly).
 name: nightly-backup
 on:
   schedule:
@@ -20,115 +24,177 @@ permissions:
   issues: write
 concurrency: { group: nightly-backup, cancel-in-progress: false }
 env:
-  DB_NAME: ${{ vars.D1_DATABASE_NAME || 'maktab' }}
   R2_BUCKET: ${{ vars.BACKUP_R2_BUCKET || 'maktab-backups' }}
+  APP_URL: ${{ vars.APP_URL || 'https://maktab.conceptlix.com' }}
   WRANGLER_VERSION: 4.149.0
+  WRANGLER_SEND_METRICS: "false"
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  HAVE_B2: ${{ secrets.B2_KEY_ID != '' && secrets.B2_APP_KEY != '' && secrets.B2_BUCKET != '' && secrets.B2_ENDPOINT != '' }}
+  HAVE_SHEET: ${{ secrets.GOOGLE_SA_JSON != '' && secrets.SHEET_ID != '' }}
 jobs:
   backup:
     if: ${{ vars.BACKUP_ENABLED == 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
-      # Only for the sanity check below: the names of the hand-written triggers/views/indexes.
+      # wrangler.toml (the production D1 binding), sql/ (names the dump must contain) and the Sheet
+      # script. Nothing is built.
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: packages/db/sql
+          sparse-checkout: |
+            apps/api/wrangler.toml
+            packages/db/sql
+            packages/db/scripts/sheet-export.ts
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Install wrangler, age, rclone
         run: |
-          npm i --no-save "wrangler@$WRANGLER_VERSION"
+          set -euo pipefail
+          echo "STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          npm i --no-save --prefix "$RUNNER_TEMP/w" "wrangler@$WRANGLER_VERSION"
+          echo "$RUNNER_TEMP/w/node_modules/.bin" >> "$GITHUB_PATH"
           sudo apt-get update -qq && sudo apt-get install -y -qq age rclone
+          mkdir -p apps/web/dist   # wrangler.toml's [assets] directory; unused by d1 commands
 
-      - name: Export D1 (remote)
+      - name: Export D1 (remote, production)
+        working-directory: apps/api
         run: |
           set -euo pipefail
-          npx wrangler d1 export "$DB_NAME" --remote --output dump.sql
-          test -s dump.sql
-          # Sanity: core tables, and every trigger/view/partial index created in packages/db/sql (the
-          # same list the schema-presence test checks), must be in the dump. An owner always exists.
-          grep -Eq 'CREATE TABLE [`"]?receipt[`"]? ' dump.sql
-          grep -Eq 'CREATE TABLE [`"]?charge[`"]? ' dump.sql
-          grep -Eq 'INSERT INTO [`"]?user[`"]? ' dump.sql
-          NAMES=$(grep -ohE 'CREATE (UNIQUE )?(INDEX|TRIGGER|VIEW) (IF NOT EXISTS )?[A-Za-z0-9_]+' packages/db/sql/*.sql | awk '{print $NF}' | sort -u)
+          umask 077
+          wrangler d1 export DB --remote --env production --output "$RUNNER_TEMP/dump.sql"
+          D="$RUNNER_TEMP/dump.sql"
+          test -s "$D"
+          # Sanity: core tables, an owner, and every trigger/view/index packages/db/sql creates.
+          grep -Eq 'CREATE TABLE [`"]?receipt[`"]? ' "$D"
+          grep -Eq 'CREATE TABLE [`"]?charge[`"]? ' "$D"
+          grep -Eq 'CREATE TABLE [`"]?message_template[`"]? ' "$D"
+          grep -Eq 'CREATE TABLE [`"]?parent_link[`"]? ' "$D"
+          grep -Eq 'INSERT INTO [`"]?user[`"]? ' "$D"
+          NAMES=$(grep -ohE 'CREATE (UNIQUE )?(INDEX|TRIGGER|VIEW) (IF NOT EXISTS )?[A-Za-z0-9_]+' ../../packages/db/sql/*.sql | awk '{print $NF}' | sort -u)
           test "$(echo "$NAMES" | wc -l)" -ge 50
           MISSING=0
           for n in $NAMES; do
-            grep -Eq "CREATE (UNIQUE )?(INDEX|TRIGGER|VIEW) (IF NOT EXISTS )?[\`\"]?$n[\`\"]?( |\$)" dump.sql || { echo "::error::missing from dump: $n"; MISSING=1; }
+            grep -Eq "CREATE (UNIQUE )?(INDEX|TRIGGER|VIEW) (IF NOT EXISTS )?[\`\"]?$n[\`\"]?( |\$)" "$D" || { echo "::error::missing from dump: $n"; MISSING=1; }
           done
           test "$MISSING" = 0
 
-      - name: Compress + encrypt
+      - name: Compress + encrypt + checksum
+        env:
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
         run: |
           set -euo pipefail
-          STAMP=$(date -u +%Y-%m-%dT%H%MZ)
-          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
-          gzip -9 dump.sql
-          gzip -t dump.sql.gz
-          age -r "${{ secrets.AGE_RECIPIENT }}" -o "maktab-$STAMP.sql.gz.age" dump.sql.gz
-          sha256sum "maktab-$STAMP.sql.gz.age" > "maktab-$STAMP.sql.gz.age.sha256"
-          echo "ENC_BYTES=$(stat -c%s maktab-$STAMP.sql.gz.age)" >> "$GITHUB_ENV"
+          umask 077
+          DAY=$(TZ=Asia/Karachi date +%F)
+          F="$DAY.sql.gz.age"
+          echo "DAY=$DAY" >> "$GITHUB_ENV"
+          echo "F=$F" >> "$GITHUB_ENV"
+          gzip -9 -c "$RUNNER_TEMP/dump.sql" > "$RUNNER_TEMP/dump.sql.gz"
+          gzip -t "$RUNNER_TEMP/dump.sql.gz"
+          test -n "$AGE_RECIPIENT" || { echo "::error::AGE_RECIPIENT secret missing"; exit 1; }
+          age -r "$AGE_RECIPIENT" -o "$F" "$RUNNER_TEMP/dump.sql.gz"
+          head -c 30 "$F" | grep -q 'age-encryption.org'   # never decrypted here: no private key in CI
+          sha256sum "$F" > "$F.sha256"
+          echo "SHA=$(cut -d' ' -f1 "$F.sha256")" >> "$GITHUB_ENV"
+          echo "BYTES=$(stat -c%s "$F")" >> "$GITHUB_ENV"
 
-      - name: Verify (never decrypts here, by design)
-        # Decrypting needs the private key; keeping it out of GitHub means a repo compromise cannot read
-        # student data. Checks: gzip integrity before encryption (above), age header, size regression.
+      - name: Size regression check
         run: |
           set -euo pipefail
-          head -c 30 "maktab-$STAMP.sql.gz.age" | grep -q 'age-encryption.org'
-          npx wrangler r2 object get "$R2_BUCKET/daily/LAST_SIZE" --remote --file last_size 2>/dev/null || echo 0 > last_size
-          PREV=$(cat last_size); NOW=$ENC_BYTES
+          wrangler r2 object get "$R2_BUCKET/daily/LAST_SIZE" --remote --file last_size 2>/dev/null || echo 0 > last_size
+          PREV=$(cat last_size); NOW=$BYTES
           echo "prev=$PREV now=$NOW"
           if [ "$PREV" -gt 0 ] && [ "$NOW" -lt $((PREV/2)) ]; then echo "::error::backup shrank by >50%"; exit 1; fi
           if [ "$NOW" -lt 1000 ]; then echo "::error::backup suspiciously small"; exit 1; fi
           echo "$NOW" > last_size
 
-      - name: Upload to R2
+      - name: Upload to R2 (daily/, monthly/ on the 1st)
         run: |
           set -euo pipefail
-          F="maktab-$STAMP.sql.gz.age"
-          npx wrangler r2 object put "$R2_BUCKET/daily/$F" --file "$F" --remote
-          npx wrangler r2 object put "$R2_BUCKET/daily/$F.sha256" --file "$F.sha256" --remote
-          npx wrangler r2 object put "$R2_BUCKET/daily/LAST_SIZE" --file last_size --remote
-          if [ "$(date -u +%d)" = "01" ]; then
-            npx wrangler r2 object put "$R2_BUCKET/monthly/$F" --file "$F" --remote
+          wrangler r2 object put "$R2_BUCKET/daily/$F" --file "$F" --remote
+          wrangler r2 object put "$R2_BUCKET/daily/$F.sha256" --file "$F.sha256" --remote
+          wrangler r2 object put "$R2_BUCKET/daily/LAST_SIZE" --file last_size --remote
+          # Pointer the restore drill reads (wrangler has no object listing).
+          echo "daily/$F" > latest
+          wrangler r2 object put "$R2_BUCKET/daily/LATEST" --file latest --remote
+          if [ "$(TZ=Asia/Karachi date +%d)" = "01" ]; then
+            wrangler r2 object put "$R2_BUCKET/monthly/$F" --file "$F" --remote
+            wrangler r2 object put "$R2_BUCKET/monthly/$F.sha256" --file "$F.sha256" --remote
           fi
 
       - name: Upload to Backblaze B2 (second provider)
+        id: b2
+        if: ${{ env.HAVE_B2 == 'true' }}
+        continue-on-error: true
         env:
           RCLONE_CONFIG_B2_TYPE: s3
           RCLONE_CONFIG_B2_PROVIDER: Other
           RCLONE_CONFIG_B2_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
           RCLONE_CONFIG_B2_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
           RCLONE_CONFIG_B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
         run: |
           set -euo pipefail
-          F="maktab-$STAMP.sql.gz.age"
-          B2="B2:${{ secrets.B2_BUCKET }}"
+          B2="B2:$B2_BUCKET"
           rclone copyto "$F" "$B2/daily/$F" --s3-no-check-bucket
           rclone copyto "$F.sha256" "$B2/daily/$F.sha256" --s3-no-check-bucket
-          if [ "$(date -u +%d)" = "01" ]; then rclone copyto "$F" "$B2/monthly/$F" --s3-no-check-bucket; fi
+          if [ "$(TZ=Asia/Karachi date +%d)" = "01" ]; then rclone copyto "$F" "$B2/monthly/$F" --s3-no-check-bucket; fi
           rclone check "$F" "$B2/daily/" --include "$F" --one-way
-
-      - name: Prune B2 (90 daily + 24 monthly)
-        env:
-          RCLONE_CONFIG_B2_TYPE: s3
-          RCLONE_CONFIG_B2_PROVIDER: Other
-          RCLONE_CONFIG_B2_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
-          RCLONE_CONFIG_B2_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
-          RCLONE_CONFIG_B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
-        run: |
-          set -euo pipefail
-          # Names sort chronologically (UTC stamp). Only reached if every upload above succeeded.
-          B2="B2:${{ secrets.B2_BUCKET }}"
+          # Prune: names sort by date. 90 daily, 24 monthly.
           rclone lsf "$B2/daily/" --include '*.age' | sort | head -n -90 | while read -r f; do
             rclone deletefile "$B2/daily/$f" && rclone deletefile "$B2/daily/$f.sha256" || true
           done
           rclone lsf "$B2/monthly/" --include '*.age' | sort | head -n -24 | while read -r f; do
-            rclone deletefile "$B2/monthly/$f"
+            rclone deletefile "$B2/monthly/$f" || true
           done
+
+      - name: Google Sheet copy (read-only tabs)
+        id: sheet
+        if: ${{ env.HAVE_SHEET == 'true' }}
+        continue-on-error: true
+        env:
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: node --experimental-strip-types packages/db/scripts/sheet-export.ts --dump "$RUNNER_TEMP/dump.sql"
+
+      - name: Remove the plain-text dump
+        if: always()
+        run: shred -u "$RUNNER_TEMP/dump.sql" "$RUNNER_TEMP/dump.sql.gz" 2>/dev/null || true
+
+      - name: Report the run to Maktab (Settings → Backup)
+        if: always()
+        env:
+          TOKEN: ${{ secrets.BACKUP_REPORT_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+          B2_OUTCOME: ${{ steps.b2.outcome }}
+          SHEET_OUTCOME: ${{ steps.sheet.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          if [ -z "${TOKEN:-}" ]; then echo "::warning::BACKUP_REPORT_TOKEN not set; run not reported"; exit 0; fi
+          target() { # name, outcome ('' = not configured)
+            case "$2" in
+              success) jq -nc --arg n "$1" '{name:$n, ok:true}' ;;
+              '' | skipped) jq -nc --arg n "$1" '{name:$n, ok:false, detail:"not configured"}' ;;
+              *) jq -nc --arg n "$1" --arg d "$2" '{name:$n, ok:false, detail:$d}' ;;
+            esac
+          }
+          if [ "$JOB_STATUS" != "success" ]; then STATUS=failed
+          elif [ "$B2_OUTCOME" != "success" ]; then STATUS=partial   # one provider only
+          elif [ "$HAVE_SHEET" = "true" ] && [ "$SHEET_OUTCOME" != "success" ]; then STATUS=partial
+          else STATUS=ok; fi
+          R2=$(jq -nc --argjson ok "$([ "$JOB_STATUS" = success ] && echo true || echo false)" '{name:"r2", ok:$ok}')
+          BODY=$(jq -nc --arg status "$STATUS" --arg started "$STARTED" --arg key "daily/${F:-}" \
+            --arg sha "${SHA:-}" --arg bytes "${BYTES:-0}" --arg url "$RUN_URL" \
+            --argjson r2 "$R2" --argjson b2 "$(target b2 "$B2_OUTCOME")" \
+            --argjson sheet "$(target sheet "$SHEET_OUTCOME")" \
+            '{kind:"nightly", status:$status, started_at:$started, run_url:$url,
+              targets:[$r2,$b2,$sheet]}
+             + (if $sha != "" then {object_key:$key, sha256:$sha, bytes:($bytes|tonumber)} else {} end)')
+          echo "$BODY"
+          curl -fsS -X POST "$APP_URL/api/backup/runs" -H "authorization: Bearer $TOKEN" \
+            -H 'content-type: application/json' --data "$BODY" || echo "::warning::report failed"
 
       - name: Notify on failure (GitHub issue emails watchers)
         if: failure()

@@ -1,7 +1,8 @@
 # Restore runbook (volunteer edition)
 
-Adapted from experiment 5 (PLAN §12): local restore drill passed; the cloud half is authored but
-has not been run yet. Practise this once per term (PLAN §9).
+Adapted from experiment 5 (PLAN §12). Practise once per term (PLAN §9): the `restore-drill`
+workflow does section B against a scratch database automatically (docs/backup.md §7); this page is
+the by-hand version and the real thing.
 
 Below, `$DB` is the D1 database name — the `database_name` in `apps/api/wrangler.toml` and the
 `D1_DATABASE_NAME` repository variable used by `.github/workflows/nightly-backup.yml` (default
@@ -35,10 +36,15 @@ recomputed for new messages: after the restore, run Settings → Messages → "R
 
 ## B. Restore an encrypted backup into a FRESH D1
 
-1. Download the newest good file from R2 (`daily/maktab-<stamp>.sql.gz.age`) or Backblaze B2 (same
-   name), plus its `.sha256`; run `shasum -a 256 -c maktab-<stamp>.sql.gz.age.sha256`.
-2. Decrypt and decompress (private key file `key.txt`):
-   `age -d -i key.txt maktab-<stamp>.sql.gz.age | gunzip > dump.sql`
+1. Download the newest good file from R2 (`daily/<YYYY-MM-DD>.sql.gz.age`, Karachi date; `daily/LATEST`
+   names the newest; files before M6 are `daily/maktab-<stamp>.sql.gz.age`) or Backblaze B2 (same
+   name), plus its `.sha256`:
+   `npx wrangler r2 object get maktab-backups/daily/<day>.sql.gz.age --remote --file <day>.sql.gz.age`
+   (and the `.sha256`), then `shasum -a 256 -c <day>.sql.gz.age.sha256`.
+2. Decrypt and decompress with the trustees' key file (`maktab-backup-key.txt`, made by
+   `npm run backup:keygen`). Needs the `age` CLI on the restore laptop (`brew install age` /
+   `apt install age`):
+   `age -d -i maktab-backup-key.txt <day>.sql.gz.age | gunzip > dump.sql`
 3. Sanity: `grep -c '^INSERT' dump.sql` is non-zero; `head -1 dump.sql` is `PRAGMA defer_foreign_keys=TRUE;`.
 4. Create the new database: `npx wrangler d1 create "$DB-restored"` — copy the printed `database_id`.
 5. Import: `npx wrangler d1 execute "$DB-restored" --remote --file=dump.sql`
@@ -51,14 +57,15 @@ recomputed for new messages: after the restore, run Settings → Messages → "R
    and counts for `student` and `charge`. Confirm the triggers and views survived:
    `npm run db:verify -- --remote --env production` (after pointing the binding at the restored
    database, step 7) compares `sqlite_master` with `packages/db/sql/` and exits 1 on any difference;
-   by hand, `select count(*) from sqlite_master where type='trigger'` is 72 and `type='view'` is 4
-   after migration 0011 (docs/deploy.md §3).
+   by hand, compare `select count(*) from sqlite_master where type='trigger'` / `'view'` with the
+   numbers in the last entry of docs/deploy-log.md.
 7. Re-point the Worker: in `apps/api/wrangler.toml`, under `[[env.production.d1_databases]]` for binding
    `DB`, set `database_id` (and optionally `database_name`) to the new database, then
    `npx wrangler deploy --env production`. Never rename the binding.
 8. If the Worker is new or its secrets were lost, set them first (docs/deploy.md §4):
-   `SESSION_SECRET` (staff sign in again) and the saved `PARENT_LINK_SECRET` (else revoke all links,
-   above). Smoke test in the browser (sign in, open a student, today's attendance). Take a fresh export at once:
+   `SESSION_SECRET` (staff sign in again), the saved `PARENT_LINK_SECRET` (else revoke all links,
+   above) and a new `BACKUP_REPORT_TOKEN` (docs/backup.md §3; update the GitHub secret too).
+   Smoke test in the browser (sign in, open a student, today's attendance). Take a fresh export at once:
    `npx wrangler d1 export "$DB-restored" --remote --output after-restore.sql` and keep it.
 9. Leave the old database untouched until the school confirms everything is right, then delete it.
    Update the `D1_DATABASE_NAME` repository variable if the name changed, and re-run the nightly workflow.

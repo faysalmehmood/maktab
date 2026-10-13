@@ -12,6 +12,8 @@
     "generate": "drizzle-kit generate && tsx scripts/sync-custom-sql.ts",
     "seed": "tsx scripts/seed.ts",
     "verify": "tsx scripts/verify-db.ts",
+    "backup:keygen": "tsx scripts/backup-keygen.ts",
+    "sheet:export": "tsx scripts/sheet-export.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
@@ -22,6 +24,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "22.20.5",
+    "age-encryption": "0.3.1",
     "better-sqlite3": "13.0.3",
     "drizzle-kit": "0.31.11",
     "tsx": "4.23.15"

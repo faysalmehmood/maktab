@@ -66,6 +66,12 @@ then, signed in as the owner, `POST /api/parent-links/rotate-all` (Settings → 
 parent links"). Old links stop being recomputable, so the next "Open WhatsApp" for a guardian makes a
 fresh one; guardians need the new message. Rotation does not touch staff sessions.
 
+`BACKUP_REPORT_TOKEN` (M6) lets the GitHub Actions backup and restore-drill workflows report runs to
+`POST /api/backup/runs`; the GitHub secret of the same name must hold the same value. Generate it once
+into a 0600 temp file, feed both sides from the file, shred it (docs/backup.md §3). Without it the
+route answers 503 and Settings → Backup says reporting is off. The Worker also binds the R2 bucket
+`maktab-backups` as `BACKUPS` (read-only use: listing the newest dumps).
+
 ## 5. Deploy the Worker
 
 ```sh
