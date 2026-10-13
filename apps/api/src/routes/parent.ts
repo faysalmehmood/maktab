@@ -37,6 +37,7 @@ import {
   sha256Hex,
 } from '../lib/messaging';
 import { PARENT_RATE, RateLimiter } from '../lib/ratelimit';
+import { clientIp, type Fetch, turnstileSiteKey, verifyTurnstile } from '../lib/turnstile';
 import { tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
 
@@ -80,7 +81,7 @@ export const PARENT_HEADERS: Record<string, string> = {
 
 const invalid = () => new ApiError(404, 'not_found', 'This link is not valid any more');
 
-export function parentRoutes(app: Hono<AppEnv>, table: RouteTable): void {
+export function parentRoutes(app: Hono<AppEnv>, table: RouteTable, deps: { fetch: Fetch }): void {
   const view = requires('parent_page', 'view');
   const limiter = new RateLimiter(PARENT_RATE.limit, PARENT_RATE.windowMs);
 
@@ -277,6 +278,8 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       guardian: { first_name: firstName(l.guardian_name), lang: l.guardian_lang },
       date: today,
       gate: { kind: gateKind(l), passed },
+      // The gate form shows the Turnstile widget only when it is on (and only while needed).
+      turnstile_site_key: passed ? null : turnstileSiteKey(c.env),
       children: kids,
       dues,
       receipts,
@@ -303,6 +306,17 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     const l = await resolve(c);
     const secret = parentSecret(c.env);
     const input = await jsonBody(c, parentGateInputSchema);
+    // Before an attempt is counted: a failed Turnstile check never burns one of the 5 tries.
+    if (
+      gateKind(l) !== 'none' &&
+      !(await verifyTurnstile(
+        c.env,
+        deps.fetch,
+        input.turnstile_token,
+        clientIp((h) => c.req.header(h)),
+      ))
+    )
+      throw new ApiError(400, 'turnstile_failed', 'Please complete the check and try again');
     const db = c.get('db');
     const now = new Date();
     const nowIso = now.toISOString();

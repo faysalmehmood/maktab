@@ -31,6 +31,7 @@ export function Login() {
   const { t } = useTranslation();
   const [params] = useSearchParams();
   const failed = params.has('error');
+  const turnstile = params.get('error') === 'turnstile_failed';
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4 p-4">
@@ -47,7 +48,7 @@ export function Login() {
         <CardContent className="flex flex-col gap-4">
           {failed && (
             <p role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-              {t('auth.failed')}
+              {turnstile ? t('auth.turnstileFailed') : t('auth.failed')}
             </p>
           )}
           {/* A full navigation, not fetch: the OAuth flow is a chain of redirects. */}

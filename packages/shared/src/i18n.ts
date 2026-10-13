@@ -28,6 +28,7 @@ export const en = {
     signOut: 'Sign out',
     inviteOnly: 'Only staff invited by the school can sign in.',
     failed: 'Sign-in failed. Ask the school owner to invite your Google email.',
+    turnstileFailed: 'The "are you a person" check did not pass. Try signing in again.',
   },
   common: {
     language: 'Language',

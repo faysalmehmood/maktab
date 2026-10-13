@@ -666,6 +666,7 @@ export const msgErrorsUr: Shape<typeof msgErrorsEn> = {
   gate_unavailable: 'یہ صفحہ کھولنے کے لیے اسکول سے رابطہ کریں۔',
   gate_required: 'پہلے تصدیق کا جواب دیں۔',
   rate_limited: 'بہت زیادہ درخواستیں۔ ایک منٹ رک کر دوبارہ کوشش کریں۔',
+  turnstile_failed: 'نیچے دی گئی تصدیق مکمل کریں اور دوبارہ کوشش کریں۔',
   unknown_placeholder: 'اس متن میں ایسا خانہ ہے جسے مکتب نہیں پہچانتا۔',
   template_placeholders: 'ہر متن میں {link} رکھیں (اور اعلان میں {body} بھی)۔',
   not_opened: 'پہلے واٹس ایپ میں کھولیں، پھر "بھیج دیا" دبائیں۔',
@@ -1244,6 +1245,7 @@ export const ur: Messages = {
     signOut: 'سائن آؤٹ',
     inviteOnly: 'صرف وہی عملہ سائن اِن کر سکتا ہے جسے اسکول نے مدعو کیا ہو۔',
     failed: 'سائن اِن نہیں ہو سکا۔ اسکول کے مالک سے کہیں کہ آپ کی گوگل ای میل کو مدعو کریں۔',
+    turnstileFailed: 'تصدیق مکمل نہیں ہو سکی۔ دوبارہ سائن اِن کریں۔',
   },
   common: {
     language: 'زبان',

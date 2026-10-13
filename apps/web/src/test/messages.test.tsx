@@ -359,6 +359,7 @@ function parentPage(over: Partial<ParentPageDto> = {}): ParentPageDto {
   return {
     school: { name: 'Maktab School', name_ur: 'مکتب اسکول', phone: '923001112223' },
     guardian: { first_name: 'Imran', lang: 'ur' },
+    turnstile_site_key: null,
     date: '2026-10-11',
     gate: { kind: 'none', passed: true },
     children: [
@@ -525,6 +526,54 @@ describe('parent page', () => {
       { birth_year: 2015 },
     ]);
     expect(sessionStorage.getItem(`maktab.pgate.${TOKEN.slice(0, 12)}`)).toBe('GT');
+  });
+
+  it('Turnstile on: the gate waits for the widget, sends its token, gets a fresh one per try', async () => {
+    let n = 0;
+    const rendered: string[] = [];
+    window.turnstile = {
+      render: (_el, opts) => {
+        rendered.push(opts.sitekey);
+        n += 1;
+        const tok = `tok-${n}`;
+        setTimeout(() => opts.callback(tok), 0);
+        return `w${n}`;
+      },
+      remove: () => undefined,
+    };
+    const { calls } = mockApi({
+      ['GET /api/p']: parentPage({
+        guardian: { first_name: 'I', lang: 'en' },
+        gate: { kind: 'birth_year', passed: false },
+        turnstile_site_key: 'SITE',
+        dues: null,
+        receipts: null,
+      }),
+      ['POST /api/p/gate']: () =>
+        new Response(JSON.stringify({ error: { code: 'gate_failed', message: 'x' } }), {
+          status: 400,
+        }),
+    });
+    try {
+      renderParent();
+      const input = await screen.findByLabelText(/Birth year/);
+      fireEvent.change(input, { target: { value: '2014' } });
+      const open = screen.getByRole('button', { name: 'Open' }) as HTMLButtonElement;
+      await waitFor(() => expect(open.disabled).toBe(false));
+      fireEvent.click(open);
+      expect(await screen.findByText('That does not match. Try again.')).toBeTruthy();
+      await waitFor(() => expect(rendered).toHaveLength(2));
+      await waitFor(() => expect(open.disabled).toBe(false));
+      fireEvent.click(open);
+      await waitFor(() => expect(calls.filter((c) => c.path === '/api/p/gate')).toHaveLength(2));
+      expect(calls.filter((c) => c.path === '/api/p/gate').map((c) => c.body)).toEqual([
+        { birth_year: 2014, turnstile_token: 'tok-1' },
+        { birth_year: 2014, turnstile_token: 'tok-2' },
+      ]);
+      expect(rendered).toEqual(['SITE', 'SITE']);
+    } finally {
+      window.turnstile = undefined;
+    }
   });
 
   it('sends the token only in X-Parent-Token, never in a URL', async () => {

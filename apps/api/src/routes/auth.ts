@@ -15,6 +15,7 @@ import type { AppEnv } from '../env';
 import { randomToken } from '../lib/b64';
 import { ApiError } from '../lib/errors';
 import { withD1Retry } from '../lib/retry';
+import { clientIp, TURNSTILE_SCRIPT, turnstileSiteKey, verifyTurnstile } from '../lib/turnstile';
 import { defineRoute, publicRoute, type RouteTable } from '../perm/routes';
 
 const OAUTH_COOKIE = 'maktab_oauth';
@@ -30,6 +31,33 @@ const secure = (c: Context<AppEnv>) => c.env.APP_ORIGIN.startsWith('https://');
 const loginError = (c: Context<AppEnv>, code: string) =>
   c.redirect(`${c.env.APP_ORIGIN}/login?error=${encodeURIComponent(code)}`, 302);
 
+/**
+ * The pre-check page in front of Google sign-in: Turnstile's widget, then straight on to
+ * /api/auth/google/start?ts=<token>. Its own strict CSP (a nonce for the one inline script, the
+ * Turnstile origin for its script and frame); bilingual, no app bundle.
+ */
+function turnstilePage(c: Context<AppEnv>, siteKey: string): Response {
+  const nonce = randomToken();
+  const origin = new URL(TURNSTILE_SCRIPT).origin;
+  const esc = (v: string) => v.replace(/[^A-Za-z0-9_-]/g, '');
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Maktab — sign in</title>
+<style>body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:90vh;margin:0 16px;text-align:center;color:#111}p{margin:.5rem 0}</style>
+</head><body><main><p>Checking this is a person, then on to Google…</p>
+<p lang="ur" dir="rtl">تصدیق کے بعد گوگل سائن اِن کھلے گا…</p>
+<div class="cf-turnstile" data-sitekey="${esc(siteKey)}" data-callback="maktabGo"></div>
+<noscript>JavaScript is needed to sign in.</noscript></main>
+<script nonce="${nonce}">function maktabGo(t){location.replace('/api/auth/google/start?ts='+encodeURIComponent(t))}</script>
+<script nonce="${nonce}" src="${TURNSTILE_SCRIPT}" async defer></script>
+</body></html>`;
+  return c.html(html, 200, {
+    'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}' ${origin}; frame-src ${origin}; connect-src ${origin}; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+    'Cache-Control': 'no-store',
+    'X-Robots-Tag': 'noindex',
+  });
+}
+
 export function authRoutes(app: Hono<AppEnv>, table: RouteTable, deps: AuthDeps): void {
   defineRoute(
     app,
@@ -39,6 +67,21 @@ export function authRoutes(app: Hono<AppEnv>, table: RouteTable, deps: AuthDeps)
       // Without a client id Google shows a confusing error page; fail loudly here instead.
       if (!c.env.GOOGLE_CLIENT_ID?.trim()) {
         throw new ApiError(500, 'misconfigured', 'GOOGLE_CLIENT_ID is not set');
+      }
+      // Turnstile on (M7): first a one-click check page, which comes back here with ?ts=<token>.
+      const siteKey = turnstileSiteKey(c.env);
+      if (siteKey) {
+        const ts = c.req.query('ts');
+        if (!ts) return turnstilePage(c, siteKey);
+        if (
+          !(await verifyTurnstile(
+            c.env,
+            deps.fetch,
+            ts,
+            clientIp((h) => c.req.header(h)),
+          ))
+        )
+          return loginError(c, 'turnstile_failed');
       }
       const state = randomToken();
       const nonce = randomToken();

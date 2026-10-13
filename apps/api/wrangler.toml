@@ -81,6 +81,10 @@ crons = ["*/30 * * * *"]
 APP_ORIGIN = "https://maktab.conceptlix.com"
 # Set before the first sign-in; after the owner exists it no longer matters.
 OWNER_EMAIL = "thefaysalmehmood@gmail.com"
+# Cloudflare Turnstile (M7, optional): paste the widget's public site key here and set the secret
+# with `npx wrangler secret put TURNSTILE_SECRET --env production` (docs/deploy.md §8). Either one
+# missing = Turnstile off.
+# TURNSTILE_SITE_KEY = ""
 
 [[env.production.d1_databases]]
 binding = "DB"

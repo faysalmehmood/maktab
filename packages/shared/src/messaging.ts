@@ -411,6 +411,8 @@ export type ParentLinkCreatedDto = ParentLinkStatusDto & { url: string };
 
 export const parentGateInputSchema = z.object({
   birth_year: z.number().int().min(1900).max(2100).optional(),
+  /** Cloudflare Turnstile token; required only when the school has Turnstile on (M7). */
+  turnstile_token: z.string().max(2048).optional(),
   pin: z
     .string()
     .regex(/^\d{4,6}$/)
@@ -448,6 +450,8 @@ export type ParentPageDto = {
   guardian: { first_name: string; lang: MessageLang };
   date: string;
   gate: { kind: ParentGate; passed: boolean };
+  /** Cloudflare Turnstile site key while the gate still has to be answered and Turnstile is on. */
+  turnstile_site_key: string | null;
   children: ParentChildDto[];
   /** Absent until the gate is passed (when the link has one). */
   dues: {

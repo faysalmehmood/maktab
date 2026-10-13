@@ -24,6 +24,12 @@ export type Bindings = {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   APP_ORIGIN: string;
+  /**
+   * Cloudflare Turnstile (M7, optional). Both set → the parent gate needs a Turnstile token and Google
+   * sign-in starts with a one-click check page; either unset → no Turnstile anywhere (docs/deploy.md).
+   */
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET?: string;
   /** The only address that may claim an empty installation as owner (PLAN §14.1). Empty = nobody. */
   OWNER_EMAIL?: string;
 };

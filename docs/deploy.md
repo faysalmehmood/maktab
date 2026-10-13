@@ -90,6 +90,50 @@ cd apps/api && npx wrangler deploy --env production
   404 with `x-robots-tag: noindex` (no token). Links are `https://<host>/p#<token>`: the token is a
   URL fragment and never reaches a server log.
 
+## 7. Rate limiting (Cloudflare WAF rules — set by hand in the dashboard)
+
+The Worker has an in-memory per-IP limiter on `/api/p*` (60/min) and `/api/auth/*` (20/min), which
+answers `429 rate_limited` with `Retry-After` and `RateLimit-Limit/Remaining/Reset` headers. It is
+per isolate, so it is defence in depth only; **the real limits are these three rules**. Dashboard →
+the `conceptlix.com` zone → Security → WAF → **Rate limiting rules** → Create rule (the free plan
+allows one rule with a 10 s period; if only one is available, create rule 1 and note it in
+docs/deploy-log.md; on Pro or above create all three exactly as below):
+
+| # | Rule name | If incoming requests match (expression) | Characteristics | Rate | Action | Duration |
+|---|---|---|---|---|---|---|
+| 1 | maktab parent page | `(http.host eq "maktab.conceptlix.com" and (starts_with(http.request.uri.path, "/p") or starts_with(http.request.uri.path, "/api/p")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
+| 2 | maktab sign-in | `(http.host eq "maktab.conceptlix.com" and starts_with(http.request.uri.path, "/api/auth/"))` | IP | 20 requests / 1 minute | Block (429) | 1 minute |
+| 3 | maktab API writes | `(http.host eq "maktab.conceptlix.com" and http.request.method eq "POST" and starts_with(http.request.uri.path, "/api/"))` | IP | 300 requests / 1 minute | Block (429) | 1 minute |
+
+Notes: rule 1 matches `/p` and `/p#…` (the fragment never reaches the server) and every `/api/p*`
+call. Rule 3 also covers `POST /api/backup/runs` (token-only; no Turnstile needed there). A school
+behind one NAT IP (all office phones on one Wi-Fi) stays far below 300 POSTs a minute; if a busy
+counter ever hits it, raise rule 3, never remove it. Check: `for i in $(seq 70); do curl -s -o
+/dev/null -w '%{http_code}\n' https://maktab.conceptlix.com/api/p; done | sort | uniq -c` shows 429s.
+
+## 8. Turnstile (optional; set by hand)
+
+Off until both values exist; with either missing everything behaves as before. On: the parent gate
+(`POST /api/p/gate`, birth year / PIN) needs a Turnstile token before an attempt is counted, and
+`GET /api/auth/google/start` first shows a one-click check page, then goes on to Google.
+
+1. Dashboard → **Turnstile** → Add widget. Name `maktab`; Hostnames `maktab.conceptlix.com`
+   (add `localhost` only on a separate test widget); Widget mode **Managed**; pre-clearance off.
+   Create. Copy the **Site key** (public) and the **Secret key**.
+2. Site key: in `apps/api/wrangler.toml` under `[env.production.vars]` set
+   `TURNSTILE_SITE_KEY = "<site key>"` (public, fine in git) and commit.
+3. Secret (never in git or chat): `cd apps/api && npx wrangler secret put TURNSTILE_SECRET --env production`
+   and paste it at the prompt.
+4. `npm run build && cd apps/api && npx wrangler deploy --env production`.
+5. Check: `curl -s https://maktab.conceptlix.com/api/auth/google/start | grep cf-turnstile` finds the
+   widget; `curl -sI https://maktab.conceptlix.com/p | grep -i content-security` lists
+   `https://challenges.cloudflare.com`; open a parent link with a gate on a phone: the widget shows
+   under the birth-year box and "Open" waits for it.
+
+To turn it off again: `npx wrangler secret delete TURNSTILE_SECRET --env production` (or remove the
+var) and deploy. Testing keys for a local check (`apps/api/.dev.vars`): site key
+`1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA` always pass.
+
 ## First deploy notes (2026-10-10, see docs/deploy-log.md)
 
 - Production host is `maktab.conceptlix.com`. wrangler created the DNS record and certificate itself

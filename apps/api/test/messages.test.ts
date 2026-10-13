@@ -688,7 +688,15 @@ describe('parent links and the public parent page', () => {
         ...['school', 'name', 'name_ur', 'phone', 'guardian', 'first_name', 'lang', 'date'],
         ...['gate', 'kind', 'passed', 'children', 'index', 'group', 'today', 'month'],
         ...['present', 'absent', 'late', 'excused', 'pct', 'dues', 'lines'],
-        ...['total_before_credit', 'credit', 'total', 'overdue', 'receipts', 'receipt_no'],
+        ...[
+          'total_before_credit',
+          'credit',
+          'total',
+          'overdue',
+          'receipts',
+          'receipt_no',
+          'turnstile_site_key',
+        ],
         ...['amount', 'business_date', 'notices', 'at', 'body_en', 'body_ur'],
       ].sort(),
     );

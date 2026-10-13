@@ -24,6 +24,7 @@ import { ReceiptPrint } from '@/components/fees/ReceiptPrint';
 import { ErrorNote, Num } from '@/components/form';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { MARK, MessageText, WithValue } from '@/components/messages/common';
+import { Turnstile } from '@/components/Turnstile';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -220,14 +221,18 @@ function ListenButton({ data }: { data: ParentPageDto }) {
 function GateForm({
   token,
   kind,
+  turnstileSiteKey,
   onPassed,
 }: {
   token: string;
   kind: 'birth_year' | 'pin';
+  turnstileSiteKey: string | null;
   onPassed: (gate: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [value, setValue] = useState('');
+  const [human, setHuman] = useState<string | null>(null);
+  const [round, setRound] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const submit = async (e: FormEvent) => {
@@ -239,11 +244,16 @@ function GateForm({
     try {
       const r = await parentFetch<ParentGateResultDto>('/api/p/gate', token, null, {
         method: 'POST',
-        body: JSON.stringify(kind === 'birth_year' ? { birth_year: Number(v) } : { pin: v }),
+        body: JSON.stringify({
+          ...(kind === 'birth_year' ? { birth_year: Number(v) } : { pin: v }),
+          ...(human ? { turnstile_token: human } : {}),
+        }),
       });
       onPassed(r.gate_token);
     } catch (err) {
       setError(err);
+      // A Turnstile token is good for one answer: a fresh widget for the next try.
+      if (turnstileSiteKey) setRound((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -272,10 +282,18 @@ function GateForm({
               value={value}
               onChange={(e) => setValue(e.target.value.replace(/\D/g, ''))}
             />
-            <Button type="submit" disabled={busy || !value}>
+            <Button type="submit" disabled={busy || !value || (!!turnstileSiteKey && !human)}>
               {t('msg.parent.gateSubmit')}
             </Button>
           </div>
+          {turnstileSiteKey ? (
+            <Turnstile
+              siteKey={turnstileSiteKey}
+              lang={i18n.language}
+              onToken={setHuman}
+              resetKey={round}
+            />
+          ) : null}
           <p className="text-xs text-muted-foreground">{t('msg.parent.gateWhy')}</p>
           <ErrorNote error={error} />
         </form>
@@ -612,6 +630,7 @@ export function ParentPage() {
         <GateForm
           token={token}
           kind={data.gate.kind}
+          turnstileSiteKey={data.turnstile_site_key ?? null}
           onPassed={(g) => {
             writeGate(token, g);
             setGate(g);

@@ -12,3 +12,7 @@ OWNER_EMAIL=
 # Backup reports from GitHub Actions (POST /api/backup/runs, Bearer token, >= 32 chars). Optional
 # locally; smoke:m6 sets its own. Production: docs/backup.md.
 BACKUP_REPORT_TOKEN=dev-only-backup-report-token-change-me-32-chars
+
+# Turnstile (optional; both or neither). Cloudflare's always-pass testing keys:
+# TURNSTILE_SITE_KEY=1x00000000000000000000AA
+# TURNSTILE_SECRET=1x0000000000000000000000000000000AA

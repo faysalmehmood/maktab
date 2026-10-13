@@ -13,6 +13,7 @@ export const msgErrorsEn = {
   gate_unavailable: 'Ask the school to open this page for you.',
   gate_required: 'Answer the check first.',
   rate_limited: 'Too many requests. Wait a minute and try again.',
+  turnstile_failed: 'Please complete the check below and try again.',
   unknown_placeholder: 'This text has a placeholder Maktab does not know.',
   template_placeholders: 'Keep {link} in every text (and {body} in the notice).',
   not_opened: 'Open it in WhatsApp first, then tap Sent.',

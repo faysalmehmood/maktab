@@ -5,6 +5,8 @@ import { secureHeaders } from 'hono/secure-headers';
 import { createJwksClient, type JwksClient } from './auth/google';
 import type { AppEnv, Bindings } from './env';
 import { notFound, onError } from './lib/errors';
+import { IP_RATES, ipRateLimit } from './lib/ratelimit';
+import { TURNSTILE_SCRIPT, turnstileSiteKey } from './lib/turnstile';
 import { denyUndeclared, RouteTable } from './perm/routes';
 import { admissionRoutes } from './routes/admissions';
 import { attendanceRoutes } from './routes/attendance';
@@ -40,6 +42,15 @@ const SPA_HEADERS: Record<string, string> = {
   'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
 };
 
+const SPA_CSP = SPA_HEADERS['Content-Security-Policy'] as string;
+/** The SPA's CSP plus the Turnstile origin for script, frame and connect. */
+export function withTurnstile(csp: string): string {
+  const o = new URL(TURNSTILE_SCRIPT).origin;
+  return `${csp
+    .replace("script-src 'self'", `script-src 'self' ${o}`)
+    .replace("connect-src 'self'", `connect-src 'self' ${o}`)}; frame-src ${o}`;
+}
+
 /** Module scope so the JWKS cache survives across requests in one isolate. */
 const defaultJwks = createJwksClient();
 
@@ -56,12 +67,14 @@ export function createApp(deps: AppDeps) {
   });
   app.use('/api/*', (c, next) => csrf({ origin: c.env.APP_ORIGIN })(c, next));
   app.use('/api/*', denyUndeclared(routes));
+  // Per-IP limits in front of the public surfaces (M7, best effort per isolate; the WAF rules in
+  // docs/deploy.md are the real limit). Hono's '/api/p/*' also matches '/api/p' itself.
+  app.use('/api/p/*', ipRateLimit('p', IP_RATES.parent));
+  app.use('/api/auth/*', ipRateLimit('auth', IP_RATES.auth));
 
   coreRoutes(app, routes);
-  authRoutes(app, routes, {
-    jwks: deps.jwks ?? defaultJwks,
-    fetch: deps.fetch ?? ((input, init) => fetch(input, init)),
-  });
+  const fetchFn = deps.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init));
+  authRoutes(app, routes, { jwks: deps.jwks ?? defaultJwks, fetch: fetchFn });
   catalogRoutes(app, routes);
   groupRoutes(app, routes);
   staffRoutes(app, routes);
@@ -74,7 +87,7 @@ export function createApp(deps: AppDeps) {
   cashRoutes(app, routes);
   moneyRoutes(app, routes);
   messageRoutes(app, routes);
-  parentRoutes(app, routes);
+  parentRoutes(app, routes, { fetch: fetchFn });
   settingsRoutes(app, routes);
   backupRoutes(app, routes);
 
@@ -92,6 +105,8 @@ export function createApp(deps: AppDeps) {
     const out = new Response(res.body, res);
     for (const [k, v] of Object.entries({ ...PARENT_HEADERS, ...SPA_HEADERS }))
       out.headers.set(k, v);
+    // Turnstile on (M7): the gate's widget loads a script and an iframe from Cloudflare.
+    if (turnstileSiteKey(c.env)) out.headers.set('Content-Security-Policy', withTurnstile(SPA_CSP));
     return out;
   };
   app.get('/p', parentShell);
