@@ -460,28 +460,37 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
 function SyncState() {
   const { t } = useTranslation();
   const outbox = useOutboxStatus();
-  if (outbox.pending > 0)
-    return (
-      <span
-        id="sync-state"
-        className="flex shrink-0 items-center gap-1.5 rounded-full bg-warn-soft px-2.5 py-1 text-meta font-semibold text-warn"
-        title={t('attendance.pending', { n: outbox.pending })}
-      >
-        <CloudOff className="size-4" aria-hidden />
-        <bdi className="num">{outbox.pending}</bdi>
-        <span className="sr-only">{t('attendance.pending', { n: outbox.pending })}</span>
-      </span>
-    );
+  const waiting = outbox.pending > 0;
   const offline = outbox.offline;
+  // One live region that stays mounted, so a change (saved → waiting → offline) is announced.
   return (
     <span
       id="sync-state"
-      className="flex shrink-0 items-center gap-1.5 text-meta text-muted-foreground"
+      aria-live="polite"
+      className={cn(
+        'flex shrink-0 items-center gap-1.5 text-meta',
+        waiting
+          ? 'rounded-full bg-warn-soft px-2.5 py-1 font-semibold text-warn'
+          : 'text-muted-foreground',
+      )}
+      title={waiting ? t('attendance.pending', { n: outbox.pending }) : undefined}
     >
-      <i className={cn('size-2 rounded-full', offline ? 'bg-bad' : 'bg-ok')} aria-hidden />
-      <span className={cn(!offline && 'sr-only md:not-sr-only')}>
-        {offline ? t('shell.sync.offline') : t('shell.sync.saved')}
-      </span>
+      {waiting ? (
+        <>
+          <CloudOff className="size-4" aria-hidden />
+          <bdi className="num" aria-hidden>
+            {outbox.pending}
+          </bdi>
+          <span className="sr-only">{t('attendance.pending', { n: outbox.pending })}</span>
+        </>
+      ) : (
+        <>
+          <i className={cn('size-2 rounded-full', offline ? 'bg-bad' : 'bg-ok')} aria-hidden />
+          <span className={cn(!offline && 'sr-only md:not-sr-only')}>
+            {offline ? t('shell.sync.offline') : t('shell.sync.saved')}
+          </span>
+        </>
+      )}
     </span>
   );
 }

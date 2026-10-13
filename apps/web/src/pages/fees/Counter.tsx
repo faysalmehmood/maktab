@@ -429,6 +429,21 @@ type Attempt = {
 };
 
 /** The request body exactly as the counter sends it (exported for tests). */
+/**
+ * The "One month" quick amount: what the oldest open month still owes (its open lines' dues, in
+ * the server's allocation order), never more than the net due. 0 (no button) when there is
+ * nothing open or only one month is open, where "Full due" already says it.
+ */
+export function oneMonthAmount(payer: Pick<Payer, 'lines' | 'net_due'>): number {
+  const open = openDuesInOrder(payer.lines);
+  const first = open[0];
+  if (!first) return 0;
+  const month = open.filter((l) => l.period_key === first.period_key);
+  if (month.length === open.length) return 0;
+  const sum = month.reduce((n, l) => n + l.due, 0);
+  return Math.max(0, Math.min(sum, payer.net_due));
+}
+
 export function collectBody(payer: Payer, a: Attempt, key: string, today: string): CollectInput {
   return {
     idempotency_key: key,
@@ -561,6 +576,7 @@ function CollectForm({
   const allocation = new Map(preview?.rows.map((r) => [r.line.id, r.amount]) ?? []);
   const directEmpty = direct && chosen.size === 0;
   const amountHigh = !!amount && payer.net_due > 0 && amount > 3 * payer.net_due;
+  const oneMonth = oneMonthAmount(payer);
 
   // After a reload (stale_dues, refocus): ticks on lines that are no longer due are dropped; if
   // that leaves "Choose lines" with nothing ticked, the mode goes back to oldest-first, so the mode
@@ -791,6 +807,17 @@ function CollectForm({
                       }
                     >
                       {t('screens.fees.fullDue')} <Money paisa={payer.net_due} />
+                    </Button>
+                  )}
+                  {oneMonth > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      id="counter-one-month"
+                      onClick={() => setAmountText(formatRupeeInput(paisaToRupeeText(oneMonth)))}
+                    >
+                      {t('screens.fees.oneMonth')} <Money paisa={oneMonth} />
                     </Button>
                   )}
                   <Button

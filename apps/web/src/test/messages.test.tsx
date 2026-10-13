@@ -186,6 +186,10 @@ describe('send queue', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Start sending' }));
     const progress = () => document.getElementById('msg-focus-progress')?.textContent;
     expect(progress()).toBe('1 of 4');
+    expect(document.getElementById('msg-focus-progress')?.getAttribute('aria-live')).toBe('polite');
+    expect(document.querySelector('[role="progressbar"] > span')?.className).toContain(
+      'motion-reduce:transition-none',
+    );
     // Exactly one message on screen, in large type; no Sent before Open WhatsApp.
     expect(document.querySelectorAll('[id^="msg-row-"]')).toHaveLength(1);
     expect(document.getElementById('msg-row-m1')).toBeTruthy();

@@ -40,6 +40,7 @@ import {
   Page,
   Panel,
   RowList,
+  Skeleton,
   StatStrip,
   StatusBadge,
   type Tone,
@@ -523,22 +524,27 @@ export function StudentDetail() {
           icon: Pencil,
           onSelect: () => navigate(`/students/${s.id}/edit`),
         },
-        s.status === 'active'
-          ? {
-              id: 'student-status',
-              label: t('student.changeStatus'),
-              icon: UserX,
-              destructive: true,
-              onSelect: () => setStatusOpen(true),
-            }
-          : {
-              id: 'student-readmit',
-              label: t('student.readmit'),
-              icon: Plus,
-              onSelect: () => navigate(`/students/new?readmit=${s.id}`),
-            },
+        // Re-admission is the header button for a student who left (not repeated here).
+        ...(s.status === 'active'
+          ? [
+              {
+                id: 'student-status',
+                label: t('student.changeStatus'),
+                icon: UserX,
+                destructive: true,
+                onSelect: () => setStatusOpen(true),
+              },
+            ]
+          : []),
       ]
     : [];
+  // While a figure loads it is a placeholder bar, never "—" or "0 siblings" read as a fact.
+  const loadingValue = (
+    <>
+      <Skeleton className="mt-1 h-6 w-20" />
+      <span className="sr-only">{t('common.loading')}</span>
+    </>
+  );
 
   return (
     <Page>
@@ -628,7 +634,13 @@ export function StudentDetail() {
                 {
                   id: 'sum-attendance',
                   label: t('screens.profile.attendance'),
-                  value: pct != null ? <Num>{`${pct}%`}</Num> : '—',
+                  value: attendance.isPending ? (
+                    loadingValue
+                  ) : pct != null ? (
+                    <Num>{`${pct}%`}</Num>
+                  ) : (
+                    '—'
+                  ),
                   note: <DateText iso={month} kind="month" />,
                 },
               ]
@@ -638,7 +650,13 @@ export function StudentDetail() {
                 {
                   id: 'sum-dues',
                   label: t('screens.profile.dues'),
-                  value: fees.data ? <Mny paisa={fees.data.due} /> : '—',
+                  value: fees.isPending ? (
+                    loadingValue
+                  ) : fees.data ? (
+                    <Mny paisa={fees.data.due} />
+                  ) : (
+                    '—'
+                  ),
                   note: fees.data ? (
                     <>
                       {t('screens.profile.familyOwes')} <Mny paisa={fees.data.family_due} />
@@ -651,7 +669,11 @@ export function StudentDetail() {
             id: 'sum-admitted',
             label: t('student.admissionDate'),
             value: <DateText iso={s.admission_date} />,
-            note: t('screens.profile.siblings', { count: siblings.length }),
+            note: family.isPending ? (
+              <Skeleton className="mt-1 h-3.5 w-16" />
+            ) : family.data ? (
+              t('screens.profile.siblings', { count: siblings.length })
+            ) : undefined,
           },
         ]}
       />

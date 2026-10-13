@@ -10,7 +10,7 @@ import {
   type ProgrammeDto,
 } from '@maktab/shared';
 import { sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { todayPk } from '../src/lib/http';
 import { fakeR2, signedInAs, testApp } from './helpers';
 
@@ -34,6 +34,11 @@ function client(request: ReturnType<typeof testApp>['request'], headers: Record<
     return { status: res.status, text, body: parsed as T } as Res & { body: T };
   };
 }
+
+// Each test here is a sweep (every route × role, every write against the other group) over one
+// in-memory app: seconds of work, so 5 s timed out on a loaded machine. Nothing in it depends on
+// the clock beyond the one `today` read below, so a longer limit changes no outcome.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const RS = (n: number) => n * 100;
 const today = todayPk();

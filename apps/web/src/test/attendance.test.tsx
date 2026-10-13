@@ -433,7 +433,7 @@ describe('today list', () => {
     const bar = await screen.findByRole('progressbar');
     expect(bar.getAttribute('aria-valuenow')).toBe('1');
     expect(bar.getAttribute('aria-valuemax')).toBe('2');
-    expect(screen.getByText('2 میں سے 1 رجسٹر ہو گئے')).toBeTruthy();
+    expect(screen.getByText('2 میں سے 1 رجسٹر لیے جا چکے')).toBeTruthy();
     // The two lists, each with its own heading; the register still to take carries the badge.
     const toTake = screen.getByRole('region', { name: 'باقی رجسٹر' });
     expect(within(toTake).getByText('نہیں لی گئی')).toBeTruthy();

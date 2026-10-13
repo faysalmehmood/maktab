@@ -221,7 +221,7 @@ export function TodayPanels({ items, date }: { items: TodayItem[]; date: string 
           className="h-2 overflow-hidden rounded-full bg-muted"
         >
           <span
-            className="block h-full rounded-full bg-brand transition-[width]"
+            className="block h-full rounded-full bg-brand transition-[width] motion-reduce:transition-none"
             style={{ width: `${pct}%` }}
           />
         </div>

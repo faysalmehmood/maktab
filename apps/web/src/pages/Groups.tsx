@@ -96,7 +96,9 @@ export function GroupsPage() {
   const teacher = isTeacherOnly(roles);
   const manage = canManageSettings(roles);
   const students = items.reduce((n, g) => n + g.active_count, 0);
-  const seats = items.reduce((n, g) => n + Math.max(0, g.seats_left ?? 0), 0);
+  // Seats left only counts groups with a capacity; with none set the figure is unknown ("—"), not 0.
+  const sized = items.filter((g) => g.seats_left != null);
+  const seats = sized.reduce((n, g) => n + Math.max(0, g.seats_left ?? 0), 0);
   const noTeacher = items.filter((g) => !g.class_teacher_name).length;
 
   const columns: Column<GroupDto>[] = [
@@ -132,7 +134,7 @@ export function GroupsPage() {
     },
     {
       id: 'seats',
-      header: t('screens.groups.seats'),
+      header: t('screens.groups.seatsLeft'),
       numeric: true,
       cell: (g) =>
         g.seats_left == null ? (
@@ -183,7 +185,7 @@ export function GroupsPage() {
             {
               id: 'grp-seats',
               label: t('screens.groups.seatsLeft'),
-              value: <Num>{seats}</Num>,
+              value: sized.length > 0 ? <Num>{seats}</Num> : '—',
             },
             {
               id: 'grp-no-teacher',

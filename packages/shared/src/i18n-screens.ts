@@ -51,7 +51,6 @@ export const screensEn = {
   groups: {
     class: 'Class',
     groups: 'Classes and batches',
-    seats: 'Seats left',
     seatsLeft: 'Seats left',
     capacity: 'Of {{n}} seats',
     subjects: 'Subjects',
@@ -90,6 +89,7 @@ export const screensEn = {
   fees: {
     payment: 'Payment',
     fullDue: 'Full due',
+    oneMonth: 'One month',
     previewEmpty: 'Type an amount to see which months it pays.',
     defaultersCount: 'Students past due',
     oldest: 'Most months overdue',
@@ -100,5 +100,28 @@ export const screensEn = {
     amount: 'Amount',
     payer: 'Paid by',
     stillDue: 'Still due',
+    father: 'Father',
+    billed: 'Billed',
+    notBilled: 'Not fully billed',
+    registerHint: 'One class, one month: what was billed, paid and is still due.',
+    chooseClass: 'Choose a class',
+    registerPick: 'Choose a class to see its register',
+    registerPickBody:
+      'Pick a class and a month above. You can then print the register or download it as CSV.',
+    registerEmpty: 'No fees billed for this class this month',
+    registerEmptyBody: 'Bill the month on the Billing tab, then come back here.',
+    concessionsHint:
+      'Every fee reduction with its reason, who approved it and how much it has given so far.',
+    concessionsEmptyBody: "Concessions added here or on a student's Fees tab appear in this list.",
+    addConcession: 'Add concession',
+    pickStudentHint: 'Search by name or admission number (at least 2 letters).',
+    noStudent: 'No active student found.',
+    concessions: 'Concessions',
+    approvedBy: 'Approved by',
+    billingHint:
+      'Preview a month, then generate its fees. Fines and late joiners are handled alongside.',
+    runsAll: 'Show all {{count}} runs',
+    runsFewer: 'Show the latest only',
+    billMonth: 'Bill a month',
   },
 } as const;

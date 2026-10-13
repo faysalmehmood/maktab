@@ -1,6 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
 import { type KeyboardEvent, type ReactNode, useRef } from 'react';
+import { useMediaQuery } from '@/lib/media';
 import { cn } from '@/lib/utils';
+
+/** Tailwind's `lg` breakpoint (64rem), where a side list turns vertical. */
+const LG_QUERY = '(min-width: 64rem)';
 
 /*
  * Small option sets and in-page sections (M7b, UI plan §5.4). Both are tiny and dependency-free so
@@ -84,14 +88,17 @@ export function Tabs<V extends string>({
   side?: boolean;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  // The side list is vertical from `lg` up, a horizontal strip below it: say which, and accept
+  // both arrow pairs on it (a keyboard user cannot see the breakpoint).
+  const wide = useMediaQuery(LG_QUERY, false);
+  const vertical = side && wide;
   const move = (e: KeyboardEvent<HTMLDivElement>) => {
     const at = items.findIndex((i) => i.value === value);
     const rtl = getComputedStyle(e.currentTarget).direction === 'rtl';
-    const vertical = side && getComputedStyle(e.currentTarget).flexDirection === 'column';
     const step: Record<string, number> = {
-      ...(vertical
-        ? { ArrowDown: 1, ArrowUp: -1 }
-        : { ArrowRight: rtl ? -1 : 1, ArrowLeft: rtl ? 1 : -1 }),
+      ArrowRight: rtl ? -1 : 1,
+      ArrowLeft: rtl ? 1 : -1,
+      ...(side ? { ArrowDown: 1, ArrowUp: -1 } : {}),
       Home: -at,
       End: items.length - 1 - at,
     };
@@ -109,7 +116,7 @@ export function Tabs<V extends string>({
       role="tablist"
       aria-label={label}
       onKeyDown={move}
-      aria-orientation={side ? undefined : 'horizontal'}
+      aria-orientation={vertical ? 'vertical' : 'horizontal'}
       data-side={side || undefined}
       className={cn(
         'flex gap-1 overflow-x-auto border-b [scrollbar-width:none]',

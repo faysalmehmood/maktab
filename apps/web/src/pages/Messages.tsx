@@ -583,7 +583,7 @@ export function MessagesPage() {
           title={t('screens.msg.focusTitle')}
           subtitle={
             queued.length > 0 && (
-              <span id="msg-focus-progress">
+              <span id="msg-focus-progress" aria-live="polite">
                 {t('screens.msg.progress', {
                   n: Math.min(done + 1, queued.length),
                   total: queued.length,
@@ -607,7 +607,7 @@ export function MessagesPage() {
           className="h-2 overflow-hidden rounded-full bg-muted"
         >
           <span
-            className="block h-full rounded-full bg-brand transition-[width]"
+            className="block h-full rounded-full bg-brand transition-[width] motion-reduce:transition-none"
             style={{ width: `${queued.length ? (done / queued.length) * 100 : 0}%` }}
           />
         </div>

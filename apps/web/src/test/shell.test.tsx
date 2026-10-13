@@ -47,6 +47,8 @@ describe('app shell', () => {
     expect(screen.getAllByRole('link', { name: attendance })).toHaveLength(2);
     expect(screen.getAllByRole('link', { name: fees })).toHaveLength(2);
     expect(screen.getByText('home')).toBeTruthy();
+    // The sync pill is one polite live region (saved → waiting → offline is announced).
+    expect(document.getElementById('sync-state')?.getAttribute('aria-live')).toBe('polite');
   });
 
   it('renders the "اردو" toggle label in the system font (no Nastaliq download)', async () => {

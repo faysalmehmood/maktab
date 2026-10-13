@@ -64,6 +64,9 @@ describe('attendance register (M7b-2)', () => {
     mockApi({ 'GET /api/attendance/register': register() });
     renderAt(path, pattern, <RegisterPage />, ['teacher']);
     await screen.findByText('3 of 3 present');
+    const progress = document.getElementById('register-progress') as HTMLElement;
+    expect(progress.getAttribute('aria-live')).toBe('polite');
+    expect(progress.textContent).toBe('3 of 3 present');
     const bar = document.querySelector('[data-action-bar]') as HTMLElement;
     const sara = () => screen.getByRole('button', { name: /^Sara Khan:/ });
     expect(sara().getAttribute('aria-label')).toBe('Sara Khan: Present');

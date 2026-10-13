@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { initI18n, setLanguage } from '@/i18n';
 import { printWhenReady, ReceiptPage, shareMode, shareText } from '@/pages/fees/Receipt';
@@ -152,17 +152,48 @@ describe('receipt view', () => {
     expect(document.getElementById('receipt-reversed')?.textContent).toContain(
       'This receipt has been reversed',
     );
-    expect(document.getElementById('receipt-reverse')).toBeNull();
+    // Reverse lives in the header's row menu; a reversed receipt has no menu at all.
+    expect(document.getElementById('receipt-more')).toBeNull();
+    expect(document.getElementById('row-action-receipt-reverse')).toBeNull();
     expect(document.getElementById('receipt-notify')).toBeNull();
   });
 
   it('Reverse is for owner/admin only; an accountant can print and send', async () => {
     open('?lang=en', receiptPrint(), ['accountant']);
     await paper();
-    expect(document.getElementById('receipt-reverse')).toBeNull();
+    expect(document.getElementById('receipt-more')).toBeNull();
+    expect(document.getElementById('row-action-receipt-reverse')).toBeNull();
     expect(document.getElementById('receipt-print')).toBeTruthy();
     expect(document.getElementById('receipt-notify')).toBeTruthy();
   });
+
+  it.each([['owner'], ['admin']] as const)(
+    '%s: the header menu ends with Reverse, marked destructive',
+    async (role) => {
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+      open('?lang=en', receiptPrint(), [role]);
+      await paper();
+      const trigger = await waitFor(() => {
+        const el = document.getElementById('receipt-more');
+        if (!el) throw new Error('no menu yet');
+        return el;
+      });
+      fireEvent.keyDown(trigger, { key: 'Enter' });
+      const menu = await screen.findByRole('menu');
+      const items = within(menu).getAllByRole('menuitem');
+      const last = items[items.length - 1] as HTMLElement;
+      expect(last.id).toBe('row-action-receipt-reverse');
+      expect(last.dataset.destructive).toBe('true');
+      expect(last.textContent).toContain('Reverse');
+    },
+  );
 
   it('Send payment-received → POST /notify → toast "queued"', async () => {
     const api = open('?lang=en');

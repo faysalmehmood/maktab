@@ -417,8 +417,8 @@ export function RegisterPage() {
       <DayOffNote dayOff={r.day_off} />
 
       {total > 0 && (
-        <Panel bodyClassName="flex flex-col gap-2 p-4" id="register-progress">
-          <p className="text-section font-semibold">
+        <Panel bodyClassName="flex flex-col gap-2 p-4">
+          <p id="register-progress" className="text-section font-semibold" aria-live="polite">
             {t('screens.att.marked', { present: counts.P, total })}
           </p>
           <MarkBar counts={counts} />
