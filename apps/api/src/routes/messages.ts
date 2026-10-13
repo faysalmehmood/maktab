@@ -77,6 +77,8 @@ const listQuery = z.object({
   template_key: z.string().max(40).optional(),
   grp_id: z.string().max(64).optional(),
   date: isoDateSchema.optional(),
+  /** One family's messages (the student profile's Messages tab); still inside the caller's scope. */
+  family_id: z.string().max(64).optional(),
 });
 
 type Row = {
@@ -676,6 +678,7 @@ export function messageRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         q.template_key ? sql`msg.template_key = ${q.template_key}` : sql`1`,
         q.grp_id ? groupSql(q.grp_id) : sql`1`,
         q.date ? dateSql(q.date) : sql`1`,
+        q.family_id ? sql`msg.family_id = ${q.family_id}` : sql`1`,
       ],
       sql` AND `,
     );

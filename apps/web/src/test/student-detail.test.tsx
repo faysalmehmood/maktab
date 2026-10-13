@@ -1,5 +1,5 @@
 import type { EnrolmentDto, StudentDetailDto } from '@maktab/shared';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { initI18n, setLanguage } from '@/i18n';
 import { StudentDetail } from '@/pages/students/StudentDetail';
@@ -42,6 +42,13 @@ const detail: StudentDetailDto = {
   enrolments: [enrolment],
 };
 
+/** The enrolment's rare actions live in its row menu (M7b-2): open it and pick one. */
+async function enrolmentAction(menuName: string, item: string) {
+  fireEvent.keyDown(await screen.findByRole('button', { name: menuName }), { key: 'Enter' });
+  const menu = await screen.findByRole('menu');
+  fireEvent.click(within(menu).getByRole('menuitem', { name: item }));
+}
+
 function setup(roles: Parameters<typeof renderAt>[3] = ['owner']) {
   const api = mockApi({
     [`GET /api/students/${ids.student}`]: detail,
@@ -67,7 +74,7 @@ describe('student detail: enrolment actions', () => {
 
   it('transfers to another group through the transfer route', async () => {
     const api = setup();
-    fireEvent.click(await screen.findByRole('button', { name: 'Transfer' }));
+    await enrolmentAction('More actions: Class 5 5-A', 'Transfer');
     // The current group is not offered as a target.
     const picker = await screen.findByLabelText(/New group/);
     await screen.findByRole('option', { name: /B/ });
@@ -89,8 +96,14 @@ describe('student detail: enrolment actions', () => {
   it('ends an enrolment with an outcome, in Urdu too', async () => {
     await act(() => setLanguage('ur'));
     const api = setup();
-    expect(await screen.findByRole('button', { name: 'منتقل کریں' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'ختم کریں' }));
+    fireEvent.keyDown(await screen.findByRole('button', { name: 'مزید اقدامات: Class 5 5-A' }), {
+      key: 'Enter',
+    });
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: 'منتقل کریں' })).toBeTruthy();
+    const end = within(menu).getByRole('menuitem', { name: 'ختم کریں' });
+    expect(end.dataset.destructive).toBe('true');
+    fireEvent.click(end);
     fireEvent.change(await screen.findByLabelText(/نتیجہ/), { target: { value: 'completed' } });
     fireEvent.change(screen.getByLabelText(/وجہ/), { target: { value: 'course done' } });
     fireEvent.click(screen.getByRole('button', { name: 'محفوظ کریں' }));
@@ -104,8 +117,13 @@ describe('student detail: enrolment actions', () => {
 
   it('a teacher sees no enrolment actions', async () => {
     setup(['teacher']);
-    await screen.findByText('Ali', { selector: 'h1' });
+    await screen.findByText('Ali', { selector: 'h1 > bdi' });
+    expect(screen.queryByRole('button', { name: /^More actions: Class 5/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Transfer' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'End' })).toBeNull();
+    // No student.write: no menu on the header either; no money grant: no Collect, no Fees tab.
+    expect(screen.queryByRole('button', { name: 'More actions: Ali' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Collect fee' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Fees' })).toBeNull();
   });
 });

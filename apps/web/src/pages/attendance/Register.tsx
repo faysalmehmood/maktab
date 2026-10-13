@@ -15,6 +15,7 @@ import { Link, useParams, useSearchParams } from 'react-router';
 import { todayPk } from '@/components/attendance/common';
 import { Counts, DayOffNote, MarkBar, StatusChip } from '@/components/attendance/parts';
 import { Avatar } from '@/components/avatar';
+import { DateText } from '@/components/date-text';
 import { ErrorNote, Num, useErrorText } from '@/components/form';
 import { ListSkeleton, Page, PageHeader, Panel, StatusBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
@@ -46,7 +47,6 @@ import {
   useRegister,
   useRejectionText,
 } from '@/lib/attendance';
-import { longDate } from '@/lib/dates';
 import { useOnline } from '@/lib/media';
 import { useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
@@ -231,7 +231,7 @@ type Saved =
   | { kind: 'paused'; clientId: string };
 
 export function RegisterPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const online = useOnline();
   const errorText = useErrorText();
   const { grpId } = useParams();
@@ -393,7 +393,7 @@ export function RegisterPage() {
         title={<bdi>{`${r.programme_name} ${r.grp_name}`}</bdi>}
         subtitle={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <bdi>{longDate(date, i18n.language)}</bdi>
+            <DateText iso={date} kind="long" />
             {r.current ? (
               <StatusBadge tone="ok">
                 <span>

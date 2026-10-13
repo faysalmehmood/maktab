@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import type { RegisterResponse } from '@maktab/shared';
+import type { RegisterResponse, StudentDetailDto } from '@maktab/shared';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { initI18n, setLanguage } from '@/i18n';
@@ -8,6 +8,7 @@ import { _reset } from '@/offline/sync';
 import { RegisterPage } from '@/pages/attendance/Register';
 import { CounterPage } from '@/pages/fees/Counter';
 import { ReceiptPage } from '@/pages/fees/Receipt';
+import { StudentDetail } from '@/pages/students/StudentDetail';
 import { ids, meAs, mockApi, renderAt } from './api-mock';
 import { accounts, fam, familyStatement, receiptId, receiptPrint } from './fee-fixtures';
 
@@ -164,5 +165,120 @@ describe('fee counter and receipt result (M7b-2)', () => {
     await screen.findByText('Payment received');
     expect(screen.queryByRole('button', { name: /^More actions: / })).toBeNull();
     expect(document.getElementById('receipt-print')).toBeTruthy();
+  });
+});
+
+describe('student profile (M7b-2)', () => {
+  const detail: StudentDetailDto = {
+    id: ids.student,
+    family_id: ids.family,
+    admission_no: '2026-0001',
+    name: 'Ali Raza',
+    father_name: 'Imran',
+    dob: null,
+    gender: 'm',
+    b_form_no: null,
+    has_photo: false,
+    admission_date: '2026-04-01',
+    status: 'active',
+    left_date: null,
+    left_reason: null,
+    extra: {},
+    family: { id: ids.family, name: 'Raza', address: null, area: null },
+    guardians: [],
+    enrolments: [
+      {
+        id: 'E1',
+        student_id: ids.student,
+        grp_id: ids.group,
+        grp_name: '5-A',
+        programme_name: 'Class 5',
+        session_id: ids.session,
+        is_primary: true,
+        roll_no: '7',
+        start_date: '2026-04-01',
+        end_date: null,
+        status: 'active',
+        end_reason: null,
+        prev_enrolment_id: null,
+      },
+    ],
+  };
+  const setup = (roles: Parameters<typeof renderAt>[3]) => {
+    const api = mockApi({
+      [`GET /api/students/${ids.student}`]: detail,
+      [`GET /api/families/${ids.family}`]: { ...detail.family, guardians: [], students: [] },
+      'GET /api/custom-fields': { items: [] },
+      [`GET /api/attendance/student/${ids.student}`]: { days: [], pct: 92 },
+      [`GET /api/fees/student/${ids.student}`]: {
+        due: 570000,
+        family_due: 1140000,
+        family_credit: 0,
+        lines: [],
+        sponsored: [],
+        concessions: [],
+        sponsorships: [],
+        opening_balance: null,
+        receipts: [],
+        student: {
+          id: ids.student,
+          name: 'Ali Raza',
+          admission_no: '2026-0001',
+          family_id: ids.family,
+        },
+        family_name: 'Raza',
+      },
+      'GET /api/messages': {
+        items: [
+          {
+            id: 'M1',
+            family_id: ids.family,
+            family_name: 'Raza',
+            template_key: 'absence',
+            lang: 'ur',
+            status: 'queued',
+            created_at: '2026-10-12T04:00:00Z',
+            preview: 'علی آج غیر حاضر ہے',
+          },
+        ],
+        total: 1,
+        counts: {},
+      },
+    });
+    renderAt(`/students/${ids.student}`, '/students/:id', <StudentDetail />, roles);
+    return api;
+  };
+
+  it('summary strip first (class + roll, attendance %, dues), then tabs; Messages asks for this family only', async () => {
+    const api = setup(['owner']);
+    const strip = await screen.findByText('This child owes');
+    expect(await screen.findByText('92%')).toBeTruthy();
+    const dues = strip.closest('div') as HTMLElement;
+    await waitFor(() => expect(within(dues).getByText('5,700')).toBeTruthy());
+    expect(document.getElementById('sum-class')?.textContent).toContain('Roll no.');
+    expect(screen.getByRole('link', { name: 'Collect fee' }).getAttribute('href')).toBe(
+      `/fees/counter?family=${ids.family}`,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: 'Messages' }));
+    expect(screen.getByRole('tab', { name: 'Messages' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    const row = await screen.findByText('علی آج غیر حاضر ہے');
+    expect(row.getAttribute('dir')).toBe('rtl');
+    expect(row.getAttribute('lang')).toBe('ur');
+    expect(api.calls.some((c) => c.path === `/api/messages?family_id=${ids.family}`)).toBe(true);
+  });
+
+  it('Edit and Mark left sit in the header menu; Mark left is the destructive item', async () => {
+    setup(['admin']);
+    fireEvent.keyDown(await screen.findByRole('button', { name: 'More actions: Ali Raza' }), {
+      key: 'Enter',
+    });
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: 'Edit' })).toBeTruthy();
+    const left = within(menu).getAllByRole('menuitem').at(-1) as HTMLElement;
+    expect(left.dataset.destructive).toBe('true');
+    fireEvent.click(left);
+    expect(await screen.findByRole('dialog')).toBeTruthy();
   });
 });

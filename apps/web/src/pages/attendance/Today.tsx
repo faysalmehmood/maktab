@@ -3,12 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
 import { todayPk } from '@/components/attendance/common';
 import { DayOffNote, TodayPanels } from '@/components/attendance/parts';
+import { DateText } from '@/components/date-text';
 import { ErrorNote } from '@/components/form';
 import { ListSkeleton, Page, PageHeader, Panel } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { canCorrect, useToday } from '@/lib/attendance';
-import { longDate } from '@/lib/dates';
 import { useRoles } from '@/lib/roles';
 
 /**
@@ -16,7 +16,7 @@ import { useRoles } from '@/lib/roles';
  * open (and correct) an earlier register. Progress first, then To take and Taken (UI plan §5.5).
  */
 export function TodayPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const roles = useRoles();
   const [params, setParams] = useSearchParams();
   const office = canCorrect(roles);
@@ -26,7 +26,7 @@ export function TodayPage() {
     <Page width="form">
       <PageHeader
         title={t('attendance.title')}
-        subtitle={<bdi>{longDate(date, i18n.language)}</bdi>}
+        subtitle={<DateText iso={date} kind="long" />}
         actions={
           <>
             {office && (

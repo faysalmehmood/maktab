@@ -365,6 +365,16 @@ describe('send queue: teacher scope', () => {
       (m) => m.template_key === 'absence' && m.family_id === s.ali.family_id,
     );
     const noticeRow = all.find((m) => m.template_key === 'notice');
+    // family_id narrows the list to one family (student profile, M7b-2) and never widens scope:
+    // the teacher asking for a family outside their groups gets nothing of it.
+    const fam = (await queue(s, `family_id=${s.ali.family_id}`)).items;
+    expect(fam.length).toBeGreaterThan(0);
+    expect(new Set(fam.map((m) => m.family_id))).toEqual(new Set([s.ali.family_id]));
+    const theirs = await s.teacher<MessageListDto>(
+      'GET',
+      `/api/messages?status=queued&family_id=${s.ali.family_id}`,
+    );
+    expect(theirs.body.items.filter((m) => m.template_key === 'absence')).toEqual([]);
     expect((await s.teacher('POST', `/api/messages/${zainRow?.id}/open`)).status).toBe(404);
     expect((await s.teacher('POST', `/api/messages/${noticeRow?.id}/sent`)).status).toBe(404);
     expect((await s.teacher('GET', `/api/messages/${zainRow?.id}`)).status).toBe(404);

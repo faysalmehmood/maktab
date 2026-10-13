@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { PrintBadge, SchoolMark } from '@/components/brand/SchoolBadge';
+import { DateText } from '@/components/date-text';
 import { AmountInput, MethodChips, ReasonDialog } from '@/components/fees/common';
 import { type ReceiptFormat, type ReceiptLang, ReceiptPrint } from '@/components/fees/ReceiptPrint';
 import { ErrorNote, Field, Num } from '@/components/form';
@@ -15,7 +16,6 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson } from '@/lib/api';
-import { shortDate } from '@/lib/dates';
 import { canCollect, canReverse, money, type PaymentMethod, rupeesToPaisa } from '@/lib/fees';
 import { printWhenReady } from '@/lib/print';
 import { useSchool } from '@/lib/queries';
@@ -288,7 +288,7 @@ export function ReceiptPage() {
             <div>
               <dt className="text-meta text-muted-foreground">{t('fee.counter.confirmDate')}</dt>
               <dd className="font-semibold">
-                <bdi>{shortDate(r.business_date, i18n.language)}</bdi>
+                <DateText iso={r.business_date} />
                 <span className="text-meta font-normal text-muted-foreground">
                   {' · '}
                   {t(`fee.methods.${r.method}`)}
