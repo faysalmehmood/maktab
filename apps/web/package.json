@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "budget": "node scripts/bundle-budget.mjs"
+    "budget": "node scripts/bundle-budget.mjs && node scripts/sw-check.mjs"
   },
   "dependencies": {
     "@maktab/shared": "0.0.0",

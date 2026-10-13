@@ -35,7 +35,7 @@ import { defaultAccount, familyMessageStatements, receiptPrint } from '../lib/fe
 import { idParam, jsonBody, notFoundError, queryParams, todayPk, userId } from '../lib/http';
 import { parentSecret, schoolMsg } from '../lib/messaging';
 import { withD1Retry } from '../lib/retry';
-import { tx } from '../lib/tx';
+import { auditSql, tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
 import { currentOrNewLink } from './messages';
 
@@ -341,13 +341,27 @@ export function receiptRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const r = await receiptDetail(db, idParam(c));
       if (!r) throw notFoundError('Receipt');
       if (r.payer_type !== 'family' || r.kind !== 'payment') return c.json({ url: null });
+      // A reversed receipt is no longer a payment the family made: never hand it out (M7a review).
+      if (r.reversed_by) throw new ApiError(409, 'already_reversed', 'This receipt was reversed');
       parentSecret(c.env);
-      const [g] = await db.all<{ id: string }>(
-        sql`SELECT id FROM guardian WHERE family_id = ${r.payer_id}
+      const [g] = await db.all<{ id: string; consent_whatsapp: number }>(
+        sql`SELECT id, consent_whatsapp FROM guardian WHERE family_id = ${r.payer_id}
             ORDER BY priority, created_at, id LIMIT 1`,
       );
       if (!g) return c.json({ url: null });
       const link = await currentOrNewLink(c, g.id, await schoolMsg(db), 'unless_pin');
+      // Consent governs automated sends; staff sharing by hand stays allowed, but is on the record.
+      if (link)
+        await tx(db, [
+          auditSql({
+            id: newId(),
+            userId: userId(c),
+            entity: 'receipt',
+            entityId: r.id,
+            action: 'share_parent_link',
+            after: { guardian_id: g.id, consent_whatsapp: !!g.consent_whatsapp },
+          }),
+        ]);
       return c.json({ url: link?.url ?? null });
     },
   );

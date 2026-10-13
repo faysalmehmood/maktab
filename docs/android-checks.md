@@ -59,6 +59,10 @@ share the PDF to WhatsApp. Check /diag (Web Share, canShare(files)).
 Expected: a. the share sheet opens with the receipt text (school, receipt no., amount, date), and
 WhatsApp is offered. b. the PDF saves, opens with the right content, and attaches in WhatsApp.
 Report: which share targets appeared; PDF page count; any font problem in the PDF.
+Note: the share text ends with the guardian's parent-page link even when that guardian has **no
+WhatsApp consent** — consent governs the automatic send queue, sharing by hand is the collector's
+choice — and every such share is written to the audit log (`receipt` · `share_parent_link`). A
+reversed receipt has no Share link.
 
 ## 5. Print sizes: 58 mm and A5
 
@@ -94,6 +98,21 @@ no school data (reopening offline shows nothing from before); after reconnecting
 revoked on the server (it no longer works). Note whether the unsent register was lost and whether the
 app warned you first.
 Report: what you saw at each step; was there a warning about unsent registers.
+
+What sign-out leaves on the phone (M7a), so the tester knows what "holds no school data" means:
+- **Deleted at once:** the offline API copy (cache `api-offline`: who is signed in, the school,
+  today's list, rosters, a family's dues) and the in-memory query cache.
+- **Kept, on purpose:** this user's **unsent registers** in the outbox (IndexedDB
+  `attendance-outbox`; the app asks "N registers not yet sent — sign out anyway?" first). They are
+  sent only when the *same* account signs in again on this phone; another account signing in does
+  not send them (an owner/admin sees "N registers saved by another account on this phone").
+- **Kept, harmless:** the app shell in the service-worker precache (code, icons, fonts — no school
+  data), the language choice, the id of the last account (so a different account's sign-in clears
+  any offline copy), and — until the server confirms — the old session's *logout token*
+  (localStorage `maktab.logoutPending` + cookie `maktab_logout_pending`). That token can only end
+  the old session; it is sent on reconnect or consumed by the next Google sign-in, and never ends
+  the new session. Offline with a sign-out still queued, **Sign in** says "Connect to the internet to
+  sign in" instead of opening Google.
 
 ## 8. Parent page on a guardian phone
 

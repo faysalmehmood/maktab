@@ -1,5 +1,3 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import {
   type AdmissionResult,
   type FamilyStatementDto,
@@ -112,7 +110,76 @@ async function fixture() {
   };
   const ra = await pay(a.family_id, RS(1111));
   const rb = await pay(b.family_id, RS(2237));
-  return { ...t, r2, api, owner, teacher, acct, gA, gB, a, b, ra, rb, bank, st };
+
+  // Marked registers for both groups (each child absent), so absence messages are queued for both
+  // families: the scope checks below then have rows on both sides to leak (M7a review).
+  expect(
+    (await api('PUT', '/api/school/attendance', { attendance_mode: 'daily', weekly_off: [] }))
+      .status,
+  ).toBe(200);
+  const mark = async (grp: string, student: string) => {
+    const r = await api<{ results: { status: string; register_id?: string }[] }>(
+      'POST',
+      '/api/attendance/sync',
+      [
+        {
+          client_id: newId(),
+          grp_id: grp,
+          date: today,
+          taken_at: new Date().toISOString(),
+          marks: [{ student_id: student, status: 'A' }],
+        },
+      ],
+    );
+    expect(r.status, r.text).toBe(200);
+    expect(r.body.results[0]?.status, r.text).toBe('applied');
+    return r.body.results[0]?.register_id as string;
+  };
+  const regA = await mark(gA.id, a.student_id);
+  const regB = await mark(gB.id, b.student_id);
+  const msg = async (family: string) =>
+    (
+      await t.db.all<{ id: string }>(
+        sql`SELECT id FROM message WHERE family_id = ${family} AND status = 'queued'`,
+      )
+    )[0]?.id as string;
+  const msgA = await msg(a.family_id);
+  const msgB = await msg(b.family_id);
+  expect(msgA && msgB, 'both families have a queued absence message').toBeTruthy();
+  return {
+    ...t,
+    r2,
+    api,
+    owner,
+    teacher,
+    acct,
+    gA,
+    gB,
+    a,
+    b,
+    ra,
+    rb,
+    bank,
+    st,
+    regA,
+    regB,
+    msgA,
+    msgB,
+  };
+}
+
+/** Every row of every table (sessions aside: they track last use), to prove a refused write changed nothing. */
+async function snapshot(db: ReturnType<typeof testApp>['db']) {
+  const tables = await db.all<{ name: string }>(
+    sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        AND name NOT IN ('user_session', '__drizzle_migrations', 'd1_migrations') ORDER BY name`,
+  );
+  const out: Record<string, { n: number; rows: string }> = {};
+  for (const { name } of tables) {
+    const rows = await db.all(sql`SELECT * FROM ${sql.identifier(name)} ORDER BY rowid`);
+    out[name] = { n: rows.length, rows: JSON.stringify(rows) };
+  }
+  return out;
 }
 
 /** Every value of a 0333-7654321 phone a response could carry. */
@@ -134,8 +201,15 @@ function fill(path: string, ids: string[]): string[] {
   );
 }
 
-/** List routes are also tried with the query their screens send, so a 400 is not a free pass. */
-const withQueries = (paths: string[], groups: string[] = []) =>
+/**
+ * List routes are also tried with the query their screens send (and the search / filter params a
+ * screen might add: q=, group=, family=), so a 400 is not a free pass.
+ */
+const withQueries = (
+  paths: string[],
+  groups: string[] = [],
+  extra: { q?: string[]; families?: string[] } = {},
+) =>
   paths.flatMap((p) =>
     p.includes(':')
       ? [p]
@@ -144,7 +218,14 @@ const withQueries = (paths: string[], groups: string[] = []) =>
           `${p}?period=${period}`,
           `${p}?date=${today}`,
           `${p}?from=${period}-01&to=${today}`,
-          ...groups.map((g) => `${p}?grp_id=${g}&month=${period}&date=${today}`),
+          ...groups.flatMap((g) => [
+            `${p}?grp_id=${g}&month=${period}&date=${today}`,
+            `${p}?grp_id=${g}`,
+            `${p}?grp_id=${g}&period=${period}`,
+            `${p}?group=${g}`,
+          ]),
+          ...(extra.q ?? []).map((q) => `${p}?q=${encodeURIComponent(q)}`),
+          ...(extra.families ?? []).flatMap((f) => [`${p}?family=${f}`, `${p}?family_id=${f}`]),
         ],
   );
 
@@ -226,6 +307,7 @@ describe('M7 audit: row scope on every read', () => {
       ...phoneForms('0333-7654321'),
       '3520112345671',
     ];
+    secrets.push(f.msgB, f.regB);
     const ids = [
       f.b.family_id,
       f.b.student_id,
@@ -233,11 +315,17 @@ describe('M7 audit: row scope on every read', () => {
       f.gB.id,
       f.rb.id,
       f.rb.receipt_no,
+      f.msgB,
+      f.regB,
     ];
     let checked = 0;
     const ok: string[] = [];
     for (const r of f.routes.list().filter((x) => x.method === 'GET')) {
-      for (const path of withQueries(fill(r.path, ids), [f.gA.id, f.gB.id])) {
+      const paths = withQueries(fill(r.path, ids), [f.gA.id, f.gB.id], {
+        q: ['Bilal', '0333', '7654321', f.rb.receipt_no],
+        families: [f.b.family_id],
+      });
+      for (const path of paths) {
         const res = await teacher('GET', path);
         checked++;
         if (res.status >= 400) continue;
@@ -246,7 +334,7 @@ describe('M7 audit: row scope on every read', () => {
           expect(res.text.includes(s), `teacher GET ${path} leaks ${s}`).toBe(false);
       }
     }
-    expect(checked).toBeGreaterThan(100);
+    expect(checked).toBeGreaterThan(500);
     // The reads a teacher holds were really exercised (not skipped on a 400).
     for (const p of [
       '/api/students',
@@ -260,7 +348,17 @@ describe('M7 audit: row scope on every read', () => {
       '/api/messages/counts',
     ])
       expect(ok, p).toContain(p);
-    // …while their own group's data is there (the test would pass vacuously otherwise).
+    // …while their own group's data is there (the test would pass vacuously otherwise): their
+    // group's queued absence message and register are visible to them.
+    const msgs = await teacher('GET', '/api/messages');
+    expect(msgs.text).toContain(f.msgA);
+    expect(msgs.text).not.toContain(f.msgB);
+    const reg = await teacher('GET', `/api/attendance/register?grp_id=${f.gA.id}&date=${today}`);
+    expect(reg.status, reg.text).toBe(200);
+    expect(reg.text).toContain(f.regA);
+    // The owner does see the other side (so the secrets are real).
+    const all = await f.api('GET', '/api/messages');
+    expect(all.text).toContain(f.msgB);
     const mine = await teacher('GET', `/api/students/${f.a.student_id}`);
     expect(mine.status).toBe(200);
     expect(mine.text).toContain('Ali');
@@ -297,7 +395,10 @@ describe('M7 audit: row scope on every read', () => {
     const ownerDrawer = drawer.body.session.id;
     const secrets = [ownerSlip, ownerDrawer, String(RS(91234))];
     for (const r of f.routes.list().filter((x) => x.method === 'GET')) {
-      for (const path of withQueries(fill(r.path, [ownerSlip, ownerDrawer, f.st.own]))) {
+      const paths = withQueries(fill(r.path, [ownerSlip, ownerDrawer, f.st.own]), [], {
+        q: ['payslip', 'Owner', '91234'],
+      });
+      for (const path of paths) {
         const res = await acct('GET', path);
         if (res.status >= 400) continue;
         for (const s of secrets)
@@ -311,28 +412,132 @@ describe('M7 audit: row scope on every read', () => {
   });
 });
 
-describe('M7 audit: publicRoute allow-list (grep)', () => {
-  it('only health, the OAuth routes, logout and /api/backup/runs are publicRoute', () => {
-    const dir = join(__dirname, '../src/routes');
-    const found: string[] = [];
-    for (const file of readdirSync(dir)) {
-      const src = readFileSync(join(dir, file), 'utf8');
-      // Each `access: publicRoute` with the path declared just before it.
-      for (const m of src.matchAll(/path: '([^']+)',\s*access: publicRoute/g))
-        found.push(`${file} ${m[1]}`);
-      const uses = src.match(/access: publicRoute/g)?.length ?? 0;
-      const named = [...src.matchAll(/path: '([^']+)',\s*access: publicRoute/g)].length;
-      expect(uses, `${file}: publicRoute without an adjacent path`).toBe(named);
+describe('M7 audit: writes as a teacher against the other group', () => {
+  it('every POST/PUT/PATCH/DELETE with the other group’s ids is refused and changes no row', async () => {
+    const f = await fixture();
+    const teacher = client(f.request, { cookie: f.teacher.cookie });
+    const ids = [
+      f.b.family_id,
+      f.b.student_id,
+      f.b.guardian_ids[0] as string,
+      f.gB.id,
+      f.rb.id,
+      f.msgB,
+      f.regB,
+    ];
+    // The writes a teacher holds (own_groups) get a real body aimed at group B; the rest `{}`.
+    const bodies: Record<string, unknown> = {
+      'POST /api/attendance/sync': [
+        {
+          client_id: newId(),
+          grp_id: f.gB.id,
+          date: today,
+          taken_at: new Date().toISOString(),
+          marks: [{ student_id: f.b.student_id, status: 'P' }],
+        },
+      ],
+      'POST /api/fees/defaulters/remind': { grp_id: f.gB.id },
+      'POST /api/messages/:id/skip': { reason: 'other' },
+    };
+    const query: Record<string, string> = {
+      'POST /api/messages/bulk-text': `?grp_id=${f.gB.id}`,
+    };
+    const before = await snapshot(f.db);
+    let tried = 0;
+    for (const r of f.routes.list().filter((x) => x.method !== 'GET')) {
+      const key = `${r.method} ${r.path}`;
+      if (r.access.kind === 'public' || r.path.startsWith('/api/p')) continue;
+      for (const path of fill(r.path, ids)) {
+        const res = await teacher(r.method, `${path}${query[key] ?? ''}`, bodies[key] ?? {});
+        tried++;
+        if (key === 'POST /api/attendance/sync' && res.status === 200) {
+          // Per-register answers: every one refused.
+          const results = (res.body as { results: { status: string }[] }).results;
+          expect(
+            results.map((x) => x.status),
+            res.text,
+          ).toEqual(['rejected']);
+          continue;
+        }
+        if (key === 'POST /api/fees/defaulters/remind' && res.status < 300) {
+          expect((res.body as { queued?: number }).queued ?? 0, res.text).toBe(0);
+          continue;
+        }
+        expect([403, 404], `teacher ${r.method} ${path}: ${res.status} ${res.text}`).toContain(
+          res.status,
+        );
+      }
     }
+    expect(tried).toBeGreaterThan(150);
+    const after = await snapshot(f.db);
+    for (const table of Object.keys(before)) {
+      expect(after[table]?.n, `${table} row count`).toBe(before[table]?.n);
+      expect(after[table]?.rows, `${table} rows`).toBe(before[table]?.rows);
+    }
+    // Their own group still works with the same calls (the refusals are scope, not a broken body).
+    const own = await teacher('POST', `/api/messages/${f.msgA}/skip`, { reason: 'other' });
+    expect(own.status, own.text).toBe(200);
+  });
+});
+
+describe('M7a review probe (folded in)', () => {
+  it('teacher: the screens’ own search and filter URLs for the other group leak nothing', async () => {
+    const f = await fixture();
+    const teacher = client(f.request, { cookie: f.teacher.cookie });
+    const leak = /Bilal|0333|7654321/;
+    for (const p of [
+      '/api/students?q=Bilal',
+      `/api/students?group=${f.gB.id}`,
+      `/api/students?family=${f.b.family_id}`,
+      '/api/families?q=Bilal',
+      '/api/families?q=0333',
+      '/api/students?q=0333',
+      '/api/messages?q=Bilal',
+      `/api/messages?grp_id=${f.gB.id}`,
+      '/api/fees/search?q=Bilal',
+      `/api/fees/defaulters?grp_id=${f.gB.id}`,
+      `/api/fees/defaulters?group=${f.gB.id}`,
+      `/api/attendance/register?grp_id=${f.gB.id}&date=${today}`,
+      '/api/audit?entity=family',
+      '/api/imports/students/template.csv',
+      `/api/fees/register?grp_id=${f.gB.id}&period=${period}`,
+    ]) {
+      const r = await teacher('GET', p);
+      if (r.status < 400) expect(leak.test(r.text), `${p}: ${r.text.slice(0, 200)}`).toBe(false);
+    }
+    expect([403, 404]).toContain(
+      (await teacher('POST', `/api/messages/bulk-text?grp_id=${f.gB.id}`)).status,
+    );
+    expect([403, 404]).toContain(
+      (
+        await teacher('POST', `/api/guardians/${f.b.guardian_ids[0]}/parent-link`, {
+          gate: 'none',
+        })
+      ).status,
+    );
+    // The parent logo with no token: nothing, and not cacheable.
+    const lg = await f.request('/api/p/logo');
+    expect(lg.status).toBe(404);
+  });
+});
+
+describe('M7 audit: publicRoute allow-list (runtime)', () => {
+  it('the routes registered as publicRoute are exactly health, the OAuth routes, logout and /api/backup/runs', () => {
+    const { routes } = testApp();
+    const found = routes
+      .list()
+      .filter((r) => r.access.kind === 'public')
+      .map((r) => `${r.method} ${r.path}`)
+      .sort();
     // The parent routes are not on this list: they go through parent_page.view ('public' grant)
     // and check the link token themselves (permissions.test.ts pins that set).
-    expect(found.sort()).toEqual(
+    expect(found).toEqual(
       [
-        'auth.ts /api/auth/google/callback',
-        'auth.ts /api/auth/google/start',
-        'auth.ts /api/auth/logout',
-        'backup.ts /api/backup/runs',
-        'core.ts /api/health',
+        'GET /api/auth/google/callback',
+        'GET /api/auth/google/start',
+        'GET /api/health',
+        'POST /api/auth/logout',
+        'POST /api/backup/runs',
       ].sort(),
     );
   });
@@ -379,6 +584,65 @@ describe('M7 receipts: parent link on the staff receipt, logo on the parent rece
     expect((await acct('POST', `/api/receipts/${f.ra.id}/parent-link`)).status).toBe(200);
     const teacher = client(f.request, { cookie: f.teacher.cookie });
     expect((await teacher('POST', `/api/receipts/${f.ra.id}/parent-link`)).status).toBe(403);
+  });
+
+  it('refuses a reversed receipt (409), gives nothing for the reversal row, and audits a share to a guardian without WhatsApp consent', async () => {
+    const f = await fixture();
+    const nc = await f.api<AdmissionResult>('POST', '/api/admissions', {
+      family: { name: 'NoConsent family' },
+      guardians: [
+        { name: 'NC father', relation: 'father', phone: '0301-2222222', consent_whatsapp: false },
+      ],
+      student: { name: 'NC', admission_date: `${period}-01`, dob: '2015-01-01' },
+      enrolment: { grp_id: f.gA.id, start_date: `${period}-01` },
+      fees: { charge: true },
+    });
+    expect(nc.status, nc.text).toBe(201);
+    const st = await f.api<FamilyStatementDto>('GET', `/api/fees/family/${nc.body.family_id}`);
+    const rc = await f.api<{ receipt: { id: string } }>('POST', '/api/receipts', {
+      idempotency_key: `k-${newId()}`,
+      payer_id: nc.body.family_id,
+      amount: RS(500),
+      method: 'bank',
+      account_id: f.bank,
+      expected_due_hash: st.body.dues_hash,
+    });
+    expect(rc.status, rc.text).toBe(201);
+    // No consent: staff may still share by hand (consent governs automated sends) — on the record.
+    const shared = await f.api<{ url: string | null }>(
+      'POST',
+      `/api/receipts/${rc.body.receipt.id}/parent-link`,
+    );
+    expect(shared.status, shared.text).toBe(200);
+    expect(shared.body.url).toMatch(/\/p#/);
+    const audits = await f.db.all<{ action: string; diff: string; user_id: string }>(
+      sql`SELECT action, diff, user_id FROM audit WHERE entity = 'receipt' AND entity_id = ${rc.body.receipt.id}
+          AND action = 'share_parent_link'`,
+    );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.user_id).toBe(f.owner.userId);
+    expect(JSON.parse(audits[0]?.diff ?? '{}')).toMatchObject({
+      after: { guardian_id: nc.body.guardian_ids[0], consent_whatsapp: false },
+    });
+    // Reversed: refused, and its reversal row yields no link.
+    const rev = await f.api<{ reversal: { id: string } }>(
+      'POST',
+      `/api/receipts/${f.ra.id}/reverse`,
+      { reason: 'entered by mistake' },
+    );
+    expect(rev.status, rev.text).toBeLessThan(300);
+    const after = await f.api<{ error: { code: string } }>(
+      'POST',
+      `/api/receipts/${f.ra.id}/parent-link`,
+    );
+    expect(after.status).toBe(409);
+    expect(after.body.error.code).toBe('already_reversed');
+    const revRow = await f.api<{ url: string | null }>(
+      'POST',
+      `/api/receipts/${rev.body.reversal.id}/parent-link`,
+    );
+    expect(revRow.status).toBe(200);
+    expect(revRow.body.url).toBeNull();
   });
 
   it('GET /api/p/logo: token-gated, image only, cacheable; the parent receipt carries its version', async () => {

@@ -54,8 +54,9 @@ export default defineConfig({
         // (unicode-range), so English-only users never pay for it. It is cached on first use below.
         globPatterns: ['**/*.{js,css,html,svg,png}'],
         navigateFallback: '/index.html',
-        // API responses must never come from the precache.
-        navigateFallbackDenylist: [/^\/api\//],
+        // API responses must never come from the precache, and neither may the parent page: `/p`
+        // is served by the Worker with its own noindex / no-referrer / CSP headers (app.ts).
+        navigateFallbackDenylist: [/^\/api\//, /^\/p(\/|$)/],
         runtimeCaching: [
           {
             // Offline reload: /api/me, school, today's list and rosters (see src/offline/api-cache.ts).

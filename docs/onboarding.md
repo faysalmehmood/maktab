@@ -138,7 +138,12 @@ period**, **Generate** again. **Late fines**: **Preview fines** → **Apply fine
   then **Print**. Each should print on one page.
 - **Share**: sends a short text (school, receipt no., amount, date) through the phone's share sheet,
   or copies it. For a family payment the last line is the guardian's private parent-page link (made
-  for them if they have none, unless the school's default check is a PIN).
+  for them if they have none, unless the school's default check is a PIN). The link is added even
+  when the guardian has not agreed to WhatsApp messages: that consent covers the automatic send
+  queue, while Share is the collector's own manual choice. Each share is recorded in the audit log;
+  a reversed receipt gets no link. (API: `POST /api/receipts/:id/parent-link` answers **200**
+  `{url}` — `null` when no link can be made — because it usually returns the guardian's existing
+  link rather than creating one; 409 `already_reversed` for a reversed receipt.)
 - **Send payment-received**: puts a WhatsApp message with the family's private parent-page link in
   the send queue (section 7).
 - A wrong receipt is never edited: **Reverse** with a reason (owner/admin), optionally re-enter it
