@@ -114,3 +114,19 @@ GitHub (set from this machine, names only): secrets `AGE_RECIPIENT`, `CLOUDFLARE
    `main`), add `AGE_SECRET_KEY` there only
    (`gh secret set AGE_SECRET_KEY -R faysalmehmood/maktab --env backup-drill < ~/Homelab/maktab-backup-key.txt`),
    run Actions → restore-drill after the first nightly run, then record the drill in Settings → Backup.
+
+# Deploy log: M6 fix pass (2026-10-13)
+
+Commits `eb6d3f3`, `179e4e1` (pushed to main). From apps/api:
+
+    npx wrangler d1 migrations apply maktab --remote --env production   # 0023_m6_fix_archived_groups ✅
+    npm run db:verify -- --remote --env production                      # repo root
+    npm run build && npx wrangler deploy --env production
+
+- `db:verify --remote`: 97 triggers (expected 97), 8 views (expected 8). 0023 adds the triggers
+  `enrolment_grp_archived`, `enrolment_grp_archived_move`, `grp_archive_in_use` (no table change).
+- Worker version `c3d51a00-b43d-44a6-b791-ebae3e29e8b4`.
+- Checks (curl --resolve, 172.67.187.153): `/api/health` 200 `{"status":"ok"}`; `/api/alarms` without
+  a session 401; `POST /api/backup/runs` without a token 401; `/` 200.
+- GitHub variable `BACKUP_ENABLED` left untouched (currently `false` until the API token exists). The
+  new `backup_stale` alarm stays silent until a successful nightly run reports `backup_enabled: true`.
