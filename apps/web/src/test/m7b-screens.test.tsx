@@ -9,7 +9,8 @@ import { RegisterPage } from '@/pages/attendance/Register';
 import { CounterPage } from '@/pages/fees/Counter';
 import { ReceiptPage } from '@/pages/fees/Receipt';
 import { StudentDetail } from '@/pages/students/StudentDetail';
-import { ids, meAs, mockApi, renderAt } from './api-mock';
+import { GroupDetail, GroupsPage } from '@/pages/Groups';
+import { group, ids, meAs, mockApi, renderAt, session } from './api-mock';
 import { accounts, fam, familyStatement, receiptId, receiptPrint } from './fee-fixtures';
 
 /*
@@ -280,5 +281,56 @@ describe('student profile (M7b-2)', () => {
     expect(left.dataset.destructive).toBe('true');
     fireEvent.click(left);
     expect(await screen.findByRole('dialog')).toBeTruthy();
+  });
+});
+
+describe('classes (M7b-2)', () => {
+  const g2 = { ...group, id: '01JAAAAAAAAAAAAAAAAAAAAAG2', name: 'B', active_count: 0, seats_left: 30, class_teacher_name: 'Ms Sana' };
+  const api = () =>
+    mockApi({
+      'GET /api/sessions': { items: [session] },
+      'GET /api/groups': { items: [group, g2] },
+      [`POST /api/groups/${g2.id}/archive`]: { ok: true },
+      [`GET /api/groups/${ids.group}`]: {
+        ...group,
+        subjects: [{ id: 'GS1', subject_id: 'S1', subject_name: 'Maths', teacher_id: null, teacher_name: 'Mr Ali' }],
+        roster: [
+          { enrolment_id: 'E1', student_id: ids.student, name: 'Ali Raza', father_name: null, roll_no: '1', admission_no: '2026-0001', has_photo: false },
+        ],
+      },
+    });
+
+  it('list: totals strip, one row per class; archive is a confirmed row-menu action for the office', async () => {
+    const calls = api().calls;
+    renderAt('/groups', '/groups', <GroupsPage />, ['owner']);
+    await screen.findByText('Class 5 B');
+    expect(document.getElementById('grp-students')?.textContent).toContain('1');
+    expect(document.getElementById('grp-no-teacher')?.textContent).toContain('1');
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions: Class 5 B' }), { key: 'Enter' });
+    fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem'));
+    const dialog = await screen.findByRole('dialog');
+    expect(calls.some((c) => c.path.endsWith('/archive'))).toBe(false);
+    fireEvent.click(within(dialog).getByRole('button', { name: /recycle bin/i }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'POST' && c.path === `/api/groups/${g2.id}/archive`)).toBe(true),
+    );
+  });
+
+  it('a teacher sees "My groups" without the row menu', async () => {
+    api();
+    renderAt('/groups', '/groups', <GroupsPage />, ['teacher']);
+    await screen.findByText('Class 5 B');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('My groups');
+    expect(screen.queryByRole('button', { name: /^More actions/ })).toBeNull();
+  });
+
+  it('detail: roster with roll numbers, subject teachers, and Take attendance for today', async () => {
+    api();
+    renderAt(`/groups/${ids.group}`, '/groups/:id', <GroupDetail />, ['teacher']);
+    expect(await screen.findByText('Ali Raza')).toBeTruthy();
+    expect(screen.getByText('Mr Ali')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Take attendance' }).getAttribute('href')).toContain(
+      `/attendance/register/${ids.group}?date=`,
+    );
   });
 });
