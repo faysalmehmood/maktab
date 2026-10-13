@@ -69,6 +69,9 @@ export async function seedData(
     name: 'Al-Noor Community School',
     nameUr: 'النور کمیونٹی اسکول',
     mode: 'both',
+    // The column default is still 'none' (changing it would rebuild the table); the API and
+    // migration 0021 set birth_year, so the seed matches them.
+    parentGate: 'birth_year',
     ...by,
   });
   const ownerStaff = newId();

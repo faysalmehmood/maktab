@@ -51,7 +51,7 @@ Commits `b9d4349`, `aa0ca61`, `daf52bd` (pushed to main). From apps/api, CI=1 WR
     npm run build && npx wrangler deploy --env production
 
 - `db:verify --remote`: 94 triggers (expected 94), 8 views (expected 8).
-- After 0021: `school.parent_gate` = `birth_year`; notice templates carry `{body}` and `{link}`.
+- After 0021: `school.parent_gate` = `birth_year` for the existing school row (the column default stays `none`; the API sets `birth_year` for new schools and the dev seed sets it explicitly); notice templates carry `{body}` and `{link}`.
 - Secrets now: SESSION_SECRET, PARENT_LINK_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET.
   Give the trustees a copy of PARENT_LINK_SECRET (docs/restore.md needs the same value).
 - Worker version `127573bb-40cb-434a-b4e4-377a0b3a0203`, cron `*/30 * * * *`.
