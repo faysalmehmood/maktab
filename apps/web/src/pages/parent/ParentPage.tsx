@@ -152,10 +152,10 @@ function useNoIndex() {
 }
 
 const STATUS_STYLE: Record<NonNullable<ParentChildDto['today']>, string> = {
-  P: 'bg-emerald-100 text-emerald-900',
-  A: 'bg-red-100 text-red-900',
-  L: 'bg-amber-100 text-amber-950',
-  E: 'bg-sky-100 text-sky-900',
+  P: 'bg-ok-soft text-ok',
+  A: 'bg-bad-soft text-bad',
+  L: 'bg-warn-soft text-warn',
+  E: 'bg-info-soft text-info',
 };
 
 const synth = (): SpeechSynthesis | null =>
@@ -472,13 +472,17 @@ function Dues({ dues, lang }: { dues: NonNullable<ParentPageDto['dues']>; lang: 
  * The school logo for the parent receipt: an <img> cannot send X-Parent-Token, so it is fetched
  * (the versioned URL lets the browser cache it for a week) and shown from a blob URL.
  */
-function useParentLogo(token: string, version: string | null): string | null {
+function useParentLogo(
+  token: string,
+  version: string | null,
+  path: '/api/p/logo' | '/api/p/badge' = '/api/p/logo',
+): string | null {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     if (!version) return;
     let url: string | null = null;
     let live = true;
-    fetch(`/api/p/logo?v=${encodeURIComponent(version)}`, {
+    fetch(`${path}?v=${encodeURIComponent(version)}`, {
       credentials: 'omit',
       headers: { [PARENT_TOKEN_HEADER]: token },
     })
@@ -493,8 +497,24 @@ function useParentLogo(token: string, version: string | null): string | null {
       live = false;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [token, version]);
+  }, [token, version, path]);
   return src;
+}
+
+/**
+ * The school's picture for the parent page (M7b): its logo, else the generated badge from
+ * /api/p/badge, both token-gated and fetched by version (an <img> cannot send the token header).
+ */
+function useSchoolPicture(
+  token: string,
+  school: { logo_v: string | null; badge_v: string | null } | undefined,
+): string | null {
+  const logo = school?.logo_v ?? null;
+  return useParentLogo(
+    token,
+    logo ?? school?.badge_v ?? null,
+    logo ? '/api/p/logo' : '/api/p/badge',
+  );
 }
 
 function ReceiptView({
@@ -516,7 +536,7 @@ function ReceiptView({
     retry: false,
   });
   const lang = i18n.language === 'ur' ? 'ur' : 'en';
-  const logo = useParentLogo(token, q.data?.school.logo_v ?? null);
+  const logo = useSchoolPicture(token, q.data?.school);
   return (
     <section className="mx-auto flex max-w-3xl flex-col gap-3 p-4">
       <div className="flex flex-wrap gap-2 print:hidden">
@@ -605,6 +625,7 @@ export function ParentPage() {
     staleTime: 30_000,
   });
   const data = q.data;
+  const picture = useSchoolPicture(token ?? '', data?.school);
 
   // First load: the page speaks the guardian's language; the toggle changes it afterwards.
   useEffect(() => {
@@ -644,7 +665,17 @@ export function ParentPage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col gap-4 p-4">
-      <header className="flex flex-wrap items-center gap-2">
+      <header className="flex flex-wrap items-center gap-3">
+        {picture && (
+          <img
+            src={picture}
+            alt=""
+            width={44}
+            height={44}
+            id="parent-school-mark"
+            className="size-11 shrink-0 rounded-full bg-white object-contain"
+          />
+        )}
         <h1 className="text-lg font-semibold">
           <bdi>{school}</bdi>
         </h1>
@@ -658,10 +689,7 @@ export function ParentPage() {
           {data.guardian.first_name}
         </WithValue>
       </p>
-      <p
-        id="parent-private"
-        className="flex gap-2 rounded-md bg-amber-50 p-3 text-sm text-amber-950"
-      >
+      <p id="parent-private" className="flex gap-2 rounded-md bg-warn-soft p-3 text-sm text-warn">
         <Lock aria-hidden className="mt-0.5 size-4 shrink-0" />
         {t('msg.parent.private')}
       </p>

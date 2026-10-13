@@ -387,7 +387,13 @@ describe('compose notice', () => {
 
 function parentPage(over: Partial<ParentPageDto> = {}): ParentPageDto {
   return {
-    school: { name: 'Maktab School', name_ur: 'مکتب اسکول', phone: '923001112223' },
+    school: {
+      name: 'Maktab School',
+      name_ur: 'مکتب اسکول',
+      phone: '923001112223',
+      logo_v: null,
+      badge_v: null,
+    },
     guardian: { first_name: 'Imran', lang: 'ur' },
     turnstile_site_key: null,
     date: '2026-10-11',
@@ -428,7 +434,14 @@ function parentPage(over: Partial<ParentPageDto> = {}): ParentPageDto {
 
 function parentReceipt(): ParentReceiptDto {
   return {
-    school: { name: 'Maktab School', name_ur: null, address: null, phone: null, logo_v: null },
+    school: {
+      name: 'Maktab School',
+      name_ur: null,
+      address: null,
+      phone: null,
+      logo_v: null,
+      badge_v: null,
+    },
     labels: RECEIPT_LABELS,
     lang: 'en',
     receipt: {
@@ -700,6 +713,44 @@ describe('parent page', () => {
     expect(seen).toEqual([TOKEN]);
     expect(created).toHaveLength(1);
   });
+
+  it('M7b: no logo → the generated badge from /api/p/badge, on the page header and the receipt', async () => {
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, {
+        createObjectURL: () => 'blob:badge-1',
+        revokeObjectURL: () => undefined,
+      }),
+    );
+    const seen: string[] = [];
+    mockApi({
+      ['GET /api/p']: parentPage({
+        guardian: { first_name: 'I', lang: 'en' },
+        school: { ...parentPage().school, badge_v: 'b1' },
+      }),
+      'GET /api/p/receipt/R-2026-00001': () => ({
+        ...parentReceipt(),
+        school: { ...parentReceipt().school, badge_v: 'b1' },
+      }),
+      'GET /api/p/badge': (url: URL, init: RequestInit) => {
+        seen.push(`${url.search} ${new Headers(init.headers).get('x-parent-token')}`);
+        return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', {
+          headers: { 'content-type': 'image/svg+xml' },
+        });
+      },
+    });
+    renderParent();
+    await waitFor(() =>
+      expect(document.getElementById('parent-school-mark')?.getAttribute('src')).toBe(
+        'blob:badge-1',
+      ),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Open receipt R-2026-00001/ }));
+    await waitFor(() =>
+      expect(document.querySelector('img.receipt-logo')?.getAttribute('src')).toBe('blob:badge-1'),
+    );
+    expect(seen[0]).toBe(`?v=b1 ${TOKEN}`);
+  });
 });
 
 // ---- RTL and untranslated text --------------------------------------------------------------------
@@ -769,7 +820,8 @@ describe('no hard-coded English in messaging JSX', () => {
     ...single.map((f) => join(process.cwd(), f)),
   ];
   it('finds the files', () => {
-    expect(files.length).toBeGreaterThanOrEqual(9);
+    // M7b: the dashboard tile moved into Home (pages/Dashboard.tsx); 8 messaging files remain.
+    expect(files.length).toBeGreaterThanOrEqual(8);
   });
   it.each(files.map((f) => [f.slice(f.indexOf('src/')), f]))('%s', (_short, file) => {
     expect(literals(readFileSync(file, 'utf8'))).toEqual([]);

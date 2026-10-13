@@ -4,6 +4,7 @@ import { Printer, Send, Share2, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { PrintBadge } from '@/components/brand/SchoolBadge';
 import { AmountInput, MethodChips, ReasonDialog } from '@/components/fees/common';
 import { type ReceiptFormat, type ReceiptLang, ReceiptPrint } from '@/components/fees/ReceiptPrint';
 import { ErrorNote, Field } from '@/components/form';
@@ -13,6 +14,7 @@ import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson } from '@/lib/api';
 import { canCollect, canReverse, money, type PaymentMethod, rupeesToPaisa } from '@/lib/fees';
 import { printWhenReady } from '@/lib/print';
+import { useSchool } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 
@@ -140,6 +142,7 @@ export function ReceiptPage() {
   const roles = useRoles();
   const [params, setParams] = useSearchParams();
   const [reversing, setReversing] = useState(false);
+  const school = useSchool().data?.school;
   const q = useQuery({
     queryKey: receiptPrintKey(id),
     queryFn: () => getJson<ReceiptPrintDto>(`/api/receipts/${id}?format=print`),
@@ -316,7 +319,7 @@ export function ReceiptPage() {
         </div>
       </div>
       <div className="overflow-x-auto">
-        <ReceiptPrint data={data} fmt={fmt} lang={lang} />
+        <ReceiptPrint data={data} fmt={fmt} lang={lang} badge={<PrintBadge school={school} />} />
       </div>
       {reversing && <ReverseDialog receipt={r} open={reversing} onOpenChange={setReversing} />}
     </section>

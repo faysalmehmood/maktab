@@ -54,12 +54,16 @@ afterEach(() => {
 });
 
 function renderLogin() {
+  // M7b: the sign-in page reads the school's public identity (GET /api/identity) through react-query.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={['/login']}>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/login']}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -96,9 +100,11 @@ describe('Login with a sign-out still queued', () => {
     await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
     expect(String(assign.mock.calls[0]?.[0])).toContain('/api/auth/google/start');
     // The logout went with the token, not as a bare cookie sign-out.
-    expect(
-      JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body)),
-    ).toEqual({
+    // (M7b: the page's own GET /api/identity is also a fetch; pick the logout call by its URL.)
+    const logoutCall = (f.mock.calls as unknown as [string, RequestInit][]).find(([u]) =>
+      String(u).includes('/api/auth/logout'),
+    );
+    expect(JSON.parse(String(logoutCall?.[1].body))).toEqual({
       logout_token: 'tok-old',
     });
     // Still queued; the cookie is there for the callback.
@@ -162,6 +168,12 @@ describe('outbox per user on a shared phone', () => {
 });
 
 describe('sign-out', () => {
+  /** M7b: Sign out lives in the account menu at the foot of the sidebar. */
+  const clickSignOut = () => {
+    if (!screen.queryByRole('button', { name: 'Sign out' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Account menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+  };
   function renderShell(me: MeResponse) {
     const client = new QueryClient();
     client.setQueryData(['me'], me);
@@ -190,12 +202,12 @@ describe('sign-out', () => {
     await ob.enqueue(sub('a2', 'g2'));
     renderShell(meOf(A, ['teacher'], 'tok-A'));
     await act(() => refreshStatus());
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    clickSignOut();
     expect(await screen.findByText('2 registers not yet sent — sign out anyway?')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByText('home')).toBeTruthy();
     expect(logoutPending()).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    clickSignOut();
     fireEvent.click(await screen.findByRole('button', { name: 'Sign out anyway' }));
     expect(await screen.findByText('login page')).toBeTruthy();
     expect(localStorage.getItem('maktab.logoutPending')).toBe('tok-A');
@@ -210,7 +222,7 @@ describe('sign-out', () => {
     );
     setOutboxUser(A);
     renderShell(meOf(A, ['owner']));
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    clickSignOut();
     expect(await screen.findByText('login page')).toBeTruthy();
   });
 });

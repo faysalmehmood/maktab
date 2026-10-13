@@ -7,7 +7,7 @@ import {
 } from '@maktab/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AmountInput, Money } from '@/components/fees/common';
 import { Field } from '@/components/form';
@@ -513,7 +513,16 @@ const N = ({ children }: { children: string }) => <bdi className="num">{children
  * The paper payslip (PLAN §14.8 "slip print"): A5, in its own language (independent of the app's),
  * reusing the receipt print CSS. Every number is a Latin `.num` run.
  */
-export function PayslipPrint({ slip, lang }: { slip: PayslipDetailDto; lang: 'en' | 'ur' }) {
+export function PayslipPrint({
+  slip,
+  lang,
+  mark,
+}: {
+  slip: PayslipDetailDto;
+  lang: 'en' | 'ur';
+  /** The school's logo or badge for the header (M7b). */
+  mark?: ReactNode;
+}) {
   const { i18n } = useTranslation();
   useLanguageResources(lang);
   const t = i18n.getFixedT(lang);
@@ -535,6 +544,7 @@ export function PayslipPrint({ slip, lang }: { slip: PayslipDetailDto; lang: 'en
       id="payslip-paper"
     >
       <header className="receipt-head">
+        {mark}
         <h1>{school}</h1>
         {slip.school.address && <div className="receipt-sub">{slip.school.address}</div>}
         {slip.school.phone && (

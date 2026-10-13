@@ -10,6 +10,7 @@ import { Printer } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router';
+import { PrintBadge } from '@/components/brand/SchoolBadge';
 import { Money, ReasonDialog } from '@/components/fees/common';
 import { ErrorNote, Field, PageTitle } from '@/components/form';
 import { MoneyErrorNote, PayslipStatusBadge, ReportActions } from '@/components/money/common';
@@ -45,6 +46,7 @@ import {
   usePayslips,
 } from '@/lib/money';
 import { printWhenReady } from '@/lib/print';
+import { useSchool } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 
@@ -386,7 +388,7 @@ export function PayslipPage() {
       </div>
       <Totals slip={slip} />
       {draft && !slip.can_approve && canApprovePayslip(roles) && (
-        <p role="note" id="slip-own" className="rounded-md bg-amber-100 p-3 text-sm text-amber-950">
+        <p role="note" id="slip-own" className="rounded-md bg-warn-soft p-3 text-sm text-warn">
           {t('money.salary.ownSlip')}
         </p>
       )}
@@ -469,6 +471,7 @@ export function PayslipPrintPage() {
     queryFn: () => getJson<{ payslip: PayslipDetailDto }>(`/api/payslips/${id}`),
     enabled: !!id,
   });
+  const school = useSchool().data?.school;
   const p = params.get('lang');
   const lang: 'en' | 'ur' = p === 'ur' || p === 'en' ? p : i18n.language === 'ur' ? 'ur' : 'en';
   if (q.isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
@@ -513,7 +516,17 @@ export function PayslipPrintPage() {
           {t('money.common.print')}
         </Button>
       </div>
-      <PayslipPrint slip={slip} lang={lang} />
+      <PayslipPrint
+        slip={slip}
+        lang={lang}
+        mark={
+          school?.has_logo ? (
+            <img src="/api/school/logo" alt="" className="receipt-logo" />
+          ) : (
+            <PrintBadge school={school} />
+          )
+        }
+      />
     </section>
   );
 }

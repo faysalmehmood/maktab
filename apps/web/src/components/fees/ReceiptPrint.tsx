@@ -1,5 +1,5 @@
 import type { ReceiptPrintDto } from '@maktab/shared';
-import { useLayoutEffect, useRef } from 'react';
+import { type ReactNode, useLayoutEffect, useRef } from 'react';
 import { money } from '@/lib/fees';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +24,7 @@ export function ReceiptPrint({
   lang,
   publicCopy = false,
   logoSrc = '/api/school/logo',
+  badge,
 }: {
   data: ReceiptPrintDto;
   fmt: ReceiptFormat;
@@ -32,6 +33,8 @@ export function ReceiptPrint({
   publicCopy?: boolean;
   /** Staff: the session-gated logo route; the parent page passes a blob URL of /api/p/logo. */
   logoSrc?: string;
+  /** The school's generated badge, drawn when there is no logo (M7b, UI plan §6.4; A5 only). */
+  badge?: ReactNode;
 }) {
   const L = data.labels[lang];
   const r = data.receipt;
@@ -95,9 +98,8 @@ export function ReceiptPrint({
         </div>
       )}
       <header className="receipt-head">
-        {data.school.has_logo && fmt === 'a5' && (
-          <img src={logoSrc} alt="" className="receipt-logo" />
-        )}
+        {fmt === 'a5' &&
+          (data.school.has_logo ? <img src={logoSrc} alt="" className="receipt-logo" /> : badge)}
         <h1>{schoolName}</h1>
         {data.school.address && <div className="receipt-sub">{data.school.address}</div>}
         {data.school.phone && (
