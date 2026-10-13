@@ -171,8 +171,7 @@ export const en = {
     staffHelp: 'Invite teachers and office staff by their Google email. You can skip this.',
     feesHelp:
       'Fee heads (tuition, admission…) and the monthly rate for each class. You can change them later in Settings → Fees.',
-    logoAfterSave: 'Press Next to save the name; then you can add the logo here.',
-    logoSaved: 'Saved. Add your logo now, or press Next.',
+    logoStaged: 'The logo is uploaded when you press Next.',
     noGroups: 'Add at least one class group first: students are admitted into a group.',
     backToGroups: 'Back to groups',
     noRates: 'No fee rates yet. Set them in Settings → Fees before the first fee month.',

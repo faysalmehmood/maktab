@@ -36,6 +36,10 @@ describe('setup wizard', () => {
         school = saved(JSON.parse(String(init.body)) as { name: string; mode: string });
         return school;
       },
+      'POST /api/school/logo': () => {
+        school = { school: { ...school.school, has_logo: true } } as typeof school;
+        return school;
+      },
       'GET /api/sessions': { items: [] },
     });
     renderAt('/setup', '/setup', <SetupWizard />);
@@ -48,20 +52,22 @@ describe('setup wizard', () => {
     expect(await screen.findByText('Required')).toBeTruthy();
     expect(screen.getByText('Step 1 of 8')).toBeTruthy();
 
-    // Before the first save the logo cannot be uploaded yet, and the step says so.
-    expect(screen.getByText(/then you can add the logo here/)).toBeTruthy();
-    expect(document.getElementById('school-logo')).toBeNull();
+    // The logo control is there on the first visit (defect 4.6): the file is staged and uploaded
+    // right after the first save creates the school.
+    const input = document.getElementById('school-logo') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    expect(screen.getByText('PNG, JPEG or WebP, up to 512 KB.')).toBeTruthy();
+    const logo = new File([new Uint8Array(1000)], 'logo.png', { type: 'image/png' });
+    fireEvent.change(input, { target: { files: [logo] } });
+    expect(await screen.findByText('The logo is uploaded when you press Next.')).toBeTruthy();
+    expect(api.calls.some((c) => c.path === '/api/school/logo')).toBe(false);
     fireEvent.change(screen.getByLabelText(/School name/), { target: { value: 'Al-Noor' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    // The first save stays on step 1 so the logo upload appears (defect 4.6.1).
-    expect(await screen.findByText('Saved. Add your logo now, or press Next.')).toBeTruthy();
-    expect(document.getElementById('school-logo')).toBeTruthy();
-    expect(screen.getByText('Step 1 of 8')).toBeTruthy();
-    expect(screen.getByText('PNG, JPEG or WebP, up to 512 KB.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText('Step 2 of 8')).toBeTruthy();
+    const order = api.calls.map((c) => `${c.method} ${c.path}`).filter((c) => !c.startsWith('GET'));
+    expect(order).toEqual(['PUT /api/school', 'POST /api/school/logo']);
     expect(screen.getByRole('heading', { name: 'Type' })).toBeTruthy();
-    expect(api.calls.filter((c) => c.method === 'PUT')).toHaveLength(2);
+    expect(api.calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(await screen.findByText('Step 1 of 8')).toBeTruthy();

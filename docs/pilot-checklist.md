@@ -4,6 +4,11 @@ Tick every box before the pilot school enters a real student or a real rupee (PL
 item says **what**, **how to verify**, and **who** (Owner = the school owner; Maintainer = whoever
 runs the Cloudflare and GitHub accounts). Record the date next to each tick.
 
+**M7b (UI/UX polish & branding, PLAN §15) must be finished — reviewed, verified and deployed —
+before this gate is worked through.** The pilot school's staff learn the app once; they must learn
+the M7b screens, not the M7a ones. Do not start ticking below until M7b is recorded as done in
+docs/PLAN.md.
+
 Production: https://maktab.conceptlix.com · repo `faysalmehmood/maktab` · runbooks:
 docs/deploy.md, docs/backup.md, docs/restore.md, docs/android-checks.md.
 

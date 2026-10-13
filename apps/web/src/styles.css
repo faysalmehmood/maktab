@@ -146,7 +146,7 @@ bdi {
  */
 @page receipt-a5 {
   size: A5 portrait;
-  margin: 10mm;
+  margin: 8mm;
 }
 .receipt {
   position: relative;
@@ -293,7 +293,51 @@ bdi {
   pointer-events: none;
   text-align: center;
 }
+/* A long receipt breaks between rows, never inside one. */
+.receipt-a5 .receipt-lines tr,
+.receipt-a5 .receipt-meta,
+.receipt-a5 .receipt-foot {
+  break-inside: avoid;
+}
+/*
+ * Urdu A5 (M7a verify: 2 children / 5 lines printed on 2 pages): Nastaliq's line-height 2 stays on
+ * the headings (school name), while table rows, the meta lists and the footer use 1.8 with no
+ * vertical cell padding. Up to 2 children / 8 lines print on one A5 page (checked with
+ * scripts/print-pages.mjs in en and ur); a longer receipt breaks between rows, never inside one.
+ */
+.receipt-a5[lang="ur"] .receipt-lines,
+.receipt-a5[lang="ur"] .receipt-meta,
+.receipt-a5[lang="ur"] .receipt-sub,
+.receipt-a5[lang="ur"] .receipt-title,
+.receipt-a5[lang="ur"] .receipt-foot,
+.receipt-a5[lang="ur"] .receipt-lines bdi:not(.num),
+.receipt-a5[lang="ur"] .receipt-meta bdi:not(.num) {
+  line-height: 1.8;
+}
+.receipt-a5[lang="ur"] .receipt-lines th,
+.receipt-a5[lang="ur"] .receipt-lines td {
+  padding-block: 0;
+}
+.receipt-a5[lang="ur"] .receipt-lines {
+  margin-block: 0.3em;
+}
+.receipt-a5[lang="ur"] .receipt-meta {
+  margin-block: 0.2em;
+}
+.receipt-a5[lang="ur"] .receipt-head {
+  padding-bottom: 0.1em;
+  margin-bottom: 0.3em;
+}
+.receipt-a5[lang="ur"] .receipt-foot {
+  padding-top: 0.15em;
+}
+.receipt-a5[lang="ur"] .receipt-logo {
+  max-height: 12mm;
+}
 @media print {
+  .receipt-a5[lang="ur"] {
+    font-size: 10.5pt;
+  }
   .receipt-a5 {
     page: receipt-a5;
     border: 0;

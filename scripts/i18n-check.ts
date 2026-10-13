@@ -7,7 +7,10 @@
 //   - month names (MONTH_NAMES in messaging.ts).
 // It fails (exit 1) on: a key missing or empty in Urdu, an Urdu string identical to the English one
 // (unless allowed below), an Urdu key with no English twin, placeholder sets that differ
-// ({{x}} and {x}), and Arabic-Indic or Extended Arabic-Indic digits in Urdu (we print 0-9 only).
+// ({{x}} and {x}), Arabic-Indic or Extended Arabic-Indic digits in Urdu (we print 0-9 only), and an
+// Urdu string with Latin words but no Arabic-script letter at all (English left in by mistake, even
+// when it differs from the English twin), unless its words are all technical tokens (LATIN_OK) or
+// the key is in ALLOW.
 
 import { RECEIPT_LABELS } from '../packages/shared/src/fees';
 import { en } from '../packages/shared/src/i18n';
@@ -71,6 +74,9 @@ function languageNeutral(s: string): boolean {
 }
 
 const NON_LATIN_DIGIT = /[٠-٩۰-۹]/;
+/** Arabic-script letters (Arabic, Arabic Supplement, Presentation Forms A/B). */
+const ARABIC_LETTER =
+  /[\u0620-\u064A\u066E-\u06D3\u06D5\u06FA-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/;
 
 const enFlat = new Map<string, string>();
 const urFlat = new Map<string, string>();
@@ -100,6 +106,7 @@ const problems: Record<string, string[]> = {
   extra: [],
   placeholders: [],
   digits: [],
+  latinOnly: [],
 };
 
 for (const [key, enText] of enFlat) {
@@ -122,6 +129,8 @@ for (const [key, enText] of enFlat) {
 for (const [key, urText] of urFlat) {
   if (!enFlat.has(key)) problems.extra.push(key);
   if (NON_LATIN_DIGIT.test(urText)) problems.digits.push(`${key}  = ${JSON.stringify(urText)}`);
+  if (!ARABIC_LETTER.test(urText) && !ALLOW.has(key) && !languageNeutral(urText))
+    problems.latinOnly.push(`${key}  = ${JSON.stringify(urText)}`);
 }
 
 const labels: Record<string, string> = {
@@ -131,6 +140,7 @@ const labels: Record<string, string> = {
   extra: 'In ur but not in en',
   placeholders: 'Placeholder mismatch',
   digits: 'Arabic-Indic digits in ur (use 0-9)',
+  latinOnly: 'No Urdu letters in ur (translate, or add to ALLOW / LATIN_OK if purely technical)',
 };
 
 const total = Object.values(problems).reduce((n, list) => n + list.length, 0);

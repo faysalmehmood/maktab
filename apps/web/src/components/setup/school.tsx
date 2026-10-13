@@ -8,7 +8,7 @@ import {
   schoolInputSchema,
 } from '@maktab/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ErrorNote, Field } from '@/components/form';
 import { Button } from '@/components/ui/button';
@@ -202,7 +202,20 @@ export function SchoolForm({
   );
 }
 
-export function LogoUpload({ school }: { school: SchoolDto | null | undefined }) {
+/**
+ * The school logo. With a saved school it uploads on choose. Before the school row exists (the
+ * wizard's first visit to step 1, defect 4.6) it *stages* the file instead: `onStage` gets it, the
+ * preview shows, and the wizard uploads it right after the first save.
+ */
+export function LogoUpload({
+  school,
+  staged,
+  onStage,
+}: {
+  school: SchoolDto | null | undefined;
+  staged?: File | null;
+  onStage?: (f: File | null) => void;
+}) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [version, setVersion] = useState(0);
@@ -216,14 +229,32 @@ export function LogoUpload({ school }: { school: SchoolDto | null | undefined })
       toast.success(t('common.saved'));
     },
   });
-  if (!school) return null;
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!staged || typeof URL.createObjectURL !== 'function') {
+      setPreview(null);
+      return;
+    }
+    const u = URL.createObjectURL(staged);
+    setPreview(u);
+    return () => URL.revokeObjectURL(u);
+  }, [staged]);
+  const staging = !school && !!onStage;
+  if (!school && !staging) return null;
   return (
     <div className="flex flex-col gap-2">
       <Field id="school-logo" label="school.logo" hint={t('school.logoHelp', { kb })}>
         <div className="flex items-center gap-3">
-          {school.has_logo && (
+          {school?.has_logo && (
             <img
               src={`/api/school/logo?v=${version}`}
+              alt={t('school.logo')}
+              className="size-14 rounded-md border object-contain"
+            />
+          )}
+          {staging && preview && (
+            <img
+              src={preview}
               alt={t('school.logo')}
               className="size-14 rounded-md border object-contain"
             />
@@ -236,11 +267,16 @@ export function LogoUpload({ school }: { school: SchoolDto | null | undefined })
               const f = e.target.files?.[0];
               // Same limit as the API (MAX_LOGO_BYTES), so a big photo is refused before upload.
               setTooBig(!!f && f.size > MAX_LOGO_BYTES);
-              if (f && f.size <= MAX_LOGO_BYTES) upload.mutate(f);
+              const ok = f && f.size <= MAX_LOGO_BYTES ? f : null;
+              if (staging) onStage?.(ok);
+              else if (ok) upload.mutate(ok);
             }}
           />
         </div>
       </Field>
+      {staging && staged && (
+        <p className="text-sm text-muted-foreground">{t('setup.logoStaged')}</p>
+      )}
       {tooBig && (
         <p role="alert" className="text-sm text-destructive">
           {t('school.logoTooBig', { kb })}

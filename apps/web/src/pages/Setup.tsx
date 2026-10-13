@@ -1,4 +1,5 @@
-import type { I18nKey } from '@maktab/shared';
+import type { I18nKey, SchoolResponse } from '@maktab/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +14,7 @@ import { SessionForm, SessionsList } from '@/components/setup/sessions';
 import { InviteForm, StaffList } from '@/components/setup/staff';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { uploadFile } from '@/lib/api';
 import { useFeeHeads, useFeeRates } from '@/lib/fees';
 import { useCurrentSession, useGroups, useSchool } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
@@ -51,8 +53,11 @@ export function SetupWizard() {
   const groups = useGroups();
   const heads = useFeeHeads();
   const rates = useFeeRates(step === 'done');
-  // The school's first save stays on step 1 so the logo upload (it needs the saved school) shows.
-  const [firstSave, setFirstSave] = useState(false);
+  // A logo chosen before the school row exists is staged here and uploaded right after the first
+  // save (defect 4.6: the upload control shows on the first visit).
+  const [stagedLogo, setStagedLogo] = useState<File | null>(null);
+  const [logoError, setLogoError] = useState<unknown>(null);
+  const qc = useQueryClient();
 
   if (!roles.includes('owner')) {
     return <p className="p-6">{t('setup.ownerOnly')}</p>;
@@ -108,19 +113,32 @@ export function SetupWizard() {
                 school={dto}
                 part="profile"
                 formId={FORM_ID}
-                onSaved={() => {
-                  if (dto) next();
-                  else setFirstSave(true);
+                onSaved={async () => {
+                  if (stagedLogo) {
+                    try {
+                      const data = await uploadFile<SchoolResponse>(
+                        '/api/school/logo',
+                        stagedLogo,
+                        stagedLogo.name,
+                      );
+                      qc.setQueryData(['school'], data);
+                      setStagedLogo(null);
+                      setLogoError(null);
+                    } catch (err) {
+                      // The name is saved; stay here so the logo can be tried again.
+                      setLogoError(err);
+                      return;
+                    }
+                  }
+                  next();
                 }}
               />
               {dto ? (
-                <>
-                  {firstSave && <p className="text-sm text-primary">{t('setup.logoSaved')}</p>}
-                  <LogoUpload school={dto} />
-                </>
+                <LogoUpload school={dto} />
               ) : (
-                <p className="text-sm text-muted-foreground">{t('setup.logoAfterSave')}</p>
+                <LogoUpload school={null} staged={stagedLogo} onStage={setStagedLogo} />
               )}
+              <ErrorNote error={logoError} />
             </>
           )}
           {step === 'mode' && (
