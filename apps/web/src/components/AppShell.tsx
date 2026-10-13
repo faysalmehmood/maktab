@@ -49,10 +49,12 @@ import { API_CACHE } from '@/offline/api-cache';
 import { queueLogout } from '@/offline/logout';
 import { resumeAfterSignIn, startAutoSync, useOutboxStatus } from '@/offline/sync';
 import { SyncBanner } from './attendance/common';
-import { RunsOnMaktab, SchoolMark } from './brand/SchoolBadge';
+import { Avatar } from './avatar';
+import { RunsOnMaktab, SchoolChip, SchoolMark } from './brand/SchoolBadge';
 import { GlobalSearch } from './GlobalSearch';
 import { InstallBanner } from './InstallBanner';
 import { LanguageToggle } from './LanguageToggle';
+import { SegmentedControl } from './segmented';
 
 export type NavGroup = 'home' | 'people' | 'daily' | 'money' | 'school';
 
@@ -270,7 +272,7 @@ function SideLink({
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          'relative flex min-h-ctl items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-side-fg transition-colors hover:bg-side-on hover:text-white',
+          'relative flex min-h-ctl items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-side-fg transition-colors motion-reduce:transition-none hover:bg-side-on hover:text-white',
           'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white',
           isActive &&
             'bg-side-on text-white before:absolute before:inset-y-1.5 before:start-0 before:w-[3px] before:rounded-full before:bg-brand',
@@ -359,42 +361,19 @@ export function ThemeSwitch() {
   const { t } = useTranslation();
   const [pref] = useThemePref();
   return (
-    <fieldset className="flex flex-col gap-1.5">
-      <legend className="mb-1.5 text-meta font-semibold text-muted-foreground">
-        {t('shell.account.theme')}
-      </legend>
-      <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
-        {THEMES.map((th) => {
-          const Icon = THEME_ICON[th];
-          return (
-            <button
-              key={th}
-              type="button"
-              aria-pressed={pref === th}
-              onClick={() => setThemePref(th)}
-              className={cn(
-                'flex min-h-ctl flex-col items-center justify-center gap-0.5 rounded-md px-1 text-meta font-medium text-muted-foreground',
-                'focus-visible:outline-2 focus-visible:outline-ring',
-                pref === th && 'bg-card text-foreground shadow-xs',
-              )}
-            >
-              <Icon className="size-4" aria-hidden />
-              {t(`shell.account.themes.${th}`)}
-            </button>
-          );
-        })}
-      </div>
-    </fieldset>
+    <SegmentedControl
+      id="theme-switch"
+      label={t('shell.account.theme')}
+      value={pref}
+      onChange={setThemePref}
+      options={THEMES.map((th) => ({
+        value: th,
+        label: t(`shell.account.themes.${th}`),
+        icon: THEME_ICON[th],
+      }))}
+    />
   );
 }
-
-const initialsOf = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter((w) => /^\p{L}/u.test(w))
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
 
 /** Who is signed in: initials, name, first role. */
 function Who({ me, light = false }: { me: MeResponse | undefined; light?: boolean }) {
@@ -403,15 +382,7 @@ function Who({ me, light = false }: { me: MeResponse | undefined; light?: boolea
   const role = me?.roles[0];
   return (
     <span className="flex min-w-0 items-center gap-2.5 text-start">
-      <span
-        className={cn(
-          'grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold',
-          light ? 'bg-brand-soft text-brand' : 'bg-side-on text-white',
-        )}
-        aria-hidden
-      >
-        {initialsOf(name) || '·'}
-      </span>
+      <Avatar name={name} size="sm" tone={light ? 'brand' : 'side'} />
       <span className="flex min-w-0 flex-col">
         <span className={cn('truncate text-sm font-semibold', !light && 'text-white')}>
           <bdi>{name}</bdi>
@@ -623,9 +594,23 @@ export function AppShell() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-card px-3 md:px-6 print:hidden">
-            <NavLink to="/" className="md:hidden" aria-label={t('shell.nav.home')}>
-              <SchoolIdentity school={school} size={32} compact />
+          <header className="sticky top-0 z-20 flex min-h-14 items-center gap-2 border-b bg-card px-3 pt-[env(safe-area-inset-top)] md:gap-3 md:px-6 print:hidden">
+            {/* Phone: badge + short name (+ city when it fits); the whole chip is a 44 px link. */}
+            <NavLink
+              to="/"
+              id="topbar-school"
+              className="-ms-1.5 flex min-h-11 max-w-[9.5rem] min-w-11 shrink-0 items-center rounded-lg px-1.5 hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring md:hidden"
+              aria-label={t('shell.nav.home')}
+            >
+              <SchoolChip
+                school={{
+                  name: school?.name ?? t('app.name'),
+                  short_name: school?.short_name ?? (school ? null : 'M'),
+                  brand_color: school?.brand_color,
+                }}
+                logoSrc={school?.has_logo ? '/api/school/logo' : null}
+                city={school?.city}
+              />
             </NavLink>
             <GlobalSearch />
             <div className="ms-auto flex items-center gap-2">
@@ -668,7 +653,7 @@ export function AppShell() {
             <DialogHeader>
               <DialogTitle>{t('auth.unsentTitle')}</DialogTitle>
               <DialogDescription>
-                {t('auth.unsentBody', { n: outbox.pending + outbox.failed })}
+                {t('auth.unsentBody', { count: outbox.pending + outbox.failed })}
               </DialogDescription>
             </DialogHeader>
             <p className="text-sm">{t('auth.unsentHint')}</p>

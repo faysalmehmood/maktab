@@ -7,6 +7,7 @@ import {
   formatPkPhone,
   isBrandColor,
   MAX_LOGO_BYTES,
+  needsShortName,
   SCHOOL_MODES,
   type SchoolDto,
   type SchoolInput,
@@ -152,6 +153,12 @@ export function SchoolForm({
       setErrors(issuesToErrors(parsed.error.issues, draft));
       return;
     }
+    // An Urdu-only name has no letters for the badge: ask for a short name instead of drawing "M".
+    if (showProfile && needsShortName(draft.name, draft.short_name)) {
+      setErrors({ short_name: 'short_name_needed' });
+      document.getElementById('school-short')?.focus();
+      return;
+    }
     setErrors({});
     // The receipt prefix defaults from the short name (UI plan §7.2) while none is set.
     const body =
@@ -206,7 +213,12 @@ export function SchoolForm({
               id="school-short"
               label="brand.shortName"
               error={errors.short_name}
-              hint={t('brand.shortNameHelp')}
+              required={needsShortName(draft.name, draft.short_name) || undefined}
+              hint={
+                needsShortName(draft.name, draft.short_name)
+                  ? t('brand.shortNameNeeded')
+                  : t('brand.shortNameHelp')
+              }
             >
               <Input
                 id="school-short"

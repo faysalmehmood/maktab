@@ -14,21 +14,39 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { registerPath, STATUS_CLASS, timeOf, useRejectionText } from '@/lib/attendance';
+import {
+  registerPath,
+  STATUS_CLASS,
+  STATUS_SOLID,
+  timeOf,
+  useRejectionText,
+} from '@/lib/attendance';
 import { useRoles } from '@/lib/roles';
 import { cn, isolate } from '@/lib/utils';
 import type { OutboxEntry } from '@/offline/outbox';
 import { discardFailed, failedEntries, retryFailed, useOutboxStatus } from '@/offline/sync';
 
-/** The coloured letter; the full word is the accessible name. */
-export function StatusChip({ status, className }: { status: MarkStatus; className?: string }) {
+/**
+ * The coloured letter; the full word is the accessible name. `solid` is the register's current mark
+ * (solid fill, white letter); everywhere else it is a soft badge.
+ */
+export function StatusChip({
+  status,
+  solid = false,
+  className,
+}: {
+  status: MarkStatus;
+  solid?: boolean;
+  className?: string;
+}) {
   const { t } = useTranslation();
   return (
     <span
       title={t(`attendance.status.${status}`)}
+      data-solid={solid || undefined}
       className={cn(
         'inline-flex size-11 shrink-0 items-center justify-center rounded-md font-sans text-lg font-bold',
-        STATUS_CLASS[status],
+        (solid ? STATUS_SOLID : STATUS_CLASS)[status],
         className,
       )}
     >
@@ -102,7 +120,7 @@ export function TodayList({ items, date }: { items: TodayItem[]; date: string })
                 )}
               </span>
               <span className="text-sm text-muted-foreground">
-                {t('attendance.students', { n: i.student_count })}
+                {t('attendance.students', { count: i.student_count })}
                 {i.class_teacher_name && (
                   <>
                     {' · '}
@@ -163,7 +181,7 @@ export function SyncBanner() {
       {others > 0 && (
         <p className="flex min-h-11 items-center gap-2" role="status">
           <CloudOff className="size-4 shrink-0" aria-hidden />
-          <span>{t('attendance.otherAccount', { n: others })}</span>
+          <span>{t('attendance.otherAccount', { count: others })}</span>
         </p>
       )}
     </div>

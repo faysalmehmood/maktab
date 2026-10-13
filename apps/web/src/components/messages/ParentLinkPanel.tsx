@@ -99,7 +99,10 @@ export function ParentLinkPanel({
       >
         <Link2 aria-hidden />
         {t('msg.link.title')}
-        <ChevronDown aria-hidden className={cn('transition-transform', open && 'rotate-180')} />
+        <ChevronDown
+          aria-hidden
+          className={cn('transition-transform motion-reduce:transition-none', open && 'rotate-180')}
+        />
       </Button>
       {open && (
         <div id={`plink-${guardian.id}`} className="flex flex-col gap-3 rounded-md border p-3">

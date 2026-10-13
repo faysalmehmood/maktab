@@ -34,6 +34,23 @@ export const shellEn = {
     theme: 'Theme',
     themes: { system: 'Auto', light: 'Light', dark: 'Dark' },
   },
+  /** StatStrip comparison ("Up 12%" vs last month). */
+  compare: {
+    up: 'Up {{pct}}%',
+    down: 'Down {{pct}}%',
+    upNoPct: 'Up',
+    downNoPct: 'Down',
+    same: 'No change',
+  },
+  rowMenu: 'More actions',
+  filters: {
+    open: 'Filters',
+    title: 'Filters',
+    applied: 'Filters applied',
+    clear: 'Remove this filter',
+    clearAll: 'Clear all',
+    done: 'Show results',
+  },
 } as const;
 
 export const brandEn = {
@@ -41,6 +58,8 @@ export const brandEn = {
   badgeOf: '{{name}} badge',
   shortName: 'Short name',
   shortNameHelp: 'Up to 4 letters, shown in the badge.',
+  shortNameNeeded:
+    'The school name has no English letters, so type 2–3 letters for the badge (for example GSA).',
   city: 'City',
   colour: 'School colour',
   colours: { teal: 'Teal', blue: 'Blue', maroon: 'Maroon', purple: 'Purple', green: 'Green' },
@@ -72,7 +91,7 @@ export const wizardEn = {
   identityHelp: 'This is what staff and parents will see. You can change it later in Settings.',
   preview: 'How it will look',
   previewReceipt: 'fee receipt',
-  previewIcon: 'Icon on staff phones',
+  previewShell: 'Top of the app on a phone',
   continue: 'Continue',
   summary: {
     title: 'What you set up',
@@ -89,6 +108,8 @@ export const homeEn = {
     evening: 'Good evening, {{name}}',
   },
   collect: 'Collect a fee',
+  cardError: 'Could not load this. Check the connection and try again.',
+  cardOffline: 'Offline: this will load when the connection is back.',
   registers: {
     title: 'Attendance registers',
     takenOf: '{{taken}} of {{total}} taken',
@@ -106,12 +127,18 @@ export const homeEn = {
   messages: {
     title: 'Messages to send',
     waiting: '{{n}} waiting',
+    byKind: 'Waiting messages by kind',
+    toSend_one: '{{count}} message to send',
+    toSend_other: '{{count}} messages to send',
     none: 'Nothing is waiting to be sent.',
     start: 'Start sending',
   },
   attention: {
     title: 'Needs attention',
     clear: 'Nothing needs attention right now.',
+    failed:
+      'Could not check everything. Some items may be missing here; try again when the connection is back.',
+    offline: 'Offline: what needs attention cannot be checked until the connection is back.',
     tags: {
       attendance: 'Attendance',
       fees: 'Fees',

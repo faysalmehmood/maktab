@@ -172,7 +172,7 @@ export function ImportPage() {
         </Button>
         {report?.dry_run && toCreate > 0 && (
           <Button disabled={busy} onClick={() => commit.mutate()}>
-            {t('import.commit', { n: toCreate })}
+            {t('import.commit', { count: toCreate })}
           </Button>
         )}
       </div>

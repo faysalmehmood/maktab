@@ -50,7 +50,8 @@
   --accent: #e9efed;
   --accent-foreground: #14211f;
   --border: #dde5e2;
-  --input: #cfd9d5;
+  /* ≥ 3:1 against the card and the page (WCAG 1.4.11; brand.test). */
+  --input: #7d8e8a;
 
   /* Status (light): strong text tone + soft background. */
   --ok: #19704a;
@@ -61,6 +62,15 @@
   --warn-soft: #fbeed2;
   --info: #2a5d9c;
   --info-soft: #e5eef9;
+  /*
+   * Solid fills with white text (the register's current mark, the destructive button): the same in
+   * both themes, ≥ 4.5:1 (STATUS_TOKENS in @maktab/shared; brand.test checks every pair).
+   */
+  --ok-solid: #19704a;
+  --bad-solid: #b23a2e;
+  --warn-solid: #a34a06;
+  --info-solid: #2a5d9c;
+  --on-solid: #ffffff;
 
   --primary: var(--brand);
   --primary-foreground: var(--brand-fg);
@@ -144,7 +154,7 @@ html[data-brand="green"] {
     --accent: #1d2a28;
     --accent-foreground: #e6efed;
     --border: #26342f;
-    --input: #33443f;
+    --input: #62746f;
 
     --ok: #5fcf97;
     --ok-soft: #12301f;
@@ -245,6 +255,11 @@ html[data-brand="green"] {
   --color-warn-soft: var(--warn-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-ok-solid: var(--ok-solid);
+  --color-bad-solid: var(--bad-solid);
+  --color-warn-solid: var(--warn-solid);
+  --color-info-solid: var(--info-solid);
+  --color-on-solid: var(--on-solid);
   --color-chart-in: var(--chart-in);
   --color-chart-out: var(--chart-out);
 }
@@ -345,6 +360,11 @@ bdi {
  * thermal height is measured at load and injected as `@page receipt-thermal`).
  */
 @page receipt-a5 {
+  size: A5 portrait;
+  margin: 8mm;
+}
+/* Payslips (components/money/payslip.tsx): the same A5 sheet under their own page name. */
+@page payslip-a5 {
   size: A5 portrait;
   margin: 8mm;
 }
@@ -558,6 +578,9 @@ bdi {
   .receipt-thermal {
     page: receipt-thermal;
     border: 0;
+  }
+  .receipt-a5.payslip-a5 {
+    page: payslip-a5;
   }
   /* Column labels only: the child's name / admission no. row (.receipt-child) always prints. */
   .receipt-thermal .receipt-cols {

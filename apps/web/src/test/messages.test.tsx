@@ -809,7 +809,7 @@ describe('RTL smoke: messaging screens in Urdu', () => {
 /** Lint-style: no hard-coded English in the messaging JSX (same check as the fee screens). */
 describe('no hard-coded English in messaging JSX', () => {
   const dirs = ['src/pages/messages', 'src/pages/parent', 'src/components/messages'];
-  const single = ['src/pages/Messages.tsx', 'src/pages/Settings.tsx'];
+  const single = ['src/pages/Messages.tsx', 'src/pages/Settings.tsx', 'src/pages/Dashboard.tsx'];
   const files = [
     ...dirs.flatMap((r) => {
       const dir = join(process.cwd(), r);
@@ -820,8 +820,8 @@ describe('no hard-coded English in messaging JSX', () => {
     ...single.map((f) => join(process.cwd(), f)),
   ];
   it('finds the files', () => {
-    // M7b: the dashboard tile moved into Home (pages/Dashboard.tsx); 8 messaging files remain.
-    expect(files.length).toBeGreaterThanOrEqual(8);
+    // M7b: the messages tile moved into Home, so pages/Dashboard.tsx is scanned too (9 files).
+    expect(files.length).toBeGreaterThanOrEqual(9);
   });
   it.each(files.map((f) => [f.slice(f.indexOf('src/')), f]))('%s', (_short, file) => {
     expect(literals(readFileSync(file, 'utf8'))).toEqual([]);

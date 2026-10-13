@@ -168,7 +168,7 @@ export function DefaultersPage() {
             <span className="text-xs text-muted-foreground" id="remind-cooldown">
               {t('fee.defaulters.cooldown', { n: cooldown })}
               {(remind.data?.skipped ?? 0) > 0 && (
-                <> {t('fee.defaulters.skipped', { n: remind.data?.skipped ?? 0 })}</>
+                <> {t('fee.defaulters.skipped', { count: remind.data?.skipped ?? 0 })}</>
               )}
             </span>
           )}
@@ -176,7 +176,7 @@ export function DefaultersPage() {
       )}
       {remind.data && (
         <p role="status" id="remind-result" className="rounded-md bg-primary/10 p-3 text-sm">
-          {t('fee.defaulters.queued', { n: remind.data.queued })}
+          {t('fee.defaulters.queued', { count: remind.data.queued })}
           {remind.data.more && <> {t('fee.defaulters.more')}</>}{' '}
           <Link className="inline-flex min-h-11 items-center underline" to="/messages">
             {t('attendance.openQueue')}

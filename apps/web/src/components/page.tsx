@@ -1,5 +1,5 @@
 import { formatPKR } from '@maktab/shared';
-import { ChevronRight, type LucideIcon } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronRight, type LucideIcon, Minus } from 'lucide-react';
 import type * as React from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -111,13 +111,62 @@ export function Panel({
   );
 }
 
+/**
+ * A figure compared with an earlier one ("▲ 12% vs Sep"). `higherIsBetter` (default true) picks the
+ * tone: income up is good, spending up is not. `before` of 0 shows no percentage.
+ */
+export type StatCompare = {
+  now: number;
+  before: number;
+  /** What it is compared with ("vs Sep 2026"). */
+  label: ReactNode;
+  higherIsBetter?: boolean;
+};
+
 export type StatItem = {
   id?: string;
   label: ReactNode;
   value: ReactNode;
   note?: ReactNode;
   to?: string;
+  compare?: StatCompare;
 };
+
+/** Direction and whole-number percentage of a change (pure; tested). */
+export function changeOf(
+  now: number,
+  before: number,
+): { dir: 'up' | 'down' | 'same'; pct: number | null } {
+  const dir = now > before ? 'up' : now < before ? 'down' : 'same';
+  const pct = before === 0 ? null : Math.round((Math.abs(now - before) / Math.abs(before)) * 100);
+  return { dir, pct };
+}
+
+function Compare({ c }: { c: StatCompare }) {
+  const { t } = useTranslation();
+  const { dir, pct } = changeOf(c.now, c.before);
+  const good = dir === 'same' ? null : (dir === 'up') === (c.higherIsBetter ?? true);
+  const Icon = dir === 'up' ? ArrowUp : dir === 'down' ? ArrowDown : Minus;
+  const words =
+    dir === 'same'
+      ? t('shell.compare.same')
+      : pct === null
+        ? t(`shell.compare.${dir}NoPct`)
+        : t(`shell.compare.${dir}`, { pct });
+  return (
+    <dd
+      data-compare={dir}
+      className={cn(
+        'mt-0.5 flex flex-wrap items-center gap-x-1 text-meta',
+        good === true ? 'text-ok' : good === false ? 'text-bad' : 'text-muted-foreground',
+      )}
+    >
+      <Icon className="size-3.5 shrink-0" aria-hidden />
+      <span className="font-semibold">{words}</span>
+      <span className="text-muted-foreground">{c.label}</span>
+    </dd>
+  );
+}
 
 /** One strip of figures (label, value, optional note), 4 across on desktop, 2 on a phone. */
 export function StatStrip({ items, className }: { items: StatItem[]; className?: string }) {
@@ -134,6 +183,7 @@ export function StatStrip({ items, className }: { items: StatItem[]; className?:
             <dt className="text-meta text-muted-foreground">{s.label}</dt>
             <dd className="mt-0.5 text-lg font-bold">{s.value}</dd>
             {s.note && <dd className="text-meta text-muted-foreground">{s.note}</dd>}
+            {s.compare && <Compare c={s.compare} />}
           </>
         );
         return (
@@ -297,7 +347,15 @@ export function EmptyState({
 
 /** Placeholder bars while a list or figure loads (instead of "Loading…" text). */
 export function Skeleton({ className }: { className?: string }) {
-  return <span className={cn('block animate-pulse rounded-md bg-muted', className)} aria-hidden />;
+  return (
+    <span
+      className={cn(
+        'block animate-pulse rounded-md bg-muted motion-reduce:animate-none',
+        className,
+      )}
+      aria-hidden
+    />
+  );
 }
 
 /** A list's loading state: `rows` skeleton rows, announced once as loading. */

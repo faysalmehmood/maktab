@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
+import { Avatar } from '@/components/avatar';
 import { getJson } from '@/lib/api';
 import { canReadStudents, useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
@@ -23,14 +24,6 @@ function useDebounced(value: string, ms = 250): string {
   }, [value, ms]);
   return v;
 }
-
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter((w) => /^\p{L}/u.test(w))
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
 
 /**
  * Top-bar student search (UI plan §5.3): name, admission number or guardian phone; picks open the
@@ -89,6 +82,8 @@ export function GlobalSearch() {
     }
   };
   const showList = open && q.length >= 2;
+  const optionId = (i: number) => `${listId}-opt-${i}`;
+  const activeId = showList && active >= 0 && active < items.length ? optionId(active) : undefined;
 
   return (
     <div ref={box} className="relative min-w-0 flex-1 md:max-w-md">
@@ -102,6 +97,7 @@ export function GlobalSearch() {
         aria-expanded={showList}
         aria-controls={listId}
         aria-autocomplete="list"
+        aria-activedescendant={activeId}
         aria-label={t('shell.search.label')}
         placeholder={t('shell.search.short')}
         autoComplete="off"
@@ -130,8 +126,10 @@ export function GlobalSearch() {
             items.map((s, i) => (
               <button
                 key={s.id}
+                id={optionId(i)}
                 type="button"
                 role="option"
+                tabIndex={-1}
                 aria-selected={i === active}
                 onClick={() => go(`/students/${s.id}`)}
                 className={cn(
@@ -139,12 +137,7 @@ export function GlobalSearch() {
                   i === active && 'bg-accent',
                 )}
               >
-                <span
-                  className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-brand"
-                  aria-hidden
-                >
-                  {initials(s.name)}
-                </span>
+                <Avatar name={s.name} size="sm" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm font-medium">
                     <bdi>{s.name}</bdi>

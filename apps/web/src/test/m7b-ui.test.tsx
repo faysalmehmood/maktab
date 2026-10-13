@@ -333,9 +333,11 @@ describe('five-step setup', () => {
     });
     // The short name is suggested from the name until typed.
     expect((screen.getByLabelText(/Short name/) as HTMLInputElement).placeholder).toBe('GSA');
+    // The phone top bar preview: badge + short name (the installed-icon tile waits for §6.5).
     await waitFor(() =>
-      expect(preview.querySelector('[data-preview-icon]')?.textContent).toBe('GSA'),
+      expect(preview.querySelector('[data-preview="shell"] [data-badge="GSA"]')).toBeTruthy(),
     );
+    expect(preview.querySelector('[data-preview-icon]')).toBeNull();
     fireEvent.change(screen.getByLabelText(/Short name/), { target: { value: 'g s' } });
     expect((screen.getByLabelText(/Short name/) as HTMLInputElement).value).toBe('GS');
     fireEvent.click(screen.getByLabelText('Maroon'));

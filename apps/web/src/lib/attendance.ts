@@ -31,12 +31,26 @@ export const STATUS_CYCLE: MarkStatus[] = ['P', 'A', 'L', 'E'];
 export const nextStatus = (s: MarkStatus): MarkStatus =>
   STATUS_CYCLE[(STATUS_CYCLE.indexOf(s) + 1) % STATUS_CYCLE.length] ?? 'P';
 
-/** Colour + letter, never colour alone (colour-blind teachers, sunlight on a cheap screen). */
+/**
+ * Colour + letter, never colour alone (colour-blind teachers, sunlight on a cheap screen). Soft
+ * tones for badges and counts (history, reports, the profile calendar).
+ */
 export const STATUS_CLASS: Record<MarkStatus, string> = {
   P: 'bg-ok-soft text-ok ring-1 ring-ok/40',
   A: 'bg-bad-soft text-bad ring-1 ring-bad/40',
   L: 'bg-warn-soft text-warn ring-1 ring-warn/40',
   E: 'bg-info-soft text-info ring-1 ring-info/40',
+};
+
+/**
+ * The register's *current* mark: a solid fill with white text in both themes (PLAN 2026-10-13
+ * M7b-1 decision: readable in sunlight; ≥ 4.5:1, brand.test). Only the register uses it.
+ */
+export const STATUS_SOLID: Record<MarkStatus, string> = {
+  P: 'bg-ok-solid text-on-solid',
+  A: 'bg-bad-solid text-on-solid',
+  L: 'bg-warn-solid text-on-solid',
+  E: 'bg-info-solid text-on-solid',
 };
 
 export const canMark = (r: readonly StaffRole[]) => hasGrant(r, 'attendance', 'mark');
@@ -123,13 +137,3 @@ export function shiftMonth(month: string, by: number): string {
 /** Time of day of an ISO instant, in the phone's clock (24 h, Latin digits). */
 export const timeOf = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
-
-/** "Ali Khan" → "AK"; works for Urdu names too (first letters). */
-export const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();

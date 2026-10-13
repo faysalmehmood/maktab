@@ -7,7 +7,7 @@ import {
 } from '@maktab/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
-import { type FormEvent, type ReactNode, useState } from 'react';
+import { type FormEvent, type ReactNode, useLayoutEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AmountInput, Money } from '@/components/fees/common';
 import { Field } from '@/components/form';
@@ -525,6 +525,16 @@ export function PayslipPrint({
 }) {
   const { i18n } = useTranslation();
   useLanguageResources(lang);
+  // Same mechanism as the receipts (ReceiptPrint): while the slip is on screen the whole document
+  // prints on the `payslip-a5` named page. Anything left on the default page (the app shell, the
+  // toaster's empty <section>) forced a page-type switch and a blank Letter second page.
+  useLayoutEffect(() => {
+    const style = document.createElement('style');
+    style.dataset.receiptPage = 'payslip-a5';
+    style.textContent = '@media print { html, body { page: payslip-a5; } }';
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, []);
   const t = i18n.getFixedT(lang);
   const school = lang === 'ur' && slip.school.name_ur ? slip.school.name_ur : slip.school.name;
   const row = (label: string, paisa: number, strong = false) => (
@@ -539,7 +549,7 @@ export function PayslipPrint({
     <article
       lang={lang}
       dir={lang === 'ur' ? 'rtl' : 'ltr'}
-      className="receipt receipt-a5"
+      className="receipt receipt-a5 payslip-a5"
       data-lang={lang}
       id="payslip-paper"
     >

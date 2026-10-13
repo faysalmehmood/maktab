@@ -308,7 +308,7 @@ function CopyClassTexts({ grpId, grpName }: { grpId: string; grpName: string }) 
       );
       if (await copyText(r.text)) {
         setFallback(null);
-        toast.success(t('msg.queue.copied', { n: r.count }));
+        toast.success(t('msg.queue.copied', { count: r.count }));
       } else setFallback(r.text);
     } catch (e) {
       setError(e);

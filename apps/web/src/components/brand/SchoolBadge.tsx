@@ -1,4 +1,11 @@
-import { BRAND_COLORS, badgeFontSize, badgeLetters, brandColor } from '@maktab/shared';
+import {
+  BRAND_COLORS,
+  badgeFontSize,
+  badgeLetters,
+  brandColor,
+  SHORT_NAME_MAX,
+  suggestShortName,
+} from '@maktab/shared';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
@@ -13,6 +20,7 @@ export function SchoolBadge({
   color,
   size = 36,
   label,
+  maxLetters,
   className,
 }: {
   shortName?: string | null;
@@ -20,9 +28,11 @@ export function SchoolBadge({
   color?: string | null;
   size?: number;
   label?: string;
+  /** Small badges (the phone top bar, 32 px) draw at most 3 letters so they stay legible. */
+  maxLetters?: number;
   className?: string;
 }) {
-  const letters = badgeLetters(shortName, name);
+  const letters = badgeLetters(shortName, name).slice(0, maxLetters ?? SHORT_NAME_MAX);
   const col = BRAND_COLORS[brandColor(color)].light.brand;
   return (
     // biome-ignore lint/a11y/noSvgWithoutTitle: decorative unless labelled (then it has a <title>)
@@ -68,11 +78,13 @@ export function SchoolMark({
   school,
   logoSrc,
   size = 36,
+  maxLetters,
   className,
 }: {
   school: IdentityLike;
   logoSrc?: string | null;
   size?: number;
+  maxLetters?: number;
   className?: string;
 }) {
   if (logoSrc)
@@ -100,8 +112,42 @@ export function SchoolMark({
       name={school.name}
       color={school.brand_color}
       size={size}
+      maxLetters={maxLetters}
       className={className}
     />
+  );
+}
+
+/**
+ * The school on the phone's top bar (UI plan §6.4): the mark at 32 px (badge capped at 3 letters),
+ * the short name, and the city when the screen has room for it (≥ 400 px). The setup wizard's
+ * preview draws the same thing.
+ */
+export function SchoolChip({
+  school,
+  logoSrc,
+  city,
+}: {
+  school: IdentityLike;
+  logoSrc?: string | null;
+  city?: string | null;
+}) {
+  const short =
+    (school.short_name ?? '').toUpperCase() || suggestShortName(school.name) || school.name;
+  return (
+    <span className="flex min-w-0 items-center gap-2" data-school-chip>
+      <SchoolMark school={school} logoSrc={logoSrc} size={32} maxLetters={3} />
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className="truncate text-sm font-bold">
+          <bdi>{short}</bdi>
+        </span>
+        {city && (
+          <span className="hidden truncate text-meta text-muted-foreground min-[25rem]:block">
+            <bdi>{city}</bdi>
+          </span>
+        )}
+      </span>
+    </span>
   );
 }
 

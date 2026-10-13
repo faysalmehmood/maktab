@@ -1,6 +1,5 @@
 import {
   BRAND_COLORS,
-  badgeLetters,
   brandColor,
   type I18nKey,
   type SchoolInput,
@@ -11,7 +10,7 @@ import { Check } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
-import { RunsOnMaktab, SchoolMark } from '@/components/brand/SchoolBadge';
+import { RunsOnMaktab, SchoolChip, SchoolMark } from '@/components/brand/SchoolBadge';
 import { WizardFees } from '@/components/fees/setup';
 import { ErrorNote, Num } from '@/components/form';
 import { LanguageToggle } from '@/components/LanguageToggle';
@@ -77,7 +76,11 @@ function useObjectUrl(file: File | null): string | null {
   return url;
 }
 
-/** Live preview of step 1 (UI plan §7.2): the sign-in band, a receipt header, the phone icon. */
+/**
+ * Live preview of step 1 (UI plan §7.2): the sign-in band, the phone's top bar and a receipt
+ * header, all drawn with the uploaded logo when there is one (staged or saved), else the badge.
+ * (The per-school installed-app icon waits for UI plan §6.5, so it is not previewed.)
+ */
 function IdentityPreview({ draft, logo }: { draft: IdentityDraft; logo: string | null }) {
   const { t } = useTranslation();
   const c = BRAND_COLORS[brandColor(draft.brand_color)].light;
@@ -92,6 +95,7 @@ function IdentityPreview({ draft, logo }: { draft: IdentityDraft; logo: string |
       <div
         className="flex flex-col items-center gap-1 rounded-xl px-3 py-5 text-center text-white"
         style={{ background: c.side }}
+        data-preview="signin"
       >
         <SchoolMark school={id} logoSrc={logo} size={52} />
         <b className="mt-1 leading-tight">
@@ -103,7 +107,19 @@ function IdentityPreview({ draft, logo }: { draft: IdentityDraft; logo: string |
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2.5 rounded-lg border bg-white px-3 py-2 text-[13px] leading-tight text-[#14211f]">
+      <figure className="flex flex-col gap-1" data-preview="shell">
+        <div className="flex h-12 items-center gap-2 rounded-lg border bg-card px-2.5">
+          <SchoolChip school={id} logoSrc={logo} city={draft.city} />
+          <span className="ms-auto h-7 w-20 rounded-md border bg-background" aria-hidden />
+        </div>
+        <figcaption className="text-meta text-muted-foreground">
+          {t('wizard.previewShell')}
+        </figcaption>
+      </figure>
+      <div
+        className="flex items-center gap-2.5 rounded-lg border bg-white px-3 py-2 text-[13px] leading-tight text-[#14211f]"
+        data-preview="receipt"
+      >
         <SchoolMark school={id} logoSrc={logo} size={30} />
         <span className="flex min-w-0 flex-col">
           <b className="truncate">
@@ -118,16 +134,6 @@ function IdentityPreview({ draft, logo }: { draft: IdentityDraft; logo: string |
             {t('wizard.previewReceipt')}
           </span>
         </span>
-      </div>
-      <div className="flex items-center gap-3 text-meta text-muted-foreground">
-        <span
-          className="grid size-13 shrink-0 place-items-center rounded-[13px] text-base font-bold text-white"
-          style={{ background: c.brand }}
-          data-preview-icon
-        >
-          {badgeLetters(draft.short_name, draft.name)}
-        </span>
-        {t('wizard.previewIcon')}
       </div>
     </aside>
   );

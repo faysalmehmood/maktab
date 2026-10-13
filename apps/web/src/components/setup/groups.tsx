@@ -354,11 +354,11 @@ export function GroupCard({ g, onEdit }: { g: GroupDto; onEdit?: () => void }) {
           )}
         </div>
         <span className="text-sm text-muted-foreground">
-          {t('group.students', { n: g.active_count })}
+          {t('group.students', { count: g.active_count })}
           {g.seats_left != null && (
             <>
               {' · '}
-              {g.seats_left > 0 ? t('group.seatsLeft', { n: g.seats_left }) : t('group.full')}
+              {g.seats_left > 0 ? t('group.seatsLeft', { count: g.seats_left }) : t('group.full')}
             </>
           )}
         </span>

@@ -122,7 +122,7 @@ describe('register screen offline (browser reports offline)', () => {
     expect(await screen.findByText(/^Saved on this phone/)).toBeTruthy();
     await waitFor(async () => expect(await ob.pending()).toBe(1));
     expect(await screen.findByText('1 waiting to sync')).toBeTruthy(); // the banner
-    expect(screen.getByText('1 saved registers waiting on this phone')).toBeTruthy();
+    expect(screen.getByText('1 saved register waiting on this phone')).toBeTruthy();
     expect(received).toHaveLength(0);
 
     await act(async () => setOnline(true));
@@ -131,7 +131,7 @@ describe('register screen offline (browser reports offline)', () => {
     expect(received[0]?.[0]?.marks[1]).toMatchObject({ student_id: s2, status: 'A' });
     // The server's answer replaces "will be sent" (the entry was acknowledged).
     await waitFor(() => expect(screen.queryByText(/^Saved on this phone/)).toBeNull());
-    expect(await screen.findByText('1 absence messages queued')).toBeTruthy();
+    expect(await screen.findByText('1 absence message queued')).toBeTruthy();
     expect(screen.queryByText(/waiting on this phone/)).toBeNull();
   });
 
@@ -148,7 +148,7 @@ describe('register screen offline (browser reports offline)', () => {
     const save = await screen.findByRole('button', { name: 'Save attendance' });
     fireEvent.click(save);
     fireEvent.click(save);
-    await screen.findByText('1 absence messages queued');
+    await screen.findByText('1 absence message queued');
     expect(new Set(received.map((r) => r.client_id)).size).toBe(1);
   });
 
@@ -259,7 +259,7 @@ describe('offline reload', () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    expect(await screen.findByText(/^1 saved registers are safe on this phone/)).toBeTruthy();
+    expect(await screen.findByText(/^1 saved register is safe on this phone/)).toBeTruthy();
     expect(api.calls.some((c) => c.path === '/api/me')).toBe(true);
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
@@ -442,5 +442,23 @@ describe('today list', () => {
     expect(screen.getByText(/^30 طلبہ/)).toBeTruthy();
     // Names sit in their own bidi isolate inside the Urdu row.
     expect(screen.getAllByText('Ms Sana')[0]?.tagName).toBe('BDI');
+  });
+});
+
+describe('register marks (M7b-1 decision: solid fill for sunlight)', () => {
+  it('each row’s current mark is a solid fill with a white letter; the counts stay soft', async () => {
+    mockApi({ 'GET /api/attendance/register': register() });
+    renderAt(path, pattern, <RegisterPage />, ['teacher']);
+    const row = await waitFor(() => rowFor('Ali Khan'));
+    const chip = () => row.querySelector('[title]') as HTMLElement;
+    expect(chip().dataset.solid).toBe('true');
+    expect(chip().className).toContain('bg-ok-solid');
+    fireEvent.click(row);
+    expect(chip().className).toContain('bg-bad-solid');
+    expect(chip().className).toContain('text-on-solid');
+    // The live counts in the save bar are badges: soft tones.
+    expect(document.querySelector('[title="Absent"]:not([data-solid])')?.className).toContain(
+      'bg-bad-soft',
+    );
   });
 });

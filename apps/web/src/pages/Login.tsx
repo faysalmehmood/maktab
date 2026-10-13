@@ -1,5 +1,6 @@
 import { formatPkPhone, type SchoolIdentityDto } from '@maktab/shared';
 import { useQuery } from '@tanstack/react-query';
+import { Phone } from 'lucide-react';
 import { type MouseEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -173,9 +174,15 @@ export function Login() {
               <p className="font-semibold">{t('door.parentTitle')}</p>
               <p className="mt-1 text-muted-foreground">{t('door.parentBody')}</p>
               {tel && (
-                <p className="mt-2">
-                  {t('door.parentCall')}:{' '}
-                  <a href={`tel:+${school.phone}`} className="font-semibold underline">
+                <p className="mt-2 flex flex-wrap items-center gap-x-2">
+                  <span>{t('door.parentCall')}:</span>
+                  {/* A 44 px tap target, not a 17 px line of text (verify pass). */}
+                  <a
+                    id="door-call"
+                    href={`tel:+${school.phone}`}
+                    className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border bg-card px-3 font-semibold hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <Phone className="size-4" aria-hidden />
                     <bdi className="num">{tel}</bdi>
                   </a>
                 </p>

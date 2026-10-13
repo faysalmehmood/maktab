@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Plus, Search, Upload, UserRound } from 'luci
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
+import { Avatar } from '@/components/avatar';
 import { Num } from '@/components/form';
 import { EmptyState, ListSkeleton, Page, PageHeader, Panel, StatusBadge } from '@/components/page';
 import { isolate } from '@/components/students/fields';
@@ -167,21 +168,10 @@ export function StudentsList() {
                   className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-2 hover:bg-accent md:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)_7rem]"
                 >
                   <span className="flex min-w-0 items-center gap-3">
-                    {s.has_photo ? (
-                      <img
-                        src={`/api/students/${s.id}/photo`}
-                        alt=""
-                        loading="lazy"
-                        className="size-9 shrink-0 rounded-full object-cover"
-                      />
-                    ) : (
-                      <span
-                        aria-hidden
-                        className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-brand"
-                      >
-                        {initials(s.name)}
-                      </span>
-                    )}
+                    <Avatar
+                      name={s.name}
+                      src={s.has_photo ? `/api/students/${s.id}/photo` : null}
+                    />
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate font-medium">
                         <bdi>{s.name}</bdi>
@@ -248,11 +238,3 @@ export function StudentsList() {
     </Page>
   );
 }
-
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter((w) => /^\p{L}/u.test(w))
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');

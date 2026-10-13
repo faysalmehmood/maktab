@@ -15,6 +15,7 @@ import { Pencil, Plus } from 'lucide-react';
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
+import { Avatar } from '@/components/avatar';
 import { StudentFeesCard } from '@/components/fees/StudentFees';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
 import { ParentLinkPanel } from '@/components/messages/ParentLinkPanel';
@@ -48,17 +49,6 @@ import { canReadMoney } from '@/lib/fees';
 import { type FieldErrors, issuesToErrors, todayIso } from '@/lib/form';
 import { useCurrentSession, useCustomFields, useGroups } from '@/lib/queries';
 import { canWriteStudents, useRoles } from '@/lib/roles';
-
-/** Up to two initials of a name ("Ali Raza" → "AR"; Urdu letters work too). */
-export function initials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => [...w][0] ?? '')
-    .join('')
-    .toUpperCase();
-}
 
 export const useStudent = (id: string | undefined) =>
   useQuery({
@@ -441,13 +431,7 @@ export function StudentDetail() {
               />
             ) : (
               // No photo (or it did not load): the child's initials, never an empty box.
-              <div
-                id="student-avatar"
-                aria-hidden
-                className="flex size-28 items-center justify-center rounded-md bg-muted text-3xl font-semibold text-muted-foreground"
-              >
-                <bdi>{initials(s.name)}</bdi>
-              </div>
+              <Avatar id="student-avatar" name={s.name} size="xl" tone="muted" square />
             )}
             {write && (
               <>

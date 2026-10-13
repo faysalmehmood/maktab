@@ -1,6 +1,6 @@
 import { type CashSessionDto, formatPkPhone } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarCheck, MessageSquareText, Wallet } from 'lucide-react';
+import { CalendarCheck, CircleAlert, MessageSquareText, RotateCw, Wallet } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -11,6 +11,7 @@ import { MonthTiles } from '@/components/money/MonthTiles';
 import {
   GoLink,
   ListRow,
+  ListSkeleton,
   Mny,
   Page,
   PageHeader,
@@ -31,6 +32,7 @@ import {
 } from '@/lib/attendance';
 import { alarmHint, canManageBackup, useLatestAlarm } from '@/lib/backup';
 import { canCollect, canGenerate, canReadMoney, canUseCash, karachiToday } from '@/lib/fees';
+import { useOnline } from '@/lib/media';
 import { canReadMessages, useMessageCounts } from '@/lib/messages';
 import { useSchool } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
@@ -96,7 +98,7 @@ function TodayCard({
 
 function CardSkeleton() {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-card p-4" aria-hidden>
+    <div className="flex flex-col gap-3 rounded-xl border bg-card p-4" aria-hidden data-skeleton>
       <Skeleton className="h-4 w-1/2" />
       <Skeleton className="h-8 w-2/3" />
       <Skeleton className="h-3 w-full" />
@@ -105,10 +107,61 @@ function CardSkeleton() {
   );
 }
 
+type QueryLike = {
+  isError: boolean;
+  isPending: boolean;
+  isSuccess: boolean;
+  fetchStatus: 'fetching' | 'paused' | 'idle';
+  refetch: () => unknown;
+};
+
+/**
+ * What a home figure can honestly say: still loading, failed (an error, or stuck waiting for a
+ * connection), or ready. Disabled queries (a grant the role lacks) are left out by the caller.
+ */
+export function loadState(
+  qs: readonly QueryLike[],
+  offline = false,
+): 'loading' | 'failed' | 'offline' | 'ready' {
+  if (qs.some((q) => q.isError)) return 'failed';
+  if (qs.some((q) => q.isPending && q.fetchStatus === 'paused')) return 'offline';
+  if (qs.some((q) => q.isPending)) return offline ? 'offline' : 'loading';
+  return 'ready';
+}
+
+/** A today card that could not load: its title, what went wrong, and Try again. */
+function CardError({ id, title, query }: { id: string; title: string; query: QueryLike }) {
+  const { t } = useTranslation();
+  const offline = query.fetchStatus === 'paused';
+  return (
+    <section
+      id={id}
+      data-state="error"
+      className="flex flex-col gap-2.5 rounded-xl border bg-card p-4"
+      aria-label={title}
+    >
+      <h2 className="text-section font-semibold">{title}</h2>
+      <p role="alert" className="flex items-start gap-2 text-sm text-destructive">
+        <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+        {offline ? t('home.cardOffline') : t('home.cardError')}
+      </p>
+      <div className="mt-auto pt-1">
+        <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+          <RotateCw aria-hidden />
+          {t('common.retry')}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 /** Registers today: n of N, one block per register (dashed = still to take), "Take <next>". */
 function RegistersCard() {
   const { t } = useTranslation();
-  const d = useDashboardToday(true).data;
+  const q = useDashboardToday(true);
+  const d = q.data;
+  if (!d && loadState([q]) !== 'loading')
+    return <CardError id="home-registers" title={t('home.registers.title')} query={q} />;
   if (!d) return <CardSkeleton />;
   const { total, taken, not_taken } = d.registers;
   const next = not_taken[0];
@@ -174,7 +227,10 @@ function RegistersCard() {
 function CollectedCard() {
   const { t } = useTranslation();
   const roles = useRoles();
-  const d = useFeeDashboard().data;
+  const q = useFeeDashboard();
+  const d = q.data;
+  if (!d && loadState([q]) !== 'loading')
+    return <CardError id="home-collected" title={t('home.collected.title')} query={q} />;
   if (!d) return <CardSkeleton />;
   const shades = ['bg-brand', 'bg-brand/60', 'bg-brand/35', 'bg-brand/20'];
   return (
@@ -220,19 +276,13 @@ function CollectedCard() {
   );
 }
 
-const TEMPLATE_TONE: Record<string, Tone> = {
-  absence: 'bad',
-  fee_due: 'warn',
-  fee_overdue: 'warn',
-  payment_received: 'ok',
-  notice: 'info',
-  result: 'info',
-};
-
 /** The send queue: how many wait, by kind; start sending. */
 function MessagesCard() {
   const { t } = useTranslation();
-  const c = useMessageCounts().data;
+  const q = useMessageCounts();
+  const c = q.data;
+  if (!c && loadState([q]) !== 'loading')
+    return <CardError id="dash-messages" title={t('home.messages.title')} query={q} />;
   if (!c) return <CardSkeleton />;
   const kinds = Object.entries(c.by_template).filter(([, n]) => n > 0);
   return (
@@ -254,13 +304,19 @@ function MessagesCard() {
       {kinds.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('home.messages.none')}</p>
       ) : (
-        <p className="flex flex-wrap gap-1.5">
+        // Messages, not people: "Absence · 1 message to send" in the info tone, so a chip is never
+        // read as the number of absent children (that is the Absent today panel).
+        <ul className="flex flex-wrap gap-1.5" aria-label={t('home.messages.byKind')}>
           {kinds.map(([k, n]) => (
-            <StatusBadge key={k} tone={TEMPLATE_TONE[k] ?? 'neutral'}>
-              <Num>{n}</Num> {t(`msg.templates.${k}` as 'msg.templates.notice')}
-            </StatusBadge>
+            <li key={k} data-kind={k}>
+              <StatusBadge tone="info">
+                {t(`msg.templates.${k}` as 'msg.templates.notice')}
+                {' · '}
+                {t('home.messages.toSend', { count: n })}
+              </StatusBadge>
+            </li>
           ))}
-        </p>
+        </ul>
       )}
     </TodayCard>
   );
@@ -291,10 +347,22 @@ function NeedsAttention() {
   const office = canCorrect(roles);
   const money = canReadMoney(roles);
   const owner = canManageBackup(roles);
-  const today = useDashboardToday(office).data;
-  const fees = useFeeDashboard(money).data;
-  const drawer = useOpenDrawer(canUseCash(roles)).data?.sessions[0];
-  const alarm = useLatestAlarm(owner).data?.event;
+  const todayQ = useDashboardToday(office);
+  const feesQ = useFeeDashboard(money);
+  const drawerQ = useOpenDrawer(canUseCash(roles));
+  const alarmQ = useLatestAlarm(owner);
+  const today = todayQ.data;
+  const fees = feesQ.data;
+  const drawer = drawerQ.data?.sessions[0];
+  const alarm = alarmQ.data?.event;
+  const offline = !useOnline();
+  // Only the sources this role reads; "Nothing needs attention" only once every one answered.
+  const state = loadState(
+    [office && todayQ, money && feesQ, canUseCash(roles) && drawerQ, owner && alarmQ].filter(
+      (q): q is typeof todayQ => !!q,
+    ),
+    offline,
+  );
   const qc = useQueryClient();
   // The M6 alarm pass stays until the owner dismisses it (acknowledged); tomorrow's pass raises it
   // again if the problem is still there.
@@ -389,9 +457,15 @@ function NeedsAttention() {
         )
       }
     >
-      {rows.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-muted-foreground">{t('home.attention.clear')}</p>
-      ) : (
+      {state === 'loading' && rows.length === 0 ? (
+        <div role="status" aria-label={t('common.loading')} data-state="loading">
+          <ListSkeleton rows={2} />
+        </div>
+      ) : rows.length === 0 && state === 'ready' ? (
+        <p className="px-4 py-3 text-sm text-muted-foreground" data-state="clear">
+          {t('home.attention.clear')}
+        </p>
+      ) : rows.length === 0 ? null : (
         <RowList>
           {rows.map((r) => (
             <li key={r.id} id={r.id}>
@@ -411,6 +485,16 @@ function NeedsAttention() {
             </li>
           ))}
         </RowList>
+      )}
+      {(state === 'failed' || state === 'offline') && (
+        <p
+          role="alert"
+          data-state={state}
+          className="flex items-start gap-2 border-t px-4 py-3 text-sm text-destructive first:border-t-0"
+        >
+          <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          {state === 'offline' ? t('home.attention.offline') : t('home.attention.failed')}
+        </p>
       )}
     </Panel>
   );
@@ -522,7 +606,9 @@ function AccountantHome() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <CollectedCard />
         {canUseCash(roles) &&
-          (drawer.isPending ? (
+          (loadState([drawer]) === 'failed' || loadState([drawer]) === 'offline' ? (
+            <CardError id="home-drawer" title={t('home.accountant.drawer')} query={drawer} />
+          ) : drawer.isPending ? (
             <CardSkeleton />
           ) : (
             <TodayCard

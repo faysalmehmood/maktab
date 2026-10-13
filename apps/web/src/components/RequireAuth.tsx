@@ -29,7 +29,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
             className="flex items-center gap-2 rounded-md bg-warn-soft p-3 text-sm text-warn"
           >
             <CloudOff className="size-4 shrink-0" aria-hidden />
-            {t('attendance.safeOnPhone', { n: outbox.pending })}
+            {t('attendance.safeOnPhone', { count: outbox.pending })}
           </p>
         )}
         <Button variant="outline" onClick={() => void me.refetch()}>

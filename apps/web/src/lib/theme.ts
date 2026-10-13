@@ -43,6 +43,8 @@ export const resolvedTheme = (p: ThemePref = pref): 'light' | 'dark' =>
 function apply(): void {
   const dark = resolvedTheme() === 'dark';
   document.documentElement.classList.toggle('dark', dark);
+  // index.html's boot style reads `.light` as an explicit light choice over a dark phone.
+  document.documentElement.classList.toggle('light', !dark);
   // The browser chrome follows the page (address bar on Android).
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {

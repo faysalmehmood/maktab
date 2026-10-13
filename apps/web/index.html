@@ -10,6 +10,19 @@
     <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>Maktab</title>
+    <!--
+      No flash of the wrong theme (M7b): the page background follows the phone's setting before any
+      CSS or script loads (inline styles are allowed by the CSP), and theme-boot.js applies the
+      saved choice (maktab.theme) and school colour before the bundle runs.
+    -->
+    <style>
+      html { background: #f3f6f5; color-scheme: light; }
+      @media (prefers-color-scheme: dark) {
+        html:not(.light) { background: #0c1413; color-scheme: dark; }
+      }
+      html.dark { background: #0c1413; color-scheme: dark; }
+    </style>
+    <script src="/theme-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>

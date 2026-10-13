@@ -77,7 +77,9 @@ function FamilyPicker({ picked, onChange }: { picked: Picked[]; onChange: (p: Pi
       )}
       {picked.length > 0 && (
         <>
-          <p className="text-sm font-medium">{t('msg.compose.selected', { n: picked.length })}</p>
+          <p className="text-sm font-medium">
+            {t('msg.compose.selected', { count: picked.length })}
+          </p>
           <ul className="flex flex-wrap gap-2">
             {picked.map((p) => (
               <li
@@ -262,7 +264,7 @@ export function ComposePage() {
       {progress && (running || !done) && (
         <div className="flex flex-col gap-1" aria-live="polite">
           <p className="text-sm">
-            {t('msg.compose.willQueue', { n: progress.total })} ·{' '}
+            {t('msg.compose.willQueue', { count: progress.total })} ·{' '}
             {t('msg.compose.progress', { done: progress.done, total: progress.total })}
           </p>
           <div
@@ -272,7 +274,10 @@ export function ComposePage() {
             aria-valuenow={pct}
             className="h-2 w-full overflow-hidden rounded-full bg-muted"
           >
-            <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+            <div
+              className="h-full bg-primary transition-all motion-reduce:transition-none"
+              style={{ width: `${pct}%` }}
+            />
           </div>
         </div>
       )}

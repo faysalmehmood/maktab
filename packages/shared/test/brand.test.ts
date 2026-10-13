@@ -6,24 +6,15 @@ import {
   badgeLetters,
   badgeSvg,
   brandColor,
+  contrastRatio,
+  STATUS_TOKENS,
   schoolInputSchema,
   suggestShortName,
 } from '../src';
 
 // M7b (UI plan §6.2–6.3): the generated badge and the curated colours.
 
-/** WCAG relative luminance contrast of two #rrggbb colours. */
-function contrast(a: string, b: string): number {
-  const lum = (hex: string) => {
-    const [r, g, b2] = [1, 3, 5].map((i) => {
-      const c = Number.parseInt(hex.slice(i, i + 2), 16) / 255;
-      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-    }) as [number, number, number];
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b2;
-  };
-  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p) as [number, number];
-  return (x + 0.05) / (y + 0.05);
-}
+const contrast = contrastRatio;
 
 describe('school badge', () => {
   it('suggests 2–3 initials from the name, skipping small words', () => {
@@ -78,4 +69,30 @@ describe('school badge', () => {
     expect(schoolInputSchema.safeParse({ ...base, brand_color: 'pink' }).success).toBe(false);
     expect(schoolInputSchema.parse({ ...base, brand_color: 'maroon' }).brand_color).toBe('maroon');
   });
+});
+
+describe('status tokens and the destructive button (light + dark)', () => {
+  const tones = ['ok', 'bad', 'warn', 'info'] as const;
+  for (const theme of ['light', 'dark'] as const) {
+    const k = STATUS_TOKENS[theme];
+    it(`${theme}: each status reads as text on the card and on its own soft badge`, () => {
+      for (const s of tones) {
+        expect(contrast(k[s], k.card), `${s} on card`).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(k[s], k.background), `${s} on page`).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(k[s], k[`${s}Soft`]), `${s} on ${s}Soft`).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(contrast(k.mutedForeground, k.card), 'muted text').toBeGreaterThanOrEqual(4.5);
+      expect(contrast(k.foreground, k.card), 'body text').toBeGreaterThanOrEqual(7);
+    });
+    it(`${theme}: solid fills (register mark, destructive button) carry white text ≥ 4.5:1`, () => {
+      for (const s of tones)
+        expect(contrast(k[`${s}Solid`], k.onSolid), `${s} solid`).toBeGreaterThanOrEqual(4.5);
+      // The destructive variant is bg-bad-solid + text-on-solid (ui/button.tsx).
+      expect(contrast(k.badSolid, k.onSolid), 'destructive').toBeGreaterThanOrEqual(4.5);
+    });
+    it(`${theme}: the input border is ≥ 3:1 against the card and the page`, () => {
+      expect(contrast(k.input, k.card)).toBeGreaterThanOrEqual(3);
+      expect(contrast(k.input, k.background)).toBeGreaterThanOrEqual(3);
+    });
+  }
 });

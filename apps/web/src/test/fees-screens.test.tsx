@@ -113,7 +113,7 @@ describe('billing', () => {
       },
     });
     renderAt('/fees/billing', '/fees/billing', <BillingPage />);
-    expect(await screen.findByText(/1 groups have failed three times/)).toBeTruthy();
+    expect(await screen.findByText(/1 group has failed three times/)).toBeTruthy();
     // Codes and times are translated / shown in Asia/Karachi.
     const failing = await waitFor(() => {
       const el = document.getElementById('billing-failing');
@@ -320,7 +320,7 @@ describe('defaulters', () => {
     expect(screen.getByText('PKR 8,000')).toBeTruthy();
     expect(document.getElementById('remind-cooldown')?.textContent).toContain('7 days');
     fireEvent.click(document.getElementById('remind-all') as HTMLElement);
-    expect(await screen.findByText('1 families queued in the send queue')).toBeTruthy();
+    expect(await screen.findByText('1 family queued in the send queue')).toBeTruthy();
     expect(document.getElementById('remind-cooldown')?.textContent).toContain(
       '2 families were reminded recently and skipped this time.',
     );

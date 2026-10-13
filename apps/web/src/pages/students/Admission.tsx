@@ -109,7 +109,7 @@ function GroupPicker({
           <option key={g.id} value={g.id}>
             {isolate(g.programme_name)} · {isolate(g.name)}
             {g.seats_left !== null &&
-              ` (${g.seats_left > 0 ? t('group.seatsLeft', { n: g.seats_left }) : t('group.full')})`}
+              ` (${g.seats_left > 0 ? t('group.seatsLeft', { count: g.seats_left }) : t('group.full')})`}
           </option>
         ))}
       </Select>

@@ -175,3 +175,13 @@ export function badgeSvg(opts: {
     `font-size="${badgeFontSize(letters)}" fill="${col}">${esc(letters)}</text></svg>`
   );
 }
+
+/**
+ * True when the badge needs a typed short name: the school name has no Latin letters or digits to
+ * draw initials from (an Urdu-only name), and none was given. The wizard and Settings ask for one
+ * instead of letting the badge fall back to "M".
+ */
+export const needsShortName = (name: string | null | undefined, shortName?: string | null) =>
+  !(shortName ?? '').replace(/[^A-Za-z0-9]/g, '') &&
+  suggestShortName(name) === '' &&
+  !!name?.trim();

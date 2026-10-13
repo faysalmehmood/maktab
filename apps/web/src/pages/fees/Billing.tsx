@@ -209,7 +209,7 @@ export function BillingPage() {
     onSuccess: async (r) => {
       toast.success(
         r.counts.fees > 0
-          ? t('fee.billing.billed', { n: r.counts.fees })
+          ? t('fee.billing.billed', { count: r.counts.fees })
           : t('fee.billing.billedNothing'),
       );
       await invalidate();
@@ -244,7 +244,7 @@ export function BillingPage() {
           className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
         >
           <AlertTriangle className="size-4 shrink-0" aria-hidden />
-          {t('fee.billing.attention', { n: runs.data?.attention_required ?? 0 })}
+          {t('fee.billing.attention', { count: runs.data?.attention_required ?? 0 })}
         </p>
       )}
       <Card className="gap-3 py-4">
@@ -291,7 +291,7 @@ export function BillingPage() {
             <p role="status" className="text-sm">
               {mode === 'preview'
                 ? t('fee.billing.previewing')
-                : t('fee.billing.generating', { n: s?.byGroup.size ?? 0 })}
+                : t('fee.billing.generating', { count: s?.byGroup.size ?? 0 })}
             </p>
           )}
           <ErrorNote error={gen.error} />
@@ -386,8 +386,8 @@ export function BillingPage() {
                 : fines.data.dry_run
                   ? fines.data.planned.length === 0
                     ? t('fee.billing.finesNone')
-                    : t('fee.billing.finesPlanned', { n: fines.data.planned.length })
-                  : t('fee.billing.finesApplied', { n: fines.data.applied })}
+                    : t('fee.billing.finesPlanned', { count: fines.data.planned.length })
+                  : t('fee.billing.finesApplied', { count: fines.data.applied })}
             </p>
           )}
           {fines.data?.dry_run && fines.data.planned.length > 0 && (

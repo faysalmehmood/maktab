@@ -13,6 +13,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { Counts, DayOffNote, StatusChip, todayPk } from '@/components/attendance/common';
+import { Avatar } from '@/components/avatar';
 import { ErrorNote, Num, PageTitle, useErrorText } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,6 @@ import { sendJson } from '@/lib/api';
 import {
   canCorrect,
   canReadMessages,
-  initials,
   nextStatus,
   timeOf,
   useRegister,
@@ -63,23 +63,14 @@ function tally(d: Draft): MarkCounts {
   return c;
 }
 
-function Avatar({ id, name, hasPhoto }: { id: string; name: string; hasPhoto: boolean }) {
-  if (hasPhoto)
-    return (
-      <img
-        src={`/api/students/${id}/photo`}
-        alt=""
-        loading="lazy"
-        className="size-10 shrink-0 rounded-full object-cover"
-      />
-    );
+function StudentAvatar({ id, name, hasPhoto }: { id: string; name: string; hasPhoto: boolean }) {
   return (
-    <span
-      aria-hidden
-      className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted font-sans text-sm font-medium"
-    >
-      {initials(name)}
-    </span>
+    <Avatar
+      name={name}
+      size="lg"
+      tone="muted"
+      src={hasPhoto ? `/api/students/${id}/photo` : null}
+    />
   );
 }
 
@@ -426,7 +417,7 @@ export function RegisterPage() {
       {outbox.pending > 0 && (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <CloudOff className="size-4 shrink-0" aria-hidden />
-          {t('attendance.waitingHere', { n: outbox.pending })}
+          {t('attendance.waitingHere', { count: outbox.pending })}
         </p>
       )}
       {tooBig && (
@@ -440,7 +431,7 @@ export function RegisterPage() {
           className="flex flex-wrap items-center gap-2 rounded-md bg-muted p-3 text-sm"
         >
           <MessageSquareText className="size-4 shrink-0" aria-hidden />
-          <span className="flex-1">{t('attendance.queued', { n: queued })}</span>
+          <span className="flex-1">{t('attendance.queued', { count: queued })}</span>
           {canReadMessages(roles) && (
             <Button asChild size="sm" variant="outline">
               <Link to="/messages">{t('attendance.openQueue')}</Link>
@@ -467,7 +458,7 @@ export function RegisterPage() {
                   d.status !== 'P' && 'bg-bad-soft/60',
                 )}
               >
-                <Avatar id={row.student_id} name={row.name} hasPhoto={row.has_photo} />
+                <StudentAvatar id={row.student_id} name={row.name} hasPhoto={row.has_photo} />
                 <span className="w-8 shrink-0 text-sm text-muted-foreground">
                   <Num>{row.roll_no ?? '—'}</Num>
                 </span>
@@ -475,7 +466,7 @@ export function RegisterPage() {
                   <bdi className="truncate">{row.name}</bdi>
                   {d.note && <bdi className="truncate text-xs text-muted-foreground">{d.note}</bdi>}
                 </span>
-                <StatusChip status={d.status} className="size-12" />
+                <StatusChip status={d.status} solid className="size-12" />
               </button>
               <Button
                 type="button"

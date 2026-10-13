@@ -67,7 +67,7 @@ export function StudentFeesCard({
     onSuccess: async (r) => {
       toast.success(
         r.counts.fees > 0
-          ? t('fee.billing.billed', { n: r.counts.fees })
+          ? t('fee.billing.billed', { count: r.counts.fees })
           : t('fee.billing.billedNothing'),
       );
       await invalidate();

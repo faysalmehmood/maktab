@@ -45,7 +45,8 @@ export const en = {
     turnstileFailed: 'The "are you a person" check did not pass. Try signing in again.',
     connectToSignIn: 'Connect to the internet to sign in.',
     unsentTitle: 'Registers not sent yet',
-    unsentBody: '{{n}} registers not yet sent — sign out anyway?',
+    unsentBody_one: '{{count}} register not yet sent — sign out anyway?',
+    unsentBody_other: '{{count}} registers not yet sent — sign out anyway?',
     unsentHint:
       'They stay on this phone and are sent the next time you sign in here. Nobody else can send them.',
     signOutAnyway: 'Sign out anyway',
@@ -100,6 +101,7 @@ export const en = {
     ...backupErrorsEn,
     ...moneyErrorsEn,
     ...msgErrorsEn,
+    short_name_needed: 'Type a short name in English letters for the badge (for example GSA)',
     holiday: 'This date is a school holiday',
     weekly_off: 'The school is closed on this weekday',
     future_date: 'You cannot take attendance for a future date',
@@ -240,7 +242,8 @@ export const en = {
     programme: 'Class or course',
     session: 'Session',
     capacity: 'Seats',
-    seatsLeft: '{{n}} seats left',
+    seatsLeft_one: '{{count}} seat left',
+    seatsLeft_other: '{{count}} seats left',
     full: 'Full',
     primary: 'Main class (a student can be in only one)',
     primaryBadge: 'Class',
@@ -262,7 +265,8 @@ export const en = {
     startTime: 'From',
     endTime: 'To',
     room: 'Room',
-    students: '{{n}} students',
+    students_one: '{{count}} student',
+    students_other: '{{count}} students',
   },
   staff: {
     title: 'Staff',
@@ -410,7 +414,8 @@ export const en = {
     template: 'Download template',
     file: 'CSV file',
     check: 'Check file',
-    commit: 'Import {{n}} students',
+    commit_one: 'Import {{count}} student',
+    commit_other: 'Import {{count}} students',
     row: 'Row',
     action: 'Result',
     actions: { create: 'Will add', skip: 'Skip', error: 'Error' },
@@ -433,7 +438,8 @@ export const en = {
     takeNow: 'Take attendance',
     open: 'Open register',
     noGroups: 'No groups with students for this date.',
-    students: '{{n}} students',
+    students_one: '{{count}} student',
+    students_other: '{{count}} students',
     takenBy: 'by {{name}} at {{time}}',
     status: { P: 'Present', A: 'Absent', L: 'Late', E: 'Leave' },
     letter: { P: 'P', A: 'A', L: 'L', E: 'E' },
@@ -455,17 +461,23 @@ export const en = {
     dismissTitle: 'Dismiss this saved register?',
     dismissBody:
       'It will be deleted from this phone and never sent. Take the register again if it is still needed.',
-    waitingHere: '{{n}} saved registers waiting on this phone',
-    safeOnPhone:
-      '{{n}} saved registers are safe on this phone and will be sent once the app reaches the school.',
+    waitingHere_one: '{{count}} saved register waiting on this phone',
+    waitingHere_other: '{{count}} saved registers waiting on this phone',
+    safeOnPhone_one:
+      '{{count}} saved register is safe on this phone and will be sent once the app reaches the school.',
+    safeOnPhone_other:
+      '{{count}} saved registers are safe on this phone and will be sent once the app reaches the school.',
     rosterTooBig:
       'This group has {{n}} students; one register holds at most {{max}}. Ask the office to split it into sections.',
     offline: 'You are offline',
     signInAgain: 'Sign in again to send saved attendance',
-    otherAccount:
-      '{{n}} registers saved by another account on this phone; they are sent when that account signs in here.',
+    otherAccount_one:
+      '{{count}} register saved by another account on this phone; it is sent when that account signs in here.',
+    otherAccount_other:
+      '{{count}} registers saved by another account on this phone; they are sent when that account signs in here.',
     signIn: 'Sign in',
-    queued: '{{n}} absence messages queued',
+    queued_one: '{{count}} absence message queued',
+    queued_other: '{{count}} absence messages queued',
     openQueue: 'Open send queue',
     history: 'History',
     historyEmpty: 'No earlier registers.',
