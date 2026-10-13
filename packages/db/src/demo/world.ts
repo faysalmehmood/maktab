@@ -680,10 +680,16 @@ export function world(): World {
   const r = rng(DEMO_SEED);
   const idMap = new Map<string, string>();
   let seq = 0;
+  let sealed = false;
+  // While the world is built, ids are numbered in build order (so students, families and groups
+  // sort as built). Afterwards a key's id depends on the key alone: a Worker isolate asks for ids in
+  // whatever order its step needs them, and every isolate must get the same answer.
   const ids = (key: string) => {
     let v = idMap.get(key);
     if (!v) {
-      v = demoId(seq++, key);
+      v = sealed
+        ? demoId(1_000_000 + (hashSeed(`seq:${key}`) % 1_000_000_000), key)
+        : demoId(seq++, key);
       idMap.set(key, v);
     }
     return v;
@@ -873,6 +879,7 @@ export function world(): World {
   for (const s of seniors.filter((_, i) => i % 3 === 0).slice(0, 14))
     s.evening = { enrolmentId: ids(`enrolment:${s.index}:evening`) };
 
+  sealed = true;
   cached = { families, students, ids };
   return cached;
 }

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AppDb } from '../src/client';
 import {
   advanceDemoSeed,
@@ -181,6 +181,17 @@ describe('demo dataset', () => {
     expect(calls).toBeGreaterThan(demoPlan().length);
     expect(await fingerprint(db2)).toEqual(await fingerprint(db));
   }, 180_000);
+
+  it('ids do not depend on the order a process asks for them (each Worker isolate is fresh)', async () => {
+    const keys = ['user:accountant', 'account:drawer', 'head:tuition', 'user:principal', 'rate:x'];
+    const fresh = async (order: string[]) => {
+      vi.resetModules();
+      const m = await import('../src/demo/world');
+      const w = m.world();
+      return Object.fromEntries(order.map((k) => [k, w.ids(k)]));
+    };
+    expect(await fresh([...keys].reverse())).toEqual(await fresh(keys));
+  });
 
   it('refuses to wipe a database that belongs to another school', async () => {
     const other = createTestDb();
