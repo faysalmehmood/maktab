@@ -1,6 +1,6 @@
 import type { Language, MeResponse, StaffRole } from '@maktab/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AppShell, navFor } from '@/components/AppShell';
@@ -43,14 +43,17 @@ describe('app shell', () => {
     renderShell();
     expect(document.documentElement.dir).toBe(dir);
     expect(document.documentElement.lang).toBe(lang);
-    expect(screen.getByRole('link', { name: attendance })).toBeTruthy();
-    expect(screen.getByRole('link', { name: fees })).toBeTruthy();
+    // Sidebar and phone tab bar both carry the daily tasks (CSS shows one of them).
+    expect(screen.getAllByRole('link', { name: attendance })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: fees })).toHaveLength(2);
     expect(screen.getByText('home')).toBeTruthy();
   });
 
   it('renders the "اردو" toggle label in the system font (no Nastaliq download)', async () => {
     await act(() => setLanguage('en'));
     renderShell();
+    // M7b: the language toggle sits in the account menu.
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }));
     const label = screen.getByText('اردو');
     expect(label.getAttribute('lang')).toBe('ur');
     expect(label.classList.contains('font-system')).toBe(true);
@@ -58,20 +61,20 @@ describe('app shell', () => {
 
   it('shows each role only what it can use', () => {
     const paths = (roles: StaffRole[]) => navFor(roles).map((n) => n.to);
+    // M7b grouping (UI plan §5.3): Home; People; Daily work; Money; School. Cash is a tab of
+    // Fees and Advances part of Payroll, so neither has its own entry for roles that open those.
     expect(paths(['owner'])).toEqual([
       '/',
       '/students',
       '/groups',
       '/attendance',
+      '/messages',
       '/fees',
-      '/cash',
       '/expenses',
       '/salary',
-      '/advances',
       '/reports',
-      '/messages',
-      '/audit',
       '/settings',
+      '/audit',
     ]);
     // The audit trail is the owner's alone (PLAN §5.4).
     expect(paths(['admin'])).toEqual(paths(['owner']).filter((p) => p !== '/audit'));
@@ -80,21 +83,19 @@ describe('app shell', () => {
       '/students',
       '/groups',
       '/attendance',
-      '/fees/defaulters',
       '/messages',
+      '/fees/defaulters',
       '/my/payslips',
     ]);
     expect(navFor(['teacher']).find((n) => n.to === '/groups')?.label).toBe('nav.myGroups');
     expect(paths(['accountant'])).toEqual([
       '/',
       '/students',
+      '/messages',
       '/fees',
-      '/cash',
       '/expenses',
       '/salary',
-      '/advances',
       '/reports',
-      '/messages',
       '/settings',
     ]);
     expect(paths([])).toEqual([]);
