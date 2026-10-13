@@ -76,8 +76,10 @@
   --primary-foreground: var(--brand-fg);
   --destructive: var(--bad);
   --ring: var(--brand);
-  --chart-in: var(--brand);
-  --chart-out: #c2780a;
+  /* Income vs spending bars (M7b-2): the fixed status tones, not the school colour, so a chart
+     reads the same in every school (money in = ok green, money out = amber). */
+  --chart-in: var(--ok-solid);
+  --chart-out: var(--warn-solid);
   color-scheme: light;
 }
 
@@ -164,7 +166,8 @@ html[data-brand="green"] {
     --warn-soft: #33270d;
     --info: #8db8ee;
     --info-soft: #14263d;
-    --chart-out: #e8b75a;
+    --chart-in: var(--ok);
+    --chart-out: var(--warn);
     color-scheme: dark;
   }
   html.dark[data-brand="blue"] {

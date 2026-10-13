@@ -1,5 +1,5 @@
 import type { PayslipDetailDto, PayslipDto } from '@maktab/shared';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { initI18n, setLanguage } from '@/i18n';
@@ -148,8 +148,9 @@ describe('payslip page', () => {
         { lines: [{ kind: 'basic', amount: RS(500), note: null }] },
       ]),
     );
-    // An accountant neither approves nor voids.
+    // An accountant neither approves nor voids: no row menu at all.
     expect(document.getElementById('slip-void')).toBeNull();
+    expect(document.getElementById('slip-more')).toBeNull();
   });
 
   it('own slip: no Approve, the own-slip note instead', async () => {
@@ -198,7 +199,11 @@ describe('payslip page', () => {
     const api = open(slip(), ['admin'], {
       [`POST /api/payslips/${SLIP}/void`]: { payslip: slip({ status: 'void' }) },
     });
-    fireEvent.click(await byId('slip-void'));
+    // Void is the destructive item of the payslip's row menu (M7b-2), still behind its reason.
+    fireEvent.keyDown(await byId('slip-more'), { key: 'Enter' });
+    const item = within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Void' });
+    expect(item.dataset.destructive).toBe('true');
+    fireEvent.click(item);
     fireEvent.click(await byId('slip-void-confirm'));
     expect(calls(api, 'POST', `/api/payslips/${SLIP}/void`)).toEqual([]);
     fireEvent.change(await byId('slip-void-reason'), { target: { value: 'left school' } });

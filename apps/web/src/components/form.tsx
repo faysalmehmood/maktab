@@ -64,7 +64,7 @@ export function ErrorNote({ error }: { error: unknown }) {
   const text = useErrorText();
   if (!error) return null;
   return (
-    <p role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+    <p role="alert" className="rounded-lg bg-bad-soft p-3 text-sm font-medium text-bad">
       {text(error)}
     </p>
   );

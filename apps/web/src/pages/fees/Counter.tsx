@@ -15,6 +15,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { Avatar } from '@/components/avatar';
 import { AmountInput, Figure, MethodChips, Money, StatusBadge } from '@/components/fees/common';
 import { WaiveFineDialog } from '@/components/fees/dialogs';
+import { FeesTabs } from '@/components/fees/FeesTabs';
 import { ErrorNote, Field, Num } from '@/components/form';
 import { GoLink, ListSkeleton, Page, PageHeader, Panel } from '@/components/page';
 import '@/i18n/screens';
@@ -1114,6 +1115,7 @@ export function CounterPage() {
           )
         }
       />
+      <FeesTabs />
       {!family && !sponsor && <FamilySearch onPick={pick} />}
       {payer.isLoading && (
         <Panel>

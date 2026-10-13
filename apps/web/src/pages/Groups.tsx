@@ -254,7 +254,10 @@ export function GroupDetail() {
   return (
     <Page>
       <PageHeader
-        back={{ to: '/groups', label: isTeacherOnly(roles) ? t('nav.myGroups') : t('shell.nav.classes') }}
+        back={{
+          to: '/groups',
+          label: isTeacherOnly(roles) ? t('nav.myGroups') : t('shell.nav.classes'),
+        }}
         title={<bdi>{groupName(g)}</bdi>}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">

@@ -2,10 +2,12 @@ import type { AuditListDto, AuditRowDto } from '@maktab/shared';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Field, PageTitle } from '@/components/form';
+import { Avatar } from '@/components/avatar';
+import { FilterBar } from '@/components/filter-bar';
+import { Field } from '@/components/form';
 import { MoneyErrorNote } from '@/components/money/common';
+import { EmptyState, ListSkeleton, Page, PageHeader, Panel } from '@/components/page';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { getJson } from '@/lib/api';
@@ -60,66 +62,67 @@ function AuditEntry({ row }: { row: AuditRowDto }) {
   const [open, setOpen] = useState(false);
   const rows = diffRows(row.diff);
   return (
-    <Card className="gap-1 py-3" data-audit={row.id}>
-      <CardContent className="flex flex-col gap-1 px-4 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <bdi className="num text-muted-foreground">{row.at.replace('T', ' ').slice(0, 19)}</bdi>
-          <span className="font-medium" title={row.entity} data-code={row.entity}>
-            {label.entity(row.entity)}
-          </span>
-          <span title={row.action} data-code={row.action}>
-            {label.action(row.action)}
-          </span>
-          <span className="ms-auto">
-            {t('money.audit.user')}: <bdi>{row.user_name ?? row.user_id ?? '—'}</bdi>
-          </span>
-        </div>
-        <div className="text-xs text-muted-foreground">
+    <li className="flex flex-col gap-1 px-4 py-2.5 text-sm" data-audit={row.id}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Avatar name={row.user_name} size="sm" tone="muted" />
+        <bdi className="num text-muted-foreground">{row.at.replace('T', ' ').slice(0, 19)}</bdi>
+        <span className="font-medium" title={row.entity} data-code={row.entity}>
+          {label.entity(row.entity)}
+        </span>
+        <span title={row.action} data-code={row.action}>
+          {label.action(row.action)}
+        </span>
+        <span className="ms-auto">
+          {t('money.audit.user')}: <bdi>{row.user_name ?? row.user_id ?? '—'}</bdi>
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 ps-10 text-xs text-muted-foreground">
+        <span>
           {t('money.audit.entityId')}: <bdi className="num">{row.entity_id}</bdi>
-        </div>
+        </span>
         <Button
           variant="ghost"
           size="sm"
-          className="min-h-11 self-start"
+          className="min-h-11 text-brand"
           aria-expanded={open}
           id={`audit-toggle-${row.id}`}
           onClick={() => setOpen((o) => !o)}
         >
           {open ? t('money.audit.hide') : t('money.audit.show')}
         </Button>
-        {open &&
-          (rows.length === 0 ? (
-            <p className="text-muted-foreground">{t('money.audit.noDiff')}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs" id={`audit-diff-${row.id}`}>
-                <thead>
-                  <tr className="text-start text-muted-foreground">
-                    <th className="p-1 text-start">{t('money.audit.field')}</th>
-                    <th className="p-1 text-start">{t('money.audit.before')}</th>
-                    <th className="p-1 text-start">{t('money.audit.after')}</th>
+      </div>
+      {open &&
+        (rows.length === 0 ? (
+          <p className="text-muted-foreground">{t('money.audit.noDiff')}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs" id={`audit-diff-${row.id}`}>
+              <thead>
+                <tr className="text-start text-muted-foreground">
+                  <th className="p-1 text-start">{t('money.audit.field')}</th>
+                  <th className="p-1 text-start">{t('money.audit.before')}</th>
+                  <th className="p-1 text-start">{t('money.audit.after')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.field} className="border-t align-top">
+                    <td className="p-1 font-medium">
+                      <bdi>{r.field}</bdi>
+                    </td>
+                    <td className="p-1 text-destructive">
+                      <bdi className="break-all">{show(r.before)}</bdi>
+                    </td>
+                    <td className="p-1 text-ok">
+                      <bdi className="break-all">{show(r.after)}</bdi>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.field} className="border-t align-top">
-                      <td className="p-1 font-medium">
-                        <bdi>{r.field}</bdi>
-                      </td>
-                      <td className="p-1 text-destructive">
-                        <bdi className="break-all">{show(r.before)}</bdi>
-                      </td>
-                      <td className="p-1 text-ok">
-                        <bdi className="break-all">{show(r.after)}</bdi>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-      </CardContent>
-    </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+    </li>
   );
 }
 
@@ -151,9 +154,37 @@ export function AuditPage() {
   });
   const rows = q.data?.pages.flatMap((p) => p.rows) ?? [];
   return (
-    <section className="flex max-w-4xl flex-col gap-4">
-      <PageTitle>{t('money.audit.title')}</PageTitle>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+    <Page>
+      <PageHeader title={t('money.audit.title')} />
+      <FilterBar
+        id="audit-filters"
+        active={[
+          ...(entity
+            ? [{ id: 'entity', label: label.entity(entity), onClear: () => setEntity('') }]
+            : []),
+          ...(entityId.trim()
+            ? [{ id: 'entity-id', label: entityId.trim(), onClear: () => setEntityId('') }]
+            : []),
+          ...(from
+            ? [
+                {
+                  id: 'from',
+                  label: `${t('money.common.from')} ${from}`,
+                  onClear: () => setFrom(''),
+                },
+              ]
+            : []),
+          ...(to
+            ? [{ id: 'to', label: `${t('money.common.to')} ${to}`, onClear: () => setTo('') }]
+            : []),
+        ]}
+        onClearAll={() => {
+          setEntity('');
+          setEntityId('');
+          setFrom('');
+          setTo('');
+        }}
+      >
         <Field id="audit-entity" label="money.audit.entity">
           <Select id="audit-entity" value={entity} onChange={(e) => setEntity(e.target.value)}>
             <option value="">{t('money.common.all')}</option>
@@ -190,16 +221,21 @@ export function AuditPage() {
             onChange={(e) => setTo(e.target.value)}
           />
         </Field>
-      </div>
+      </FilterBar>
       <MoneyErrorNote error={q.error} />
-      {q.data && rows.length === 0 && (
-        <p className="text-muted-foreground">{t('money.audit.empty')}</p>
-      )}
-      <div className="flex flex-col gap-2">
-        {rows.map((r) => (
-          <AuditEntry key={r.id} row={r} />
-        ))}
-      </div>
+      <Panel>
+        {q.isPending ? (
+          <ListSkeleton rows={6} />
+        ) : q.data && rows.length === 0 ? (
+          <EmptyState title={t('money.audit.empty')} />
+        ) : (
+          <ul className="flex flex-col divide-y">
+            {rows.map((r) => (
+              <AuditEntry key={r.id} row={r} />
+            ))}
+          </ul>
+        )}
+      </Panel>
       {q.hasNextPage && (
         <Button
           variant="outline"
@@ -211,6 +247,6 @@ export function AuditPage() {
           {t('money.audit.more')}
         </Button>
       )}
-    </section>
+    </Page>
   );
 }

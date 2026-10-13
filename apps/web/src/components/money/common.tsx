@@ -2,7 +2,7 @@ import type { PayslipStatus } from '@maktab/shared';
 import { Download, Printer } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useErrorText } from '@/components/form';
-import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { ApiError } from '@/lib/api';
@@ -76,24 +76,25 @@ export function PayslipStatusBadge({
   partial?: boolean;
 }) {
   const { t } = useTranslation();
+  // Fixed status tones: draft neutral, approved (to pay) amber, part paid blue, paid green, void red.
   if (status === 'approved' && partial)
     return (
-      <Badge variant="default" data-status="approved" data-partial="true">
-        {t('money.salary.partlyPaid')}
-      </Badge>
+      <span data-status="approved" data-partial="true" className="inline-flex">
+        <StatusBadge tone="info">{t('money.salary.partlyPaid')}</StatusBadge>
+      </span>
     );
-  const variant =
+  const tone =
     status === 'void'
-      ? 'destructive'
+      ? 'bad'
       : status === 'paid'
-        ? 'outline'
+        ? 'ok'
         : status === 'approved'
-          ? 'default'
-          : ('secondary' as const);
+          ? 'warn'
+          : 'neutral';
   return (
-    <Badge variant={variant} data-status={status}>
-      {t(`money.salary.status.${status}`)}
-    </Badge>
+    <span data-status={status} className="inline-flex">
+      <StatusBadge tone={tone}>{t(`money.salary.status.${status}`)}</StatusBadge>
+    </span>
   );
 }
 

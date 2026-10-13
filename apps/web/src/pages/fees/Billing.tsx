@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Money } from '@/components/fees/common';
 import { useFeeInvalidate } from '@/components/fees/dialogs';
+import { FeesTabs } from '@/components/fees/FeesTabs';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -237,6 +238,7 @@ export function BillingPage() {
   return (
     <section className="flex max-w-3xl flex-col gap-4">
       <PageTitle>{t('fee.billing.title')}</PageTitle>
+      <FeesTabs />
       {(runs.data?.attention_required ?? 0) > 0 && (
         <p
           role="alert"

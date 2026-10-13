@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { PageTitle } from '@/components/form';
+import { FeesTabs } from '@/components/fees/FeesTabs';
+import { Page, PageHeader } from '@/components/page';
 import { canCollect, canGenerate, canReadFees, canReadMoney, canUseCash } from '@/lib/fees';
 import { useRoles } from '@/lib/roles';
 
@@ -82,24 +83,27 @@ export function FeesHome() {
   const { t } = useTranslation();
   const roles = useRoles();
   return (
-    <section className="flex max-w-3xl flex-col gap-4">
-      <PageTitle>{t('fee.nav.home')}</PageTitle>
-      <ul className="grid gap-2 sm:grid-cols-2">
+    <Page>
+      <PageHeader title={t('fee.nav.home')} />
+      <FeesTabs />
+      <ul className="grid gap-3 sm:grid-cols-2">
         {FEE_TILES.filter((x) => x.show(roles)).map(({ to, label, hint, icon: Icon }) => (
           <li key={to}>
             <Link
               to={to}
-              className="flex min-h-11 items-start gap-3 rounded-lg border p-3 hover:bg-accent"
+              className="flex min-h-11 items-start gap-3 rounded-xl border bg-card p-4 hover:bg-accent"
             >
-              <Icon className="mt-0.5 size-5 shrink-0" aria-hidden />
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
+                <Icon className="size-5" aria-hidden />
+              </span>
               <span className="flex flex-col">
-                <span className="font-medium">{t(label)}</span>
+                <span className="font-semibold">{t(label)}</span>
                 <span className="text-sm text-muted-foreground">{t(hint)}</span>
               </span>
             </Link>
           </li>
         ))}
       </ul>
-    </section>
+    </Page>
   );
 }

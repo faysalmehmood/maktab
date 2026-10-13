@@ -3,8 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AmountInput, Figure, Money, ReasonDialog } from '@/components/fees/common';
+import { FeesTabs } from '@/components/fees/FeesTabs';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
-import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -21,6 +22,7 @@ import {
 import { getJson, sendJson, useMe } from '@/lib/api';
 import { addDaysIso, canReopenCash, karachiToday, rupeesToPaisa, useAccounts } from '@/lib/fees';
 import { useRoles } from '@/lib/roles';
+import { cn } from '@/lib/utils';
 
 type Sessions = { sessions: CashSessionDto[] };
 
@@ -106,9 +108,9 @@ function TodayDrawer() {
         <CardTitle className="flex items-center gap-2">
           {t('fee.cash.today')} · <Num>{today}</Num>
           {s && (
-            <Badge variant={s.closed_at ? 'outline' : 'secondary'} className="ms-auto">
+            <StatusBadge tone={s.closed_at ? 'neutral' : 'ok'} className="ms-auto">
               {s.closed_at ? t('fee.cash.closed') : t('fee.cash.openState')}
-            </Badge>
+            </StatusBadge>
           )}
         </CardTitle>
       </CardHeader>
@@ -171,7 +173,24 @@ function TodayDrawer() {
                   <AmountInput id="cash-counted" value={counted} onChange={setCounted} />
                 </Field>
                 {countedPaisa !== null && (
-                  <p className="text-sm" id="cash-variance">
+                  <p
+                    id="cash-variance"
+                    data-tone={
+                      countedPaisa === s.expected
+                        ? 'ok'
+                        : countedPaisa < s.expected
+                          ? 'bad'
+                          : 'warn'
+                    }
+                    className={cn(
+                      'rounded-lg p-3 text-sm font-semibold',
+                      countedPaisa === s.expected
+                        ? 'bg-ok-soft text-ok'
+                        : countedPaisa < s.expected
+                          ? 'bg-bad-soft text-bad'
+                          : 'bg-warn-soft text-warn',
+                    )}
+                  >
                     {t('fee.cash.variance')}: <Money paisa={countedPaisa - s.expected} />
                   </p>
                 )}
@@ -470,6 +489,7 @@ export function CashPage() {
   return (
     <section className="flex max-w-3xl flex-col gap-4">
       <PageTitle>{t('fee.cash.title')}</PageTitle>
+      <FeesTabs />
       <TodayDrawer />
       <TransferForm />
       <SessionsList />

@@ -6,7 +6,7 @@ import type {
   PayslipListDto,
 } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Printer } from 'lucide-react';
+import { Ban, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router';
@@ -14,6 +14,9 @@ import { PrintBadge } from '@/components/brand/SchoolBadge';
 import { Money, ReasonDialog } from '@/components/fees/common';
 import { ErrorNote, Field, PageTitle } from '@/components/form';
 import { MoneyErrorNote, PayslipStatusBadge, ReportActions } from '@/components/money/common';
+import { Page, PageHeader } from '@/components/page';
+import { RowMenu } from '@/components/row-menu';
+import '@/i18n/screens';
 import {
   ApproveDialog,
   LinesEditor,
@@ -359,20 +362,51 @@ export function PayslipPage() {
     (slip.status === 'draft' || slip.status === 'approved') &&
     slip.paid === 0;
   return (
-    <section className="flex max-w-4xl flex-col gap-4">
-      <PageTitle
-        actions={
-          <Button asChild variant="outline" id="slip-print">
-            <Link to={`/payslips/${slip.id}/print`}>
-              <Printer aria-hidden />
-              {t('money.salary.printSlip')}
-            </Link>
-          </Button>
+    <Page>
+      <PageHeader
+        back={{ to: '/salary', label: t('money.salary.title') }}
+        title={
+          <>
+            <bdi>{slip.staff_name}</bdi> · <bdi className="num">{slip.period_key}</bdi>
+          </>
         }
-      >
-        {t('money.salary.slip')} · <bdi>{slip.staff_name}</bdi> ·{' '}
-        <bdi className="num">{slip.period_key}</bdi>
-      </PageTitle>
+        subtitle={t('money.salary.slip')}
+        actions={
+          <>
+            {slip.can_approve && (
+              <Button id="slip-approve" onClick={() => setApproving(true)}>
+                {t('money.salary.approve')}
+              </Button>
+            )}
+            {slip.status === 'approved' && canPaySalary(roles) && (
+              <Button id="slip-pay" onClick={() => setPaying(true)}>
+                {t('money.salary.payButton')}
+              </Button>
+            )}
+            <Button asChild variant="outline" id="slip-print">
+              <Link to={`/payslips/${slip.id}/print`}>
+                <Printer aria-hidden />
+                {t('money.salary.printSlip')}
+              </Link>
+            </Button>
+            {mayVoid && (
+              <RowMenu
+                id="slip-more"
+                label={t('screens.money.slipMore', { name: slip.staff_name })}
+                actions={[
+                  {
+                    id: 'slip-void',
+                    label: t('money.common.void'),
+                    icon: Ban,
+                    destructive: true,
+                    onSelect: () => setVoiding(true),
+                  },
+                ]}
+              />
+            )}
+          </>
+        }
+      />
       <div className="flex flex-wrap items-center gap-2">
         <PayslipStatusBadge status={slip.status} partial={slip.paid_partial} />
         {slip.approved_by_name && (
@@ -392,23 +426,6 @@ export function PayslipPage() {
           {t('money.salary.ownSlip')}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        {slip.can_approve && (
-          <Button id="slip-approve" onClick={() => setApproving(true)}>
-            {t('money.salary.approve')}
-          </Button>
-        )}
-        {slip.status === 'approved' && canPaySalary(roles) && (
-          <Button id="slip-pay" onClick={() => setPaying(true)}>
-            {t('money.salary.payButton')}
-          </Button>
-        )}
-        {mayVoid && (
-          <Button variant="destructive" id="slip-void" onClick={() => setVoiding(true)}>
-            {t('money.common.void')}
-          </Button>
-        )}
-      </div>
       <Card className="gap-3 py-4">
         <CardHeader className="px-4">
           <CardTitle>{t('money.salary.lines')}</CardTitle>
@@ -457,7 +474,7 @@ export function PayslipPage() {
         error={voidSlip.error}
         onConfirm={(reason) => voidSlip.mutate(reason)}
       />
-    </section>
+    </Page>
   );
 }
 

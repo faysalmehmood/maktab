@@ -98,9 +98,9 @@ export function ReportsHub() {
 export function MonthBars({ months }: { months: IncomeExpenseDto['months'] }) {
   const { t } = useTranslation();
   const max = Math.max(1, ...months.flatMap((m) => [m.income, m.expenses + m.salaries]));
-  const W = 48;
-  const H = 120;
-  const bar = 16;
+  const W = 64;
+  const H = 140;
+  const bar = 20;
   const width = months.length * W;
   return (
     <figure className="flex flex-col gap-2" id="income-expense-chart">
