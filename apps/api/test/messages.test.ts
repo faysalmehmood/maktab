@@ -698,6 +698,8 @@ describe('parent links and the public parent page', () => {
           'turnstile_site_key',
         ],
         ...['amount', 'business_date', 'notices', 'at', 'body_en', 'body_ur'],
+        // M7b: cache keys of the school's logo / generated badge (hashes, no ids).
+        ...['logo_v', 'badge_v'],
       ].sort(),
     );
     expect(r.text).not.toMatch(ULID);
@@ -747,6 +749,7 @@ describe('parent links and the public parent page', () => {
     );
     expect(Object.keys(rc.body.school).sort()).toEqual([
       'address',
+      'badge_v',
       'logo_v',
       'name',
       'name_ur',

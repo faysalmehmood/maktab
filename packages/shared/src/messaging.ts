@@ -446,7 +446,14 @@ export type ParentChildDto = {
 };
 
 export type ParentPageDto = {
-  school: { name: string; name_ur: string | null; phone: string | null };
+  /** `logo_v` / `badge_v`: cache keys for `GET /api/p/logo` and `GET /api/p/badge` (M7b). */
+  school: {
+    name: string;
+    name_ur: string | null;
+    phone: string | null;
+    logo_v: string | null;
+    badge_v: string | null;
+  };
   guardian: { first_name: string; lang: MessageLang };
   date: string;
   gate: { kind: ParentGate; passed: boolean };
@@ -475,6 +482,8 @@ export type ParentReceiptDto = {
     phone: string | null;
     /** Version of the school logo for `GET /api/p/logo?v=…` (cache key); null = no logo. */
     logo_v: string | null;
+    /** Version of the generated badge for `GET /api/p/badge?v=…`, used when there is no logo. */
+    badge_v: string | null;
   };
   labels: typeof RECEIPT_LABELS;
   lang: MessageLang;

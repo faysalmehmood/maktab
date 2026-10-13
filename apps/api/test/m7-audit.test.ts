@@ -257,6 +257,7 @@ describe('M7 audit: route grants', () => {
       'POST /api/p/gate',
       'GET /api/p/receipt/:no',
       'GET /api/p/logo',
+      'GET /api/p/badge',
     ]);
     const publicRoutes = new Set(
       f.routes
@@ -522,7 +523,7 @@ describe('M7a review probe (folded in)', () => {
 });
 
 describe('M7 audit: publicRoute allow-list (runtime)', () => {
-  it('the routes registered as publicRoute are exactly health, the OAuth routes, logout and /api/backup/runs', () => {
+  it('the routes registered as publicRoute are exactly health, the OAuth routes, logout, /api/backup/runs and the school identity', () => {
     const { routes } = testApp();
     const found = routes
       .list()
@@ -538,6 +539,9 @@ describe('M7 audit: publicRoute allow-list (runtime)', () => {
         'GET /api/health',
         'POST /api/auth/logout',
         'POST /api/backup/runs',
+        // M7b: the sign-in page's school name, badge colour and logo (no session there).
+        'GET /api/identity',
+        'GET /api/identity/logo',
       ].sort(),
     );
   });
@@ -683,5 +687,41 @@ describe('M7 receipts: parent link on the staff receipt, logo on the parent rece
     expect((await asParent('/api/p/logo')).status).toBe(404);
     // Other /api/p answers stay no-store.
     expect((await asParent('/api/p')).headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('GET /api/p/badge (M7b): token-gated SVG from the short name and colour, versioned', async () => {
+    const f = await fixture();
+    const link = await f.api<{ url: string }>('POST', `/api/receipts/${f.ra.id}/parent-link`);
+    const token = link.body.url.split('#')[1] ?? '';
+    const asParent = (path: string) =>
+      f.request(path, { headers: { [PARENT_TOKEN_HEADER]: token } });
+    const page = (await (await asParent('/api/p')).json()) as {
+      school: { logo_v: string | null; badge_v: string | null };
+    };
+    expect(page.school.logo_v).toBeNull();
+    expect(page.school.badge_v).toMatch(/^[0-9a-f]{16}$/);
+    const badge = await asParent(`/api/p/badge?v=${page.school.badge_v}`);
+    expect(badge.status).toBe(200);
+    expect(badge.headers.get('content-type')).toBe('image/svg+xml');
+    expect(badge.headers.get('cache-control')).toBe('private, max-age=604800, immutable');
+    expect(badge.headers.get('content-security-policy')).toContain('sandbox');
+    const svg = await badge.text();
+    // "Al-Noor" (no short name yet) → "AN"; Maktab teal by default.
+    expect(svg).toContain('>AN</text>');
+    expect(svg).toContain('#0f766e');
+    expect(svg).not.toMatch(/<script|on\w+=/i);
+    // A new short name and colour change the drawing and its version.
+    await f.db.run(sql`UPDATE school SET short_name = 'GSA', brand_color = 'blue'`);
+    const again = (await (await asParent('/api/p')).json()) as { school: { badge_v: string } };
+    expect(again.school.badge_v).not.toBe(page.school.badge_v);
+    const svg2 = await (await asParent('/api/p/badge')).text();
+    expect(svg2).toContain('>GSA</text>');
+    expect(svg2).toContain('#1e40af');
+    // No token, a bad token: nothing.
+    expect((await f.request('/api/p/badge')).status).toBe(404);
+    expect(
+      (await f.request('/api/p/badge', { headers: { [PARENT_TOKEN_HEADER]: 'x'.repeat(43) } }))
+        .status,
+    ).toBe(404);
   });
 });

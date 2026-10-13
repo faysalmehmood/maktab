@@ -4,6 +4,7 @@ export * from './academic';
 export * from './alloc';
 export * from './attendance';
 export * from './backup';
+export * from './brand';
 export * from './csv';
 export * from './dto';
 export * from './fees';

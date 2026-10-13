@@ -6,6 +6,7 @@ import {
   newId,
   programmeInputSchema,
   programmePatchSchema,
+  type SchoolIdentityDto,
   type SeedResult,
   schoolInputSchema,
   sessionInputSchema,
@@ -21,8 +22,9 @@ import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
 import { bucket, deleteReplaced, readImageUpload, serveObject } from '../lib/files';
 import { idParam, jsonBody, notFoundError, userId } from '../lib/http';
+import { sha256Hex } from '../lib/messaging';
 import { auditSql, changed, tx } from '../lib/tx';
-import { defineRoute, type RouteTable, requires } from '../perm/routes';
+import { defineRoute, publicRoute, type RouteTable, requires } from '../perm/routes';
 import { customFieldDto, programmeDto, schoolDto, sessionDto, subjectDto, termDto } from './dto';
 
 /** The Pakistani ladder (PLAN §14.1): grades chained by next_programme_id, then courses. */
@@ -93,6 +95,10 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       phone: input.phone ?? null,
       defaultLang: input.default_lang,
       receiptPrefix: input.receipt_prefix ?? null,
+      // Identity (M7b): undefined = not sent = keep (drizzle's set() and changed() skip it).
+      shortName: input.short_name,
+      city: input.city,
+      brandColor: input.brand_color,
     };
     const auditId = newId();
     // Printed receipt numbers carry the prefix: once one is issued the series is fixed.
@@ -174,6 +180,60 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       }
       const row = await currentSchool(c);
       return c.json({ school: row ? schoolDto(row) : null });
+    },
+  );
+
+  /**
+   * The school's public face for the sign-in page (M7b, UI plan §6.4, §7.1): no session exists
+   * there. A whitelist: names, city, badge letters, colour, office phone and a logo version. The
+   * same facts are printed on every receipt; nothing about students, staff or settings.
+   */
+  defineRoute(
+    app,
+    table,
+    { method: 'GET', path: '/api/identity', access: publicRoute },
+    async (c) => {
+      const row = await currentSchool(c);
+      const body: SchoolIdentityDto = {
+        school: row
+          ? {
+              name: row.name,
+              name_ur: row.nameUr,
+              city: row.city,
+              short_name: row.shortName,
+              brand_color: row.brandColor,
+              phone: row.phone,
+              logo_v: row.logoKey ? (await sha256Hex(row.logoKey)).slice(0, 16) : null,
+            }
+          : null,
+      };
+      return c.json(body, 200, { 'cache-control': 'no-cache' });
+    },
+  );
+
+  /**
+   * The logo for the sign-in page (public, like the receipts it is printed on): image types only,
+   * sandboxed, cacheable for a week under its versioned URL (`?v=` from /api/identity).
+   */
+  defineRoute(
+    app,
+    table,
+    { method: 'GET', path: '/api/identity/logo', access: publicRoute },
+    async (c) => {
+      const row = await currentSchool(c);
+      const notFound = () => new ApiError(404, 'not_found', 'No logo');
+      if (!row?.logoKey || !c.env.FILES) throw notFound();
+      const obj = await c.env.FILES.get(row.logoKey);
+      const type = obj?.httpMetadata?.contentType ?? '';
+      if (!obj || !/^image\/(png|jpeg|webp)$/.test(type)) throw notFound();
+      return new Response(obj.body, {
+        headers: {
+          'content-type': type,
+          'cache-control': 'public, max-age=604800, immutable',
+          'x-content-type-options': 'nosniff',
+          'content-security-policy': "default-src 'none'; sandbox",
+        },
+      });
     },
   );
 

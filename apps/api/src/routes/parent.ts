@@ -1,5 +1,8 @@
 import { familyStatement } from '@maktab/db';
 import {
+  badgeLetters,
+  badgeSvg,
+  brandColor,
   firstName,
   formatDmy,
   joinNames,
@@ -87,8 +90,9 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable, deps: { fetch
 
   const headers = async (c: Context<AppEnv>, next: () => Promise<void>) => {
     await next();
-    // The logo is the one cacheable answer here (versioned URL, no personal data).
-    const cacheable = c.req.path === '/api/p/logo' && c.res.status === 200;
+    // The logo and the badge are the cacheable answers here (versioned URLs, no personal data).
+    const cacheable =
+      (c.req.path === '/api/p/logo' || c.req.path === '/api/p/badge') && c.res.status === 200;
     for (const [k, v] of Object.entries(PARENT_HEADERS))
       if (!(cacheable && k === 'Cache-Control')) c.res.headers.set(k, v);
   };
@@ -277,7 +281,7 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable, deps: { fetch
         link: '',
       });
     const body: ParentPageDto = {
-      school: { name: s.name, name_ur: s.name_ur, phone: s.phone },
+      school: { name: s.name, name_ur: s.name_ur, phone: s.phone, ...(await identityVersions(c)) },
       guardian: { first_name: firstName(l.guardian_name), lang: l.guardian_lang },
       date: today,
       gate: { kind: gateKind(l), passed },
@@ -375,13 +379,56 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable, deps: { fetch
     return c.json(body);
   });
 
-  /** A short, stable version of the current logo object key (it changes on every upload). */
-  async function logoVersion(c: Context<AppEnv>): Promise<string | null> {
-    const [row] = await c
-      .get('db')
-      .all<{ k: string | null }>(sql`SELECT logo_key AS k FROM school ORDER BY created_at LIMIT 1`);
-    return row?.k ? (await sha256Hex(row.k)).slice(0, 16) : null;
+  /** The school's identity row for the logo and badge routes (one read). */
+  async function identityRow(c: Context<AppEnv>) {
+    const [row] = await c.get('db').all<{
+      k: string | null;
+      name: string;
+      short_name: string | null;
+      brand_color: string | null;
+    }>(sql`SELECT logo_key AS k, name, short_name, brand_color FROM school
+           ORDER BY created_at LIMIT 1`);
+    return row ?? null;
   }
+
+  /**
+   * Cache keys for the school's picture (M7b): `logo_v` changes with every logo upload (null = no
+   * logo); `badge_v` with the badge's letters, name or colour (null = no school yet).
+   */
+  async function identityVersions(
+    c: Context<AppEnv>,
+  ): Promise<{ logo_v: string | null; badge_v: string | null }> {
+    const row = await identityRow(c);
+    if (!row) return { logo_v: null, badge_v: null };
+    return {
+      logo_v: row.k ? (await sha256Hex(row.k)).slice(0, 16) : null,
+      badge_v: (
+        await sha256Hex(`${badgeLetters(row.short_name, row.name)}|${brandColor(row.brand_color)}`)
+      ).slice(0, 16),
+    };
+  }
+
+  /**
+   * The generated school badge (M7b, UI plan §6.2) for the parent page when no logo is uploaded:
+   * token-gated like every /api/p route, an SVG drawn from the short name and colour only (no
+   * user-controlled markup: letters are [A-Z0-9]), cacheable for a week under its `?v=` key.
+   */
+  defineRoute(app, table, { method: 'GET', path: '/api/p/badge', access: view }, async (c) => {
+    await resolve(c);
+    const row = await identityRow(c);
+    if (!row) throw new ApiError(404, 'not_found', 'No school');
+    return new Response(
+      badgeSvg({ shortName: row.short_name, name: row.name, color: row.brand_color, label: '' }),
+      {
+        headers: {
+          'content-type': 'image/svg+xml',
+          'cache-control': 'private, max-age=604800, immutable',
+          'x-content-type-options': 'nosniff',
+          'content-security-policy': "default-src 'none'; sandbox",
+        },
+      },
+    );
+  });
 
   /**
    * The school logo for the parent receipt (M5 gap, M7): token-gated like every /api/p route (no
@@ -436,7 +483,7 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable, deps: { fetch
           name_ur: p.school.name_ur,
           address: p.school.address,
           phone: p.school.phone,
-          logo_v: await logoVersion(c),
+          ...(await identityVersions(c)),
         },
         labels: RECEIPT_LABELS,
         lang: p.lang,

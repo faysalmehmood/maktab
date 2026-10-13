@@ -31,6 +31,14 @@ export const school = sqliteTable(
       .default('ur'),
     /** R2 key of the uploaded logo (FILES bucket); null = none. */
     logoKey: text('logo_key'),
+    /**
+     * Identity (M7b, UI plan §6.1): badge letters (1–4 Latin letters/digits), the city shown under
+     * the name, and a curated colour key (BRAND_COLORS in @maktab/shared). Validated by the API, no
+     * CHECK (adding one rebuilds the table, PLAN §15). NULL = derive / default teal.
+     */
+    shortName: text('short_name'),
+    city: text('city'),
+    brandColor: text('brand_color'),
     /** Receipt number prefix; stored by the wizard now, used by receipts in milestone 3. */
     receiptPrefix: text('receipt_prefix'),
     /** Set by the wizard's last step; until then the owner is sent to the wizard (PLAN §14.1). */

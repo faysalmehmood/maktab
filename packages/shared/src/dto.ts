@@ -20,11 +20,33 @@ export type SchoolDto = {
   default_lang: Lang;
   receipt_prefix: string | null;
   has_logo: boolean;
+  /** Identity (M7b): badge letters, second line under the name, curated colour key. */
+  short_name: string | null;
+  city: string | null;
+  brand_color: string | null;
   setup_completed_at: string | null;
   attendance_mode: AttendanceMode;
   /** Weekdays with no school, 0 = Sunday … 6 = Saturday. */
   weekly_off: number[];
 };
+/**
+ * The public face of the school (M7b, UI plan §6.4): what the sign-in page shows before anyone has
+ * a session. Name, city, badge letters, colour, office phone and whether a logo exists; nothing
+ * else (no address, mode, ids or settings). `school` is null before setup.
+ */
+export type SchoolIdentityDto = {
+  school: {
+    name: string;
+    name_ur: string | null;
+    city: string | null;
+    short_name: string | null;
+    brand_color: string | null;
+    phone: string | null;
+    /** Versioned logo URL key (changes with every upload); null = no logo, draw the badge. */
+    logo_v: string | null;
+  } | null;
+};
+
 /** `school` is null until the setup wizard's first step saves it. */
 export type SchoolResponse = { school: SchoolDto | null };
 

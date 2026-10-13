@@ -101,6 +101,8 @@ GET    /api/auth/google/start                    A A A A A A
 GET    /api/auth/google/callback                 A A A A A A
 POST   /api/auth/logout                          A A A A A A
 GET    /api/me                                   D A A A A D
+GET    /api/identity                             A A A A A A
+GET    /api/identity/logo                        A A A A A A
 GET    /api/school                               D A A A A D
 GET    /api/school/logo                          D A A A A D
 GET    /api/sessions                             D A A A A D
@@ -269,6 +271,7 @@ GET    /api/p                                A A A A A A
 POST   /api/p/gate                           A A A A A A
 GET    /api/p/receipt/:no                    A A A A A A
 GET    /api/p/logo                           A A A A A A
+GET    /api/p/badge                          A A A A A A
 POST   /api/backup/export                    D A D D D D
 GET    /api/backup/export/:id/part           D A D D D D
 POST   /api/backup/export/:id/finish         D A D D D D
@@ -356,6 +359,7 @@ describe('route × role', () => {
       .sort();
     expect(viaPublicGrant).toEqual([
       'GET /api/p',
+      'GET /api/p/badge',
       'GET /api/p/logo',
       'GET /api/p/receipt/:no',
       'POST /api/p/gate',

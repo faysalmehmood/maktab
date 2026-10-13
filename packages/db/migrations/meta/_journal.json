@@ -169,6 +169,13 @@
       "when": 1791879408754,
       "tag": "0023_m6_fix_archived_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1791886449837,
+      "tag": "0024_m7b_school_identity",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isoDateSchema } from './attendance';
+import { BRAND_COLOR_KEYS, type BrandColor, SHORT_NAME_RE } from './brand';
 import { admissionFeesSchema } from './fees';
 import { normalizePkMobile, normalizePkPhone } from './phone';
 import { idSchema, staffRoleSchema } from './user';
@@ -77,6 +78,23 @@ export const schoolInputSchema = z.object({
   address: optText(300),
   phone: optPhoneSchema,
   default_lang: langSchema.default('ur'),
+  /**
+   * Identity (M7b, UI plan §6.1). Omitted (undefined) keeps the saved value, so an older client
+   * that PUTs the profile without them never blanks them; null or "" clears.
+   */
+  short_name: z
+    .string()
+    .trim()
+    .transform((s) => s.toUpperCase())
+    .refine((s) => s === '' || SHORT_NAME_RE.test(s), 'short_name')
+    .transform((s) => (s === '' ? null : s))
+    .nullable()
+    .optional(),
+  city: optText(60),
+  brand_color: z
+    .enum(BRAND_COLOR_KEYS as [BrandColor, ...BrandColor[]])
+    .nullable()
+    .optional(),
   /** Placeholder for M3 receipts; stored, not used yet. */
   receipt_prefix: z
     .string()
