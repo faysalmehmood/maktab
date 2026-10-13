@@ -30,6 +30,7 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "i18n:check": "tsx scripts/i18n-check.ts",
+    "docs:guide": "tsx scripts/docs-guide.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:generate": "npm run generate -w @maktab/db",
     "db:migrate:local": "npm run migrate:local -w @maktab/api",

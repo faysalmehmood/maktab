@@ -1,288 +1,899 @@
+<!-- Generated from packages/shared/src/guide by `npm run docs:guide`. Do not edit by hand. -->
+
 # Maktab onboarding guide / مکتب: شروع کرنے کی رہنمائی
 
-For the school owner and the office clerk. Read it once, then keep it open during your first month.
-Button names below are the English labels in the app; the Urdu screen has the same buttons in the
-same places.
+For the school owner, the office and teachers. The same text is in the app under **Help & guide**
+(`/guide`), where each task also has a "Show me" tour on the real screen. Button names are the
+English labels in the app; the Urdu screen has the same buttons in the same places.
 
-Before you start:
+## Before you start / شروع کرنے سے پہلے
 
-- Use Chrome. Setup and reports are easier on a laptop; attendance, the fee counter and the send
-  queue are made for a phone.
-- **Numbers are always in English digits (0–9)**, also on the Urdu screen and on Urdu receipts.
-  Dates are Gregorian. This is on purpose; it is not a bug.
-- Money is never deleted. A mistake is corrected with a new entry (a reversal, a void with a
-  reason). Every change is kept in the audit log.
+- Use Chrome. Setup and reports are easier on a laptop; attendance, the fee counter and the send queue are made for a phone.
+- Numbers are always in English digits (0–9), also on the Urdu screen and on Urdu receipts. Dates are Gregorian. This is on purpose.
+- Money is never deleted. A mistake is corrected with a new entry (a reversal, a void with a reason). Every change is kept in the audit log.
+- First sign-in: the owner signs in with Google using the owner email set on the server, and becomes the Owner. Everyone else signs in after the owner invites their Google email.
+
+<div dir="rtl" lang="ur">
+
+- Chrome استعمال کریں۔ ترتیب اور رپورٹیں لیپ ٹاپ پر آسان ہیں؛ حاضری، فیس کاؤنٹر اور پیغامات فون کے لیے بنے ہیں۔
+- نمبر ہمیشہ انگریزی ہندسوں (0–9) میں ہوتے ہیں، اردو اسکرین اور اردو رسید پر بھی۔ تاریخیں عیسوی ہیں۔ یہ جان بوجھ کر ہے۔
+- پیسوں کا کوئی اندراج مٹتا نہیں۔ غلطی نئے اندراج سے درست ہوتی ہے (واپسی، یا وجہ کے ساتھ منسوخی)۔ ہر تبدیلی آڈٹ لاگ میں رہتی ہے۔
+- پہلا سائن اِن: مالک سرور پر لکھے گئے ای میل سے گوگل کے ذریعے سائن اِن کرتا ہے اور Owner بن جاتا ہے۔ باقی سب مالک کی دعوت کے بعد اپنے گوگل ای میل سے سائن اِن کرتے ہیں۔
+
+</div>
+
+## Contents
+
+- Getting started: Your first week
+- Every day: Take attendance; Send today's messages
+- At the office: Admit a student; Admit a brother or sister; Collect a fee and give the receipt; Reduce a fee; Close the cash drawer
+- Month-end: Generate the month's fees; Apply late fines; Defaulters and reminders; Income vs expense
+- Parents: Create, renew or revoke a parent link; What parents see
+- Staff: Invite staff; Roles: who can do what; Payslips; My payslips
+- Keeping data safe: Backups; Restore drill; Download everything
+- Phone tips: Install the app on the phone; Working without internet; Printing receipts (thermal and A5); Handing off to WhatsApp
 
 ---
 
-## 1. First sign-in / پہلی بار سائن اِن
+## Getting started / شروعات
 
-پہلی بار مالک اپنے گوگل ای میل سے سائن اِن کرتا ہے۔
+The first week, in order. Do these once.
 
-1. Open the school's Maktab address (for the pilot: https://maktab.conceptlix.com).
-2. Tap **Sign in with Google** and choose the owner's Google account. This must be the owner email
-   the maintainer set on the server. The first person to sign in with it becomes the **Owner**.
-3. Everyone else can sign in only after the owner invites their Google email (section 3). Anyone
-   else sees "Only staff invited by the school can sign in."
-4. The language switch (English / اردو) is in the top bar. Each person can choose their own.
+### Your first week / آپ کا پہلا ہفتہ
 
-Screenshot: onb-01-signin
+*Set up the school, then do each job once: admit, register, fee, message.*
 
-## 2. Setup wizard / اسکول کی ترتیب
+1. Day 1, setup: open **Settings** → **Run the setup wizard** (it opens by itself on the first sign-in). Enter the school name, Urdu name, phone, logo and receipt prefix (letters before receipt numbers, e.g. `ANS`).
+2. Classes: press **Add Pakistani classes and subjects** to fill Nursery to Class 10, FSc, ICS and FA. Remove what you do not teach. Then add the groups (sections like 5-A, 5-B, or academy batches) with a class teacher.
+3. Fees: in **Settings** → **Fees** add the fee heads (Admission, Tuition, Exam) and a rate for each class. Do this before the first admission, so the admission fee is charged.
+4. Staff: **Settings** → **Staff** → **Invite staff** with each person's Google email and role. Have two people with Owner or Admin.
+5. First admissions: **Students** → **Admit** for one child, or **Import CSV** for the whole school at once.
+6. First register: **Attendance** → tap a class → change only the absent ones → **Save attendance**.
+7. First fee: **Monthly billing** → **Preview** → **Generate** for this month, then take the first payment at the **Fee counter**.
+8. First message: open **Messages**, tap **Open WhatsApp** on a row, send it in WhatsApp, come back and tap **Sent & next**.
 
-چند قدم: اسکول، قسم، سیشن، کلاسیں، گروپ، فیس، عملہ۔
+**Common mistakes**
 
-After the first sign-in Maktab opens **School setup**. Steps:
+- Admitting students before adding fee rates: their admission fee is not charged. Add rates first.
+- Only one owner: if that phone is lost, nobody can manage staff. Invite a second owner or admin.
+- Changing the receipt prefix later: it is locked after the first receipt.
 
-1. **School**: school name, name in Urdu, address, phone, default language, receipt prefix (letters
-   before receipt numbers, e.g. `ANS`). Press **Next** once to save; the step then shows the **logo**
-   upload (PNG, JPEG or WebP, up to 512 KB). Press **Next** again to go on.
-2. **Type**: School (classes with sections), Academy (batches and courses) or Both.
-3. **Session**: the school year, e.g. 2026-27, with start and end dates.
-4. **Classes**: press **Add Pakistani classes and subjects** to fill Nursery to Class 10, FSc, ICS,
-   FA and common subjects. Remove what you do not teach; add your own.
-5. **Groups**: sections of a class (5-A, 5-B) or academy batches, with seats, class teacher and
-   subject teachers.
-6. **Fees**: fee heads (Admission, Tuition…) and the monthly rate for each class (details below).
-   You can skip it and do it in **Settings → Fees** later, but before the first fee month.
-7. **Staff**: invite now or skip (section 3).
-8. **Done** → **Open Maktab**. Maktab will not open until there is at least one group (students are
-   admitted into a group); **Back to groups** takes you there.
+In the app: `/guide/first-week` · for owner, admin · "Show me" tour: 8 steps.
 
-You can run it again later: **Settings** → **Run the setup wizard** (top right, owner only).
+<div dir="rtl" lang="ur">
 
-**Fee heads and rates** (wizard step 6, or **Settings → Fees** any time; the late fine, sibling rule
-and accounts are only in Settings). Do this before the first admission, so admission fees are
-charged:
+*اسکول کی ترتیب، پھر ہر کام ایک بار: داخلہ، حاضری، فیس، پیغام۔*
 
-- **Fee heads**: Admission (once), Tuition (monthly), Exam (per term), Other. English and Urdu names.
-- **Rates**: an amount per head for each class (or group), from a date. A rate is never edited: to
-  change it, add a new rate from a date; earlier months keep the old rate.
-- **Late fine**: on/off, "fine after day of the month", fixed amount or percent, optional cap.
-- **Sibling concession**: e.g. 3rd child 25% off (suggested at admission).
-- **Accounts**: one cash drawer per collector, plus the school's bank and wallets (JazzCash,
-  EasyPaisa). If you start mid-year, the owner enters each account's **Opening balance** once,
-  before any money moves.
-- The receipt prefix is locked after the first receipt.
+1. پہلا دن، ترتیب: **Settings** → **Run the setup wizard** کھولیں (پہلی بار سائن اِن پر یہ خود کھلتا ہے)۔ اسکول کا نام، اردو نام، فون، لوگو اور رسید کا پری فکس (رسید نمبر سے پہلے کے حروف، مثلاً `ANS`) لکھیں۔
+2. کلاسیں: **Add Pakistani classes and subjects** دبائیں، نرسری سے دسویں، FSc، ICS اور FA خود آ جائیں گی۔ جو آپ نہیں پڑھاتے وہ ہٹا دیں۔ پھر گروپ (سیکشن جیسے 5-A، 5-B، یا اکیڈمی کے بیچ) کلاس ٹیچر کے ساتھ بنائیں۔
+3. فیس: **Settings** → **Fees** میں فیس کی مدیں (داخلہ، ٹیوشن، امتحان) اور ہر کلاس کا ریٹ لکھیں۔ یہ پہلے داخلے سے پہلے کریں تاکہ داخلہ فیس لگ جائے۔
+4. عملہ: **Settings** → **Staff** → **Invite staff** میں ہر شخص کا گوگل ای میل اور کردار لکھیں۔ کم از کم دو لوگ Owner یا Admin ہوں۔
+5. پہلے داخلے: ایک بچے کے لیے **Students** → **Admit**، یا پورے اسکول کے لیے ایک ساتھ **Import CSV**۔
+6. پہلی حاضری: **Attendance** → کلاس پر ٹیپ کریں → صرف غیر حاضر بدلیں → **Save attendance**۔
+7. پہلی فیس: **Monthly billing** → **Preview** → **Generate** اس مہینے کے لیے، پھر **Fee counter** پر پہلی فیس وصول کریں۔
+8. پہلا پیغام: **Messages** کھولیں، کسی قطار پر **Open WhatsApp** دبائیں، واٹس ایپ میں بھیجیں، واپس آ کر **Sent & next** دبائیں۔
 
-Screenshot: onb-02-wizard-school, onb-03-wizard-classes, onb-04-settings-fees
+**عام غلطیاں**
 
-## 3. Inviting staff / عملے کو دعوت
+- فیس ریٹ سے پہلے داخلے کرنا: داخلہ فیس نہیں لگتی۔ پہلے ریٹ لکھیں۔
+- صرف ایک مالک: وہ فون گم ہو جائے تو عملہ کوئی نہیں سنبھال سکتا۔ دوسرا Owner یا Admin بنائیں۔
+- رسید کا پری فکس بعد میں بدلنا: پہلی رسید کے بعد یہ بند ہو جاتا ہے۔
 
-ہر شخص اپنے گوگل ای میل سے سائن اِن کرتا ہے۔
+</div>
 
-Settings → Staff → **Invite staff**: Google email, name, role (and groups for a teacher). They then
-sign in with that Google account. Staff who never use the app (e.g. a guard on the payroll) are
-added with **Add staff without login**.
+---
 
-| Role | Sees and does |
-|---|---|
-| Owner | Everything: settings, staff and roles, backup, audit log, all money and reports. |
-| Admin | Like the owner except roles, backup and the audit log. Generates fees, gives concessions, approves payslips, corrects registers. |
-| Accountant | Students, fee counter, receipts, own cash drawer, expenses, payroll (not the owner's pay), send queue. Cannot reverse receipts or generate fees. |
-| Teacher | Own groups only: attendance, students of those groups, absence messages, own payslips. No money. |
+## Every day / روزانہ
 
-Have **two people with Owner or Admin**. Nobody can approve their own payslip; an owner on the
-payroll needs a second owner or admin to approve it.
+Attendance in the morning, messages after.
 
-Screenshot: onb-05-staff-invite
+### Take attendance / حاضری لگائیں
 
-## 4. First admissions / پہلے داخلے
+*One register per class each morning, on the phone. Works without internet.*
 
-پہلے سرپرست کا فون نمبر تلاش کریں: شاید بہن بھائی پہلے سے موجود ہو۔
+1. Open **Attendance**. Classes under "To take" still need a register today.
+2. Tap the class. Everyone starts **Present**.
+3. Tap a student to change: present → absent → late → leave. The note button adds a note.
+4. Press **Save attendance**. Absence messages for the parents go to the send queue.
+5. No internet? Save anyway. It says "Saved on this phone" and a waiting count shows in the top bar. It is sent by itself when the phone is online and the app is opened.
 
-**One student**: Students → **Admit**.
+**Common mistakes**
 
-1. **Guardian phone** → **Find family**. If a brother or sister is already here, tap **Yes, same
-   family**; otherwise **No, new family** (family name, area, address).
-2. **Guardians**: name, relation, phone, WhatsApp number (blank = same as phone), message language,
-   and the tick box **"Agrees to receive WhatsApp messages from the school"**. Ask the parent; without
-   this tick Maktab will tell staff to call instead of sending WhatsApp.
-3. **Student**: name, father name, gender, date of birth, B-form, photo (**Take or choose photo**),
-   admission no. (blank = next number).
-4. **Class**: choose the class or batch, start date, roll no. (blank = next).
-5. **Admit student**. The admission fee and the current month's fee are charged from the rates.
+- Signing out with registers still waiting: only the same account can send them. Wait for the count to reach 0.
+- "Your phone's clock is ahead": set the phone to automatic date and time, then save again.
+- A wrong register cannot be retaken by a teacher. Ask the owner or admin: **Correct this register** with a reason.
 
-The date of birth matters later: the parent page asks for the child's birth year.
+In the app: `/guide/take-attendance` · for owner, admin, teacher · "Show me" tour: 6 steps.
 
-**Many students (CSV)**: Students → **Import CSV** → **Download template**, fill one student per row
-in a spreadsheet, save as CSV → choose the file → **Check file** (shows Will add / Skip / Error per
-row) → fix errors → **Import N students**. If it stops part-way, choose the same file again: rows
-already imported are kept and skipped.
+<div dir="rtl" lang="ur">
 
-Fees owed from before Maktab: open the student's family statement → **Opening balance** ("Owed" or
-"Advance held"). Old months are never billed again.
+*ہر صبح ہر کلاس کا ایک رجسٹر، فون پر۔ انٹرنیٹ کے بغیر بھی۔*
 
-Screenshot: onb-06-admission-family, onb-07-admission-student, onb-08-import-check
+1. **Attendance** کھولیں۔ "To take" کے نیچے والی کلاسوں کی حاضری ابھی باقی ہے۔
+2. کلاس پر ٹیپ کریں۔ سب پہلے سے **Present** ہوتے ہیں۔
+3. بچے پر ٹیپ کریں تو بدلتا ہے: حاضر ← غیر حاضر ← دیر ← چھٹی۔ نوٹ کے بٹن سے نوٹ لکھیں۔
+4. **Save attendance** دبائیں۔ والدین کے لیے غیر حاضری کے پیغام قطار میں چلے جاتے ہیں۔
+5. انٹرنیٹ نہیں؟ پھر بھی محفوظ کریں۔ "Saved on this phone" لکھا آئے گا اور اوپر انتظار کی گنتی نظر آئے گی۔ فون آن لائن ہو اور ایپ کھلے تو خود چلی جائے گی۔
 
-## 5. First fee month / پہلا فیس کا مہینہ
+**عام غلطیاں**
 
-ہر مہینے فیس بنائیں، کاؤنٹر پر وصول کریں، رسید دیں۔
+- انتظار والے رجسٹر کے ساتھ سائن آؤٹ کرنا: انہیں صرف وہی اکاؤنٹ بھیج سکتا ہے۔ گنتی 0 ہونے دیں۔
+- "Your phone's clock is ahead": فون کی تاریخ اور وقت خودکار پر کریں، پھر دوبارہ محفوظ کریں۔
+- غلط رجسٹر استاد دوبارہ نہیں لگا سکتا۔ مالک یا ایڈمن سے کہیں: وجہ لکھ کر **Correct this register**۔
 
-**Generate the month** (owner/admin): Fees → **Monthly billing** → choose the month → **Preview**
-→ check the counts → **Generate**. It runs by itself on the 1st as well; pressing it twice never bills
-twice. A group listed under "Finished with no fees" was missing a rate: add the rate, **Re-open
-period**, **Generate** again. **Late fines**: **Preview fines** → **Apply fines** (after the fine day).
+</div>
 
-**Take a payment**: Fees → **Fee counter**.
+### Send today's messages / آج کے پیغامات بھیجیں
 
-1. Search by student name, admission no. or guardian phone → **Open**. You see the whole family:
-   each child's fees, total due, any advance.
-2. Enter the amount received and the method (Cash, Bank, JazzCash, EasyPaisa, Cheque, Other; non-cash
-   needs the account it went into). Oldest dues are paid first; you can choose lines instead.
-3. Confirm. The receipt number is issued. One receipt per family visit.
+*Maktab writes each message; you send it from WhatsApp and tap Sent.*
 
-**The receipt screen**:
+1. Open **Messages**. Waiting messages are grouped: absent today, fee due, fee overdue, payment received, notice.
+2. Press **Start sending** to go one family at a time in large type.
+3. Tap **Open WhatsApp**. WhatsApp opens with the text ready; press send there.
+4. Come back to Maktab and tap **Sent & next**. Nothing is marked sent until you tap it.
+5. Will not send it? **Skip** and choose a reason (wrong number, told in person…).
 
-- Paper: **A5** (normal printer) or **58 mm** (thermal printer); receipt language English or Urdu;
-  then **Print**. Each should print on one page.
+**Common mistakes**
+
+- Tapping **Sent & next** without sending in WhatsApp: the parent never gets it.
+- Rows that say "call instead" have no WhatsApp consent or only a landline. Phone the parent; fix the number on the student page.
+
+In the app: `/guide/send-messages` · for owner, admin, accountant, teacher · "Show me" tour: 4 steps.
+
+<div dir="rtl" lang="ur">
+
+*مکتب پیغام لکھتا ہے؛ آپ واٹس ایپ سے بھیج کر Sent دباتے ہیں۔*
+
+1. **Messages** کھولیں۔ انتظار والے پیغام قسم وار ہیں: آج غیر حاضر، فیس واجب، فیس لیٹ، فیس وصول، نوٹس۔
+2. **Start sending** دبائیں، ایک ایک خاندان بڑے حروف میں سامنے آئے گا۔
+3. **Open WhatsApp** دبائیں۔ واٹس ایپ میں پیغام تیار ملے گا؛ وہاں بھیج دیں۔
+4. مکتب میں واپس آ کر **Sent & next** دبائیں۔ جب تک آپ نہ دبائیں، پیغام بھیجا ہوا نہیں مانا جاتا۔
+5. نہیں بھیجنا؟ **Skip** دبا کر وجہ چنیں (غلط نمبر، خود بتا دیا…)۔
+
+**عام غلطیاں**
+
+- واٹس ایپ میں بھیجے بغیر **Sent & next** دبانا: والدین کو پیغام ملتا ہی نہیں۔
+- "call instead" والی قطاروں میں واٹس ایپ کی اجازت نہیں یا صرف لینڈ لائن ہے۔ فون کریں؛ نمبر طالب علم کے صفحے پر ٹھیک کریں۔
+
+</div>
+
+---
+
+## At the office / دفتر میں
+
+Admissions, fees at the counter, the cash drawer.
+
+### Admit a student / نیا داخلہ
+
+*Start with the guardian's phone, then the child, then the class.*
+
+1. **Students** → **Admit**. Type the guardian phone and press **Find family**.
+2. New family: **No, new family**, then family name, area and address.
+3. Guardians: name, relation, phone, WhatsApp number, message language. Ask the parent, then tick "Agrees to receive WhatsApp messages from the school".
+4. Student: name, father name, date of birth, B-form, photo. Leave admission no. blank for the next number.
+5. Choose the class, then **Admit student**. The admission fee and this month's fee are charged from the rates.
+6. Many at once: **Import CSV** → **Download template** → fill one row per student → **Check file** → **Import N students**.
+
+**Common mistakes**
+
+- Skipping the phone search: a brother or sister ends up in a second family and fees split.
+- Leaving out the date of birth: the parent page asks for the child's birth year.
+- Fees owed from before Maktab go in **Opening balance** on the family statement, not as old months.
+
+In the app: `/guide/admit-student` · for owner, admin, accountant · "Show me" tour: 3 steps.
+
+<div dir="rtl" lang="ur">
+
+*پہلے سرپرست کا فون، پھر بچہ، پھر کلاس۔*
+
+1. **Students** → **Admit**۔ سرپرست کا فون لکھیں اور **Find family** دبائیں۔
+2. نیا خاندان: **No, new family**، پھر خاندان کا نام، علاقہ اور پتا۔
+3. سرپرست: نام، رشتہ، فون، واٹس ایپ نمبر، پیغام کی زبان۔ والدین سے پوچھ کر "Agrees to receive WhatsApp messages from the school" پر نشان لگائیں۔
+4. طالب علم: نام، والد کا نام، تاریخ پیدائش، ب فارم، تصویر۔ داخلہ نمبر خالی چھوڑیں تو اگلا نمبر خود لگے گا۔
+5. کلاس چنیں، پھر **Admit student**۔ داخلہ فیس اور اس مہینے کی فیس ریٹ کے مطابق لگ جاتی ہے۔
+6. بہت سے ایک ساتھ: **Import CSV** → **Download template** → ہر بچے کی ایک سطر بھریں → **Check file** → **Import N students**۔
+
+**عام غلطیاں**
+
+- فون سے تلاش نہ کرنا: بھائی بہن الگ خاندان میں چلے جاتے ہیں اور فیس بٹ جاتی ہے۔
+- تاریخ پیدائش خالی چھوڑنا: والدین کا صفحہ بچے کا سالِ پیدائش پوچھتا ہے۔
+- مکتب سے پہلے کا بقایا فیملی اسٹیٹمنٹ میں **Opening balance** میں لکھیں، پرانے مہینے نہ بنائیں۔
+
+</div>
+
+### Admit a brother or sister / بھائی یا بہن کا داخلہ
+
+*Same family, one fee account: find the family by phone first.*
+
+1. **Students** → **Admit**. Type the phone of a guardian already in Maktab → **Find family**.
+2. Check the children shown, then tap **Yes, same family**. The guardians are already filled in.
+3. Fill in the child and class → **Admit student**. If the school gives a sibling concession, Maktab suggests it.
+4. At the **Fee counter** the family now pays for all children on one receipt.
+
+**Common mistakes**
+
+- Choosing **No, new family** for a sibling: two families, two dues, two parent links.
+- Searching by the child's name instead of the phone: use the guardian phone.
+
+In the app: `/guide/admit-sibling` · for owner, admin, accountant · "Show me" tour: 3 steps.
+
+<div dir="rtl" lang="ur">
+
+*ایک خاندان، ایک فیس کھاتا: پہلے فون سے خاندان تلاش کریں۔*
+
+1. **Students** → **Admit**۔ مکتب میں پہلے سے موجود سرپرست کا فون لکھیں → **Find family**۔
+2. دکھائے گئے بچے دیکھیں، پھر **Yes, same family** دبائیں۔ سرپرست پہلے سے بھرے ہوں گے۔
+3. بچے اور کلاس کی تفصیل بھریں → **Admit student**۔ اگر اسکول بہن بھائی کی رعایت دیتا ہے تو مکتب خود تجویز کرے گا۔
+4. اب **Fee counter** پر خاندان سب بچوں کی فیس ایک رسید پر دیتا ہے۔
+
+**عام غلطیاں**
+
+- بہن بھائی کے لیے **No, new family** چننا: دو خاندان، دو بقایا، دو لنک۔
+- بچے کے نام سے تلاش کرنا: سرپرست کا فون استعمال کریں۔
+
+</div>
+
+### Collect a fee and give the receipt / فیس وصول کریں اور رسید دیں
+
+*Find the family, enter the amount, confirm, then print or share the receipt.*
+
+1. **Fee counter**: search by name, admission no. or guardian phone, then tap the family. You see every child's fees and the total due.
+2. Enter **Amount received (Rs)** (or tap **Full due**) and choose **Paid by**: Cash, Bank, JazzCash, EasyPaisa, Cheque. Oldest dues are paid first.
+3. Press **Confirm and issue receipt**, check the box that opens, and confirm. The receipt number is issued.
+4. On the receipt: choose **A5** (normal printer) or **58 mm** (thermal), the receipt language, then **Print**. Or **Share** to send it from the phone.
+5. **Send payment-received** puts a WhatsApp thank-you, with the family's private link, in the send queue.
+
+**Common mistakes**
+
+- A wrong receipt is never edited. The owner or admin presses **Reverse** with a reason and enters it again.
+- One receipt per family visit: do not make a separate receipt for each child.
+- Non-cash needs the account it went into (bank or wallet); add accounts in **Settings** → **Fees**.
+
+In the app: `/guide/collect-fee` · for owner, admin, accountant · "Show me" tour: 5 steps.
+
+<div dir="rtl" lang="ur">
+
+*خاندان تلاش کریں، رقم لکھیں، تصدیق کریں، پھر رسید پرنٹ یا شیئر کریں۔*
+
+1. **Fee counter**: نام، داخلہ نمبر یا سرپرست کے فون سے تلاش کریں، پھر خاندان پر ٹیپ کریں۔ ہر بچے کی فیس اور کل بقایا سامنے آ جائے گا۔
+2. **Amount received (Rs)** لکھیں (یا **Full due** دبائیں) اور **Paid by** چنیں: Cash، Bank، JazzCash، EasyPaisa، Cheque۔ پہلے پرانا بقایا ادا ہوتا ہے۔
+3. **Confirm and issue receipt** دبائیں، کھلنے والا خانہ دیکھیں اور تصدیق کریں۔ رسید نمبر جاری ہو جاتا ہے۔
+4. رسید پر: **A5** (عام پرنٹر) یا **58 mm** (تھرمل) اور رسید کی زبان چنیں، پھر **Print**۔ یا فون سے بھیجنے کے لیے **Share**۔
+5. **Send payment-received** شکریے کا واٹس ایپ پیغام، خاندان کے نجی لنک کے ساتھ، قطار میں ڈال دیتا ہے۔
+
+**عام غلطیاں**
+
+- غلط رسید بدلی نہیں جاتی۔ مالک یا ایڈمن وجہ لکھ کر **Reverse** کرتا ہے اور دوبارہ درج کرتا ہے۔
+- ہر آمد پر خاندان کی ایک رسید: ہر بچے کی الگ رسید نہ بنائیں۔
+- نقد کے علاوہ رقم کے لیے اکاؤنٹ چننا ضروری ہے (بینک یا والٹ)؛ اکاؤنٹ **Settings** → **Fees** میں بنائیں۔
+
+</div>
+
+### Reduce a fee / فیس میں رعایت
+
+*A concession for one child: a reason, a percent or amount, from a date.*
+
+1. Open the student (**Students** → tap the name) → **Fees** tab.
+2. Press **Reduce fee**. Choose the reason (Sibling, Orphan, Staff child…), **Percent** or **Fixed amount**, the fee head and **From date**.
+3. It applies from the next month that starts on or after that date. To change this month too, press **Regenerate this month**.
+4. To stop it, press **End** with a date and reason. To change it, end it and add a new one.
+
+**Common mistakes**
+
+- Taking less money at the counter instead of a concession: the family then shows as a defaulter.
+- Expecting it on a month already billed: use **Regenerate this month**.
+
+In the app: `/guide/reduce-fee` · for owner, admin · "Show me" tour: 3 steps.
+
+<div dir="rtl" lang="ur">
+
+*ایک بچے کے لیے رعایت: وجہ، فیصد یا رقم، کسی تاریخ سے۔*
+
+1. طالب علم کھولیں (**Students** → نام پر ٹیپ) → **Fees** ٹیب۔
+2. **Reduce fee** دبائیں۔ وجہ (Sibling، Orphan، Staff child…)، **Percent** یا **Fixed amount**، فیس کی مد اور **From date** چنیں۔
+3. یہ اس تاریخ کے بعد شروع ہونے والے مہینے سے لگتی ہے۔ اس مہینے پر بھی لگانی ہو تو **Regenerate this month** دبائیں۔
+4. بند کرنی ہو تو تاریخ اور وجہ کے ساتھ **End** دبائیں۔ بدلنی ہو تو پرانی بند کر کے نئی لگائیں۔
+
+**عام غلطیاں**
+
+- رعایت کی بجائے کاؤنٹر پر کم پیسے لینا: پھر خاندان نادہندہ دکھتا ہے۔
+- پہلے سے بنی فیس پر خود لگنے کی امید: **Regenerate this month** دبائیں۔
+
+</div>
+
+### Close the cash drawer / کیش دراز بند کریں
+
+*At the end of the day: count the cash, enter it, close.*
+
+1. Open **Fees** → **Cash**. Today's drawer shows **Expected**: cash received minus cash paid out.
+2. Count the notes. Enter **Counted cash (Rs)** and look at the **Variance**.
+3. Press **Close drawer**. A closed drawer takes no more entries.
+4. Handing cash to the owner or depositing it: **Handover / bank deposit** (a transfer, never income or expense).
+
+**Common mistakes**
+
+- Closing before counting: only the owner or admin can **Reopen**, with a reason.
+- Entering cash for yesterday: not possible. Record cash on the day it comes in.
+
+In the app: `/guide/close-cash` · for owner, admin, accountant · "Show me" tour: 3 steps.
+
+<div dir="rtl" lang="ur">
+
+*دن کے آخر میں: نقدی گنیں، لکھیں، بند کریں۔*
+
+1. **Fees** → **Cash** کھولیں۔ آج کے دراز میں **Expected** لکھا ہے: آئی نقدی منفی دی گئی نقدی۔
+2. نوٹ گنیں۔ **Counted cash (Rs)** لکھیں اور **Variance** دیکھیں۔
+3. **Close drawer** دبائیں۔ بند دراز میں مزید اندراج نہیں ہوتا۔
+4. نقدی مالک کو دینی ہو یا بینک میں جمع کرانی ہو: **Handover / bank deposit** (یہ منتقلی ہے، آمدنی یا خرچ نہیں)۔
+
+**عام غلطیاں**
+
+- گنے بغیر بند کرنا: پھر صرف مالک یا ایڈمن وجہ لکھ کر **Reopen** کر سکتا ہے۔
+- کل کی نقدی آج لکھنا: ممکن نہیں۔ نقدی اسی دن درج کریں۔
+
+</div>
+
+---
+
+## Month-end / مہینے کا اختتام
+
+Bill the month, fines, reminders, and how the month went.
+
+### Generate the month's fees / مہینے کی فیس بنائیں
+
+*One button bills every class for the month. It also runs by itself on the 1st.*
+
+1. **Fees** → **Monthly billing**. Choose the **Month**.
+2. Press **Preview** and check the counts per class.
+3. Press **Generate** and confirm. Pressing it twice never bills twice.
+4. A class under "Finished with no fees" had no rate. Add the rate in **Settings** → **Fees**, press **Re-open period**, then **Generate** again.
+
+**Common mistakes**
+
+- Changing a rate by editing it: rates are never edited. Add a new rate from a date; old months keep the old rate.
+- Skipping **Preview**: you miss a class with no rate until parents ask.
+
+In the app: `/guide/generate-fees` · for owner, admin · "Show me" tour: 3 steps.
+
+<div dir="rtl" lang="ur">
+
+*ایک بٹن سے ہر کلاس کی مہینے کی فیس بن جاتی ہے۔ یکم کو یہ خود بھی چلتا ہے۔*
+
+1. **Fees** → **Monthly billing**۔ **Month** چنیں۔
+2. **Preview** دبائیں اور ہر کلاس کی گنتی دیکھیں۔
+3. **Generate** دبا کر تصدیق کریں۔ دو بار دبانے سے دو بار فیس نہیں لگتی۔
+4. "Finished with no fees" والی کلاس کا ریٹ نہیں تھا۔ **Settings** → **Fees** میں ریٹ لکھیں، **Re-open period** دبائیں، پھر دوبارہ **Generate**۔
+
+**عام غلطیاں**
+
+- ریٹ میں ترمیم کرنا: ریٹ بدلا نہیں جاتا۔ کسی تاریخ سے نیا ریٹ لگائیں؛ پرانے مہینے پرانے ریٹ پر رہتے ہیں۔
+- **Preview** نہ دیکھنا: بغیر ریٹ والی کلاس کا پتا تب چلتا ہے جب والدین پوچھیں۔
+
+</div>
+
+### Apply late fines / لیٹ جرمانہ لگائیں
+
+*After the fine day, add the late fine to unpaid tuition.*
+
+1. Once: in **Settings** → **Fees** set the late fine (on/off, the day of the month, fixed or percent, optional cap).
+2. **Monthly billing** → **Preview fines** shows who will be fined and how much.
+3. Press **Apply fines**. A fine can be waived at the **Fee counter** by the owner or admin.
+
+**Common mistakes**
+
+- Fining before the fine day: nothing is planned yet, and that is correct.
+- Sponsored shares are never fined; only the family's part is.
+
+In the app: `/guide/apply-fines` · for owner, admin · "Show me" tour: 2 steps.
+
+<div dir="rtl" lang="ur">
+
+*جرمانے کے دن کے بعد، ادا نہ ہونے والی ٹیوشن پر جرمانہ۔*
+
+1. ایک بار: **Settings** → **Fees** میں لیٹ جرمانہ طے کریں (آن/آف، مہینے کا دن، مقررہ یا فیصد، حد)۔
+2. **Monthly billing** → **Preview fines** دکھاتا ہے کس پر کتنا جرمانہ لگے گا۔
+3. **Apply fines** دبائیں۔ مالک یا ایڈمن **Fee counter** پر جرمانہ معاف کر سکتا ہے۔
+
+**عام غلطیاں**
+
+- جرمانے کے دن سے پہلے لگانا: تب کچھ نہیں بنتا، اور یہ درست ہے۔
+- اسپانسر کے حصے پر کبھی جرمانہ نہیں لگتا؛ صرف خاندان کے حصے پر۔
+
+</div>
+
+### Defaulters and reminders / نادہندگان اور یاد دہانی
+
+*Who owes past the due date, and one reminder per family.*
+
+1. **Fees** → **Defaulters**. Filter by class, months overdue or amount.
+2. Press **Remind all**. One message per family goes to the send queue; families reminded in the last few days are skipped.
+3. Then send them from **Messages** as usual. **Print list** gives class teachers a paper copy.
+
+**Common mistakes**
+
+- Expecting **Remind all** to send by itself: it only queues. Open **Messages** to send.
+- A sponsored child never makes the family a defaulter for the sponsor's share.
+
+In the app: `/guide/defaulters` · for owner, admin, accountant · "Show me" tour: 3 steps.
+
+<div dir="rtl" lang="ur">
+
+*کس کی فیس مقررہ تاریخ سے لیٹ ہے، اور ہر خاندان کو ایک یاد دہانی۔*
+
+1. **Fees** → **Defaulters**۔ کلاس، لیٹ مہینوں یا رقم سے چھانٹیں۔
+2. **Remind all** دبائیں۔ ہر خاندان کا ایک پیغام قطار میں جاتا ہے؛ حال ہی میں یاد دلائے گئے خاندان چھوڑ دیے جاتے ہیں۔
+3. پھر معمول کے مطابق **Messages** سے بھیجیں۔ **Print list** سے کلاس ٹیچر کو کاغذی فہرست دیں۔
+
+**عام غلطیاں**
+
+- یہ سمجھنا کہ **Remind all** خود بھیج دے گا: یہ صرف قطار میں ڈالتا ہے۔ بھیجنے کے لیے **Messages** کھولیں۔
+- اسپانسر والے بچے کا اسپانسر حصہ خاندان کو نادہندہ نہیں بناتا۔
+
+</div>
+
+### Income vs expense / آمدنی اور خرچ
+
+*How the month went: fees in, expenses and salaries out.*
+
+1. During the month, record every expense in **Expenses** with category, amount and where it was paid from (drawer or bank). A bill photo helps.
+2. **Reports** → **Income vs expense**. Choose the months. You see income, expenses, salaries and the net.
+3. Every report prints and downloads as CSV for a spreadsheet.
+
+**Common mistakes**
+
+- Deleting a wrong expense: money is never deleted. Void it with a reason and enter it again.
+- Counting a handover to the owner as an expense: it is a transfer, use **Handover / bank deposit**.
+
+In the app: `/guide/income-expense` · for owner, admin, accountant · "Show me" tour: 3 steps.
+
+<div dir="rtl" lang="ur">
+
+*مہینہ کیسا رہا: فیس آئی، خرچ اور تنخواہیں گئیں۔*
+
+1. مہینے بھر ہر خرچ **Expenses** میں درج کریں: قسم، رقم، اور کہاں سے دیا (دراز یا بینک)۔ بل کی تصویر بہتر ہے۔
+2. **Reports** → **Income vs expense**۔ مہینے چنیں۔ آمدنی، خرچ، تنخواہیں اور خالص بچت سامنے آئے گی۔
+3. ہر رپورٹ پرنٹ ہوتی ہے اور اسپریڈشیٹ کے لیے CSV میں بھی آتی ہے۔
+
+**عام غلطیاں**
+
+- غلط خرچ مٹانا: پیسوں کا اندراج مٹتا نہیں۔ وجہ لکھ کر منسوخ کریں اور دوبارہ درج کریں۔
+- مالک کو دی گئی نقدی کو خرچ لکھنا: یہ منتقلی ہے، **Handover / bank deposit** استعمال کریں۔
+
+</div>
+
+---
+
+## Parents / والدین
+
+Each family's private page, without a login.
+
+### Create, renew or revoke a parent link / والدین کا لنک: بنائیں، نیا کریں، بند کریں
+
+*Each guardian gets a private link to the family's page. No login.*
+
+1. Open the student. Under Guardians find **Parent page link**.
+2. **Create link**: choose the check before dues (school default, child's birth year, or a PIN), then **Copy link** or **Send via WhatsApp**. It is shown only once.
+3. Phone lost or link forwarded? **New link**: the old one stops working at once.
+4. **Revoke** turns the link off with no replacement. "Recent visits" shows when it was opened.
+
+**Common mistakes**
+
+- Sending the link in a class WhatsApp group: it is private to one family.
+- Looking for an old link later: Maktab does not keep it. Make a **New link**.
+
+In the app: `/guide/parent-links` · for owner, admin, accountant · "Show me" tour: 2 steps.
+
+<div dir="rtl" lang="ur">
+
+*ہر سرپرست کو خاندان کے صفحے کا نجی لنک ملتا ہے۔ کوئی لاگ اِن نہیں۔*
+
+1. طالب علم کھولیں۔ Guardians کے نیچے **Parent page link** دیکھیں۔
+2. **Create link**: بقایا دکھانے سے پہلے کی جانچ چنیں (اسکول کی ترتیب، بچے کا سالِ پیدائش، یا PIN)، پھر **Copy link** یا **Send via WhatsApp**۔ لنک صرف ایک بار دکھتا ہے۔
+3. فون گم ہو گیا یا لنک آگے چلا گیا؟ **New link**: پرانا فوراً بند ہو جاتا ہے۔
+4. **Revoke** لنک بند کر دیتا ہے، نیا نہیں بنتا۔ "Recent visits" بتاتا ہے کب کھولا گیا۔
+
+**عام غلطیاں**
+
+- لنک کلاس کے واٹس ایپ گروپ میں بھیجنا: یہ ایک خاندان کا نجی لنک ہے۔
+- پرانا لنک بعد میں ڈھونڈنا: مکتب اسے محفوظ نہیں رکھتا۔ **New link** بنائیں۔
+
+</div>
+
+### What parents see / والدین کو کیا نظر آتا ہے
+
+*Attendance, dues, receipts and notices, in Urdu or English, with a Listen button.*
+
+1. The link opens the family's page on the parent's phone, without a login.
+2. Anyone with the link sees today's attendance, this month's attendance % and notices.
+3. Dues and receipts first ask a question: by default the birth year of one of the children (or the school's PIN). Five wrong answers lock it for 15 minutes.
+4. The **Listen** button reads the page aloud, for parents who prefer to hear it.
+
+**Common mistakes**
+
+- Treating the birth-year check as a password: it only slows down a forwarded link.
+- A parent says "That does not match": check the date of birth on the student page.
+
+In the app: `/guide/parent-view` · for owner, admin, accountant, teacher.
+
+<div dir="rtl" lang="ur">
+
+*حاضری، بقایا، رسیدیں اور نوٹس، اردو یا انگریزی میں، سننے کے بٹن کے ساتھ۔*
+
+1. لنک والدین کے فون پر خاندان کا صفحہ کھولتا ہے، بغیر لاگ اِن کے۔
+2. لنک والا کوئی بھی آج کی حاضری، اس مہینے کی حاضری کا فیصد اور نوٹس دیکھ سکتا ہے۔
+3. بقایا اور رسیدوں سے پہلے ایک سوال آتا ہے: عام طور پر کسی بچے کا سالِ پیدائش (یا اسکول کا PIN)۔ پانچ غلط جواب پر 15 منٹ کے لیے بند۔
+4. **Listen** کا بٹن صفحہ پڑھ کر سناتا ہے، ان والدین کے لیے جو سننا پسند کریں۔
+
+**عام غلطیاں**
+
+- سالِ پیدائش کی جانچ کو پاس ورڈ سمجھنا: یہ صرف آگے بھیجے گئے لنک کو روکتی ہے۔
+- والدین کہیں "That does not match": طالب علم کے صفحے پر تاریخ پیدائش دیکھیں۔
+
+</div>
+
+---
+
+## Staff / عملہ
+
+Who can sign in, what they can do, and pay.
+
+### Invite staff / عملے کو دعوت دیں
+
+*Each person signs in with their own Google email after you invite it.*
+
+1. **Settings** → **Staff**. In **Invite staff** type the **Google email**, name and role (and the groups for a teacher).
+2. Save. They sign in with that Google account; nobody else can.
+3. Staff who never use the app (a guard on the payroll): **Add staff without login**.
+4. Someone leaves: disable them in the staff list. Their past entries stay.
+
+**Common mistakes**
+
+- A typo in the email: "Only staff invited by the school can sign in." Check it letter by letter.
+- Sharing one account between two people: the audit log cannot tell who did what.
+
+In the app: `/guide/invite-staff` · for owner · "Show me" tour: 2 steps.
+
+<div dir="rtl" lang="ur">
+
+*دعوت کے بعد ہر شخص اپنے گوگل ای میل سے سائن اِن کرتا ہے۔*
+
+1. **Settings** → **Staff**۔ **Invite staff** میں **Google email**، نام اور کردار لکھیں (استاد کے لیے گروپ بھی)۔
+2. محفوظ کریں۔ وہ اسی گوگل اکاؤنٹ سے سائن اِن کریں گے؛ کوئی اور نہیں کر سکتا۔
+3. جو عملہ ایپ استعمال نہیں کرتا (تنخواہ والا چوکیدار): **Add staff without login**۔
+4. کوئی چھوڑ کر جائے: عملے کی فہرست میں بند کر دیں۔ پرانے اندراج محفوظ رہتے ہیں۔
+
+**عام غلطیاں**
+
+- ای میل میں غلطی: "Only staff invited by the school can sign in." حرف بہ حرف دیکھیں۔
+- دو لوگوں کا ایک اکاؤنٹ: آڈٹ لاگ میں پتا نہیں چلتا کس نے کیا کیا۔
+
+</div>
+
+### Roles: who can do what / کردار: کون کیا کر سکتا ہے
+
+*Owner, Admin, Accountant, Teacher. Each sees only their work.*
+
+1. **Owner**: everything, including staff roles, backup and the audit log.
+2. **Admin**: like the owner except roles, backup and the audit log. Bills fees, gives concessions, approves payslips, corrects registers.
+3. **Accountant**: students, fee counter, receipts, own cash drawer, expenses, payroll (not the owner's pay), messages. Cannot reverse receipts or bill the month.
+4. **Teacher**: own groups only: attendance, those students, absence messages, own payslips. No money.
+
+**Common mistakes**
+
+- Making the accountant an admin "to be safe": admins can bill and give concessions.
+- Nobody approves their own payslip. An owner on the payroll needs a second owner or admin.
+
+In the app: `/guide/roles` · for owner, admin.
+
+<div dir="rtl" lang="ur">
+
+*Owner، Admin، Accountant، Teacher۔ ہر ایک کو صرف اپنا کام نظر آتا ہے۔*
+
+1. **Owner**: سب کچھ، عملے کے کردار، بیک اپ اور آڈٹ لاگ سمیت۔
+2. **Admin**: مالک جیسا، سوائے کردار، بیک اپ اور آڈٹ لاگ کے۔ فیس بناتا، رعایت دیتا، تنخواہ منظور کرتا، رجسٹر درست کرتا ہے۔
+3. **Accountant**: طلبہ، فیس کاؤنٹر، رسیدیں، اپنا کیش دراز، خرچ، تنخواہیں (مالک کی نہیں)، پیغامات۔ رسید واپس یا مہینے کی فیس نہیں بنا سکتا۔
+4. **Teacher**: صرف اپنے گروپ: حاضری، وہی طلبہ، غیر حاضری کے پیغام، اپنی تنخواہ کی پرچی۔ پیسوں تک رسائی نہیں۔
+
+**عام غلطیاں**
+
+- احتیاطاً اکاؤنٹنٹ کو ایڈمن بنانا: ایڈمن فیس بنا اور رعایت دے سکتا ہے۔
+- کوئی اپنی تنخواہ خود منظور نہیں کرتا۔ تنخواہ لینے والے مالک کو دوسرا Owner یا Admin چاہیے۔
+
+</div>
+
+### Payslips / تنخواہ کی پرچیاں
+
+*Prepare, check, approve, pay, print. Once a month.*
+
+1. **Payroll**: choose the month and press **Prepare payslips**.
+2. Open each slip and check the lines: allowances, deductions, advance recovery.
+3. **Approve** (owner or admin, never your own slip). Then **Pay**: amount and the account it is paid from.
+4. **Print slip** for the staff member. Teachers see their own under **My payslips**.
+
+**Common mistakes**
+
+- Paying salary as an expense: use **Pay** on the slip, so the salary register stays right.
+- Lines are frozen once approved: check before you approve.
+
+In the app: `/guide/payslips` · for owner, admin, accountant · "Show me" tour: 2 steps.
+
+<div dir="rtl" lang="ur">
+
+*تیار کریں، دیکھیں، منظور کریں، ادا کریں، پرنٹ کریں۔ مہینے میں ایک بار۔*
+
+1. **Payroll**: مہینہ چنیں اور **Prepare payslips** دبائیں۔
+2. ہر پرچی کھول کر لائنیں دیکھیں: الاؤنس، کٹوتی، ایڈوانس کی واپسی۔
+3. **Approve** (مالک یا ایڈمن، اپنی پرچی کبھی نہیں)۔ پھر **Pay**: رقم اور جس اکاؤنٹ سے دی۔
+4. ملازم کے لیے **Print slip**۔ اساتذہ اپنی پرچی **My payslips** میں دیکھتے ہیں۔
+
+**عام غلطیاں**
+
+- تنخواہ کو خرچ میں لکھنا: پرچی پر **Pay** استعمال کریں تاکہ تنخواہ رجسٹر درست رہے۔
+- منظوری کے بعد لائنیں نہیں بدلتیں: پہلے دیکھ لیں۔
+
+</div>
+
+### My payslips / میری تنخواہ کی پرچیاں
+
+*Your own approved slips, to view and print.*
+
+1. Open **My payslips** from the menu (on the phone: **More**).
+2. Tap a month to see the lines, then **Print slip** if you need paper.
+
+**Common mistakes**
+
+- A month is missing: it is not approved yet. Ask the office.
+
+In the app: `/guide/my-payslips` · for teacher.
+
+<div dir="rtl" lang="ur">
+
+*آپ کی اپنی منظور شدہ پرچیاں، دیکھنے اور پرنٹ کے لیے۔*
+
+1. مینو سے **My payslips** کھولیں (فون پر: **More**)۔
+2. کسی مہینے پر ٹیپ کر کے لائنیں دیکھیں، کاغذ چاہیے تو **Print slip**۔
+
+**عام غلطیاں**
+
+- کوئی مہینہ نظر نہیں آ رہا: ابھی منظور نہیں ہوا۔ دفتر سے پوچھیں۔
+
+</div>
+
+---
+
+## Keeping data safe / ڈیٹا کی حفاظت
+
+Backups, the restore drill, and your own copy.
+
+### Backups / بیک اپ
+
+*An encrypted copy every night, in two places. Check that it ran.*
+
+1. **Settings** → **Backup** → **Nightly backup** shows the last run (OK / Partial / Failed), its size and copies.
+2. It runs every night at 02:30 Pakistan time. Failed, or an alarm that backups have not run: tell the maintainer the same day.
+3. A wrong change noticed within 7 days can be undone by the maintainer; everything entered after that minute is typed in again from paper.
+
+**Common mistakes**
+
+- Ignoring the red banner on Home: it means the backup did not run.
+- Losing the backup key: the key is held by two trustees. Without it, no backup can be opened.
+
+In the app: `/guide/backups` · for owner · "Show me" tour: 3 steps.
+
+<div dir="rtl" lang="ur">
+
+*ہر رات دو جگہ خفیہ کاپی۔ دیکھتے رہیں کہ بنی یا نہیں۔*
+
+1. **Settings** → **Backup** → **Nightly backup** میں آخری بیک اپ (OK / Partial / Failed)، سائز اور کاپیاں نظر آتی ہیں۔
+2. یہ ہر رات 02:30 (پاکستانی وقت) چلتا ہے۔ Failed ہو یا الارم آئے کہ بیک اپ نہیں بنا: اسی دن مینٹینر کو بتائیں۔
+3. 7 دن کے اندر پکڑی گئی غلطی مینٹینر واپس کر سکتا ہے؛ اس منٹ کے بعد کا سب کچھ کاغذ سے دوبارہ لکھنا ہو گا۔
+
+**عام غلطیاں**
+
+- ہوم پر سرخ پٹی کو نظر انداز کرنا: اس کا مطلب بیک اپ نہیں بنا۔
+- بیک اپ کی چابی کھو دینا: چابی دو امانت داروں کے پاس ہے۔ اس کے بغیر کوئی بیک اپ نہیں کھلتا۔
+
+</div>
+
+### Restore drill / ریسٹور کی مشق
+
+*Once a term, prove the backup opens. Takes about an hour with the maintainer.*
+
+1. Agree a time with the maintainer and one key trustee.
+2. The maintainer restores last night's backup into a test copy. You check a few things you know: a family's dues, last week's receipts, a register.
+3. **Settings** → **Backup** → **Restore drill (once a term)**: tick the steps, add a note, **Record drill**.
+
+**Common mistakes**
+
+- Skipping the drill because backups say OK: a backup nobody has opened is a guess.
+
+In the app: `/guide/restore-drill` · for owner.
+
+<div dir="rtl" lang="ur">
+
+*ہر ٹرم ایک بار ثابت کریں کہ بیک اپ کھلتا ہے۔ مینٹینر کے ساتھ تقریباً ایک گھنٹہ۔*
+
+1. مینٹینر اور چابی کے ایک امانت دار کے ساتھ وقت طے کریں۔
+2. مینٹینر کل رات کا بیک اپ ایک ٹیسٹ کاپی میں کھولتا ہے۔ آپ چند معلوم چیزیں دیکھیں: کسی خاندان کا بقایا، پچھلے ہفتے کی رسیدیں، کوئی رجسٹر۔
+3. **Settings** → **Backup** → **Restore drill (once a term)**: قدموں پر نشان لگائیں، نوٹ لکھیں، **Record drill**۔
+
+**عام غلطیاں**
+
+- بیک اپ OK دیکھ کر مشق چھوڑ دینا: جو بیک اپ کبھی کھولا نہ گیا وہ صرف اندازہ ہے۔
+
+</div>
+
+### Download everything / سب کچھ ڈاؤن لوڈ کریں
+
+*Your own copy of all the school's data, once a month.*
+
+1. **Settings** → **Backup** → **Download everything**. Keep the page open until it says Saved.
+2. You get one ZIP: a CSV file for every table (opens in Excel), the database structure and a README.
+3. Keep it on a USB or a private drive, not in WhatsApp: it holds every family, phone number and CNIC.
+
+**Common mistakes**
+
+- Closing the tab while it prepares: the download stops. Start again.
+
+In the app: `/guide/download-everything` · for owner · "Show me" tour: 2 steps.
+
+<div dir="rtl" lang="ur">
+
+*اسکول کے سارے ڈیٹا کی اپنی کاپی، مہینے میں ایک بار۔*
+
+1. **Settings** → **Backup** → **Download everything**۔ Saved آنے تک صفحہ کھلا رکھیں۔
+2. ایک ZIP ملے گی: ہر ٹیبل کی CSV فائل (Excel میں کھلتی ہے)، ڈیٹابیس کا ڈھانچہ اور README۔
+3. اسے USB یا نجی ڈرائیو میں رکھیں، واٹس ایپ میں نہیں: اس میں ہر خاندان، فون نمبر اور CNIC ہے۔
+
+**عام غلطیاں**
+
+- تیاری کے دوران ٹیب بند کرنا: ڈاؤن لوڈ رک جاتا ہے۔ دوبارہ شروع کریں۔
+
+</div>
+
+---
+
+## Phone tips / فون کے لیے
+
+Install, work offline, print, hand off to WhatsApp.
+
+### Install the app on the phone / فون پر ایپ انسٹال کریں
+
+*Opens like an app from the home screen, and works without internet.*
+
+1. Open Maktab in Chrome on the phone and sign in.
+2. When the banner "Install Maktab on this phone" shows, tap **Install**. No banner? Chrome menu (⋮) → **Add to Home screen** or **Install app**.
+3. From now on open Maktab from the home-screen icon.
+
+**Common mistakes**
+
+- Opening Maktab from an old WhatsApp link every day: use the icon, it is faster and works offline.
+
+In the app: `/guide/install-app` · for owner, admin, accountant, teacher.
+
+<div dir="rtl" lang="ur">
+
+*ہوم اسکرین سے ایپ کی طرح کھلتی ہے، اور انٹرنیٹ کے بغیر بھی چلتی ہے۔*
+
+1. فون پر Chrome میں مکتب کھولیں اور سائن اِن کریں۔
+2. جب "Install Maktab on this phone" کی پٹی آئے تو **Install** دبائیں۔ پٹی نہیں آئی؟ Chrome مینو (⋮) → **Add to Home screen** یا **Install app**۔
+3. اب سے مکتب ہوم اسکرین کے آئیکن سے کھولیں۔
+
+**عام غلطیاں**
+
+- ہر روز پرانے واٹس ایپ لنک سے کھولنا: آئیکن استعمال کریں، تیز ہے اور بغیر انٹرنیٹ چلتا ہے۔
+
+</div>
+
+### Working without internet / انٹرنیٹ کے بغیر کام
+
+*Registers save on the phone and go when the internet is back. Money needs the internet.*
+
+1. Open the app and each class register once while online; then they also open offline.
+2. Offline, **Save attendance** still works: "Saved on this phone". The top bar shows how many are waiting.
+3. When the phone is online again, open the app: waiting registers are sent by themselves.
+4. The fee counter shows the family offline but cannot issue a receipt until you are back online.
+
+**Common mistakes**
+
+- Signing out with registers waiting: Maktab warns you. Wait for the internet first.
+- Clearing Chrome's data with registers waiting: they are lost.
+
+In the app: `/guide/offline` · for owner, admin, accountant, teacher.
+
+<div dir="rtl" lang="ur">
+
+*حاضری فون میں محفوظ ہو کر انٹرنیٹ آنے پر چلی جاتی ہے۔ پیسوں کے کام کے لیے انٹرنیٹ ضروری ہے۔*
+
+1. انٹرنیٹ ہوتے ہوئے ایپ اور ہر کلاس کا رجسٹر ایک بار کھول لیں؛ پھر یہ بغیر انٹرنیٹ بھی کھلیں گے۔
+2. بغیر انٹرنیٹ بھی **Save attendance** کام کرتا ہے: "Saved on this phone"۔ اوپر کی پٹی بتاتی ہے کتنے باقی ہیں۔
+3. فون دوبارہ آن لائن ہو تو ایپ کھولیں: باقی رجسٹر خود چلے جاتے ہیں۔
+4. فیس کاؤنٹر بغیر انٹرنیٹ خاندان دکھاتا ہے، مگر رسید انٹرنیٹ آنے پر ہی بنتی ہے۔
+
+**عام غلطیاں**
+
+- باقی رجسٹر کے ساتھ سائن آؤٹ: مکتب خبردار کرتا ہے۔ پہلے انٹرنیٹ کا انتظار کریں۔
+- باقی رجسٹر کے ہوتے Chrome کا ڈیٹا صاف کرنا: وہ ضائع ہو جاتے ہیں۔
+
+</div>
+
+### Printing receipts (thermal and A5) / رسید پرنٹ (تھرمل اور A5)
+
+*Choose the paper on the receipt screen, then Print. Each fits one page.*
+
+1. On the receipt: **58 mm** for a thermal printer, **A5** for a normal printer.
+2. Choose the **Receipt language** (English or Urdu), then **Print**.
+3. In Chrome's print window pick the printer, or **Save as PDF** to send the receipt as a file.
+
+**Common mistakes**
+
+- Margins set to "Default" on a thermal printer cut the sides: choose "None".
+- Printing twice for a copy is fine; issuing a second receipt is not.
+
+In the app: `/guide/printing` · for owner, admin, accountant.
+
+<div dir="rtl" lang="ur">
+
+*رسید کی اسکرین پر کاغذ چنیں، پھر Print۔ ہر رسید ایک صفحے پر۔*
+
+1. رسید پر: تھرمل پرنٹر کے لیے **58 mm**، عام پرنٹر کے لیے **A5**۔
+2. **Receipt language** چنیں (انگریزی یا اردو)، پھر **Print**۔
+3. Chrome کی پرنٹ ونڈو میں پرنٹر چنیں، یا رسید فائل کی شکل میں بھیجنے کے لیے **Save as PDF**۔
+
+**عام غلطیاں**
+
+- تھرمل پرنٹر پر مارجن "Default" سے کنارے کٹ جاتے ہیں: "None" چنیں۔
+- کاپی کے لیے دوبارہ پرنٹ ٹھیک ہے؛ دوسری رسید جاری کرنا نہیں۔
+
+</div>
+
+### Handing off to WhatsApp / واٹس ایپ پر بھیجنا
+
+*Maktab prepares; WhatsApp sends; you come back and tap Sent.*
+
+1. Use the school's WhatsApp number on the phone you send from (WhatsApp Business is fine).
+2. **Open WhatsApp** opens the right chat with the text ready, in the guardian's language. Press send in WhatsApp.
+3. Come back with the back button; Maktab is still where you left it. Tap **Sent & next**.
+4. Class WhatsApp groups: **Copy all texts for this class** (absence and notice texts only; fee texts are private).
+
+**Common mistakes**
+
+- Editing away the link at the end of the text: the parent cannot open their page.
+- Pop-up blocked: tap **Open WhatsApp** again, or allow pop-ups for Maktab.
+
+In the app: `/guide/whatsapp` · for owner, admin, accountant, teacher.
+
+<div dir="rtl" lang="ur">
+
+*مکتب تیار کرتا ہے؛ واٹس ایپ بھیجتا ہے؛ آپ واپس آ کر Sent دباتے ہیں۔*
+
+1. جس فون سے بھیجنا ہے اس پر اسکول کا واٹس ایپ نمبر ہو (WhatsApp Business بھی ٹھیک ہے)۔
+2. **Open WhatsApp** درست چیٹ میں سرپرست کی زبان میں پیغام تیار کھول دیتا ہے۔ واٹس ایپ میں بھیج دیں۔
+3. بیک بٹن سے واپس آئیں؛ مکتب وہیں کھلا ملے گا۔ **Sent & next** دبائیں۔
+4. کلاس کے واٹس ایپ گروپ: **Copy all texts for this class** (صرف غیر حاضری اور نوٹس؛ فیس کے پیغام نجی ہیں)۔
+
+**عام غلطیاں**
+
+- پیغام کے آخر سے لنک ہٹا دینا: والدین اپنا صفحہ نہیں کھول سکتے۔
+- پاپ اپ بند ہو گیا: دوبارہ **Open WhatsApp** دبائیں، یا مکتب کے لیے پاپ اپ کی اجازت دیں۔
+
+</div>
+
+---
+
+## For the maintainer
+
 - Receipt print URL parameters (for a bookmark or a shared link): `/receipts/<id>?fmt=a5` (default)
   or `fmt=thermal` (58 mm), and `lang=en` or `lang=ur` for the receipt language. Without `lang`,
   the language saved on the receipt is used.
-- **Share**: sends a short text (school, receipt no., amount, date) through the phone's share sheet,
-  or copies it. For a family payment the last line is the guardian's private parent-page link (made
-  for them if they have none, unless the school's default check is a PIN). The link is added even
-  when the guardian has not agreed to WhatsApp messages: that consent covers the automatic send
-  queue, while Share is the collector's own manual choice. Each share is recorded in the audit log;
-  a reversed receipt gets no link. (API: `POST /api/receipts/:id/parent-link` answers **200**
-  `{url}` — `null` when no link can be made — because it usually returns the guardian's existing
-  link rather than creating one; 409 `already_reversed` for a reversed receipt.)
-- **Send payment-received**: puts a WhatsApp message with the family's private parent-page link in
-  the send queue (section 7).
-- A wrong receipt is never edited: **Reverse** with a reason (owner/admin), optionally re-enter it
-  correctly in the same step.
+- Receipt **Share** ends with the guardian's parent-page link even without WhatsApp consent (consent
+  covers the automatic send queue; sharing by hand is the collector's choice). Each share is in the
+  audit log; a reversed receipt gets no link. API: `POST /api/receipts/:id/parent-link` answers 200
+  `{url}` (`null` when no link can be made), 409 `already_reversed`.
+- Settings → Messages: the school's default parent-link check, the message templates (keep `{link}`
+  in every text), and **Revoke all parent links** (owner, for a leak).
+- Restore needs the same `PARENT_LINK_SECRET`, else revoke all parent links after the restore.
+- Runbooks: docs/backup.md, docs/restore.md, docs/deploy.md, docs/pilot-checklist.md,
+  docs/android-checks.md.
 
-Screenshot: onb-09-billing-preview, onb-10-counter-family, onb-11-receipt-58mm, onb-12-receipt-a5-ur
-
-## 6. Daily attendance / روزانہ حاضری
-
-استاد فون پر حاضری لیتا ہے۔ انٹرنیٹ نہ ہو تب بھی محفوظ ہو جاتی ہے۔
-
-Teacher, on the phone:
-
-1. **Attendance** shows today's groups; "Not taken" ones need a register.
-2. Tap the group. Everyone starts **Present**. Tap a student to change: present → absent → late →
-   leave. Add a note if needed.
-3. **Save attendance**.
-
-**No internet?** Save anyway. You see "Saved on this phone. It will be sent when the internet is
-back." and a "waiting to sync" count. It is sent by itself when the phone is online again and the app
-is opened. Do not dismiss a waiting register unless you will take it again.
-
-- Install the app on the phone (Chrome menu → **Add to Home screen** / **Install app**) so it opens
-  like an app, also offline.
-- "Your phone's clock is ahead": set the phone to automatic date and time, then save again.
-- After saving, **Open send queue** shows the absence messages for that class.
-- Only owner/admin can correct a saved register (**Correct this register**, reason required).
-- Monthly register: Attendance → **Monthly register** → **Print** or **Download CSV**.
-
-Screenshot: onb-13-attendance-today, onb-14-register, onb-15-register-offline
-
-## 7. Send queue / پیغامات کی قطار
-
-ایپ پیغام تیار کرتی ہے؛ آپ واٹس ایپ میں بھیج کر "Sent" دباتے ہیں۔
-
-Maktab does not send WhatsApp messages by itself. It prepares each message (in the guardian's
-language, with their private link) and you send it from the school's WhatsApp.
-
-1. Open **Send queue**. Messages are grouped by type: Absent today, Fee due, Fee overdue, Payment
-   received, Notice.
-2. Tap **Open WhatsApp**. WhatsApp opens with the text ready. Press send in WhatsApp.
-3. Come back to Maktab and tap **Sent** (or **Sent & next**). Nothing is marked sent until you tap it.
-4. **Skip** with a reason (Wrong number, Told in person, …) if you will not send it.
-
-Consent and numbers:
-
-- A guardian without the WhatsApp consent tick, or with only a landline, shows **"call instead"**.
-  Phone them. Fix the number or consent on the student page.
-- One message per family. Siblings absent the same day are merged. An absent child marked present
-  later is skipped automatically.
-- **Compose notice** (owner/admin): write once in English and/or Urdu, send to all families, one class
-  or chosen families. For class WhatsApp groups use **Copy all texts for this class** (absence and
-  notice texts only; fee texts are private).
-- Message texts: Settings → Messages → message templates (English and Urdu). Keep `{link}` in every
-  text.
-
-Screenshot: onb-16-send-queue, onb-17-compose-notice
-
-## 8. Parent links / والدین کا صفحہ
-
-ہر خاندان کا ایک نجی لنک۔ فیس دیکھنے سے پہلے بچے کا سالِ پیدائش پوچھا جاتا ہے۔
-
-Each family gets a private page: today's attendance, this month's attendance %, dues (with how they
-are calculated), receipts, notices, in Urdu or English, with a **Listen** button that reads the page
-aloud. No login. The link goes out automatically in WhatsApp messages from the send queue.
-
-- **Check before dues**: attendance and notices show to anyone with the link. Fees and receipts ask a
-  question first, by default **the birth year of one of the children** (or a 4–6 digit PIN the school
-  gives). Five wrong answers lock the check for 15 minutes. It is a speed bump against a forwarded
-  link, not a password.
-- On the student page (or family statement) → **Parent page link**: **Create link** (choose the check,
-  then **Copy link** or **Send via WhatsApp**; it is shown only once), **New link** (the old one stops),
-  **Revoke**. "Recent visits" shows when it was opened.
-- Settings → Messages: the school default check, and **Revoke all parent links** (owner, for a leak).
-
-Screenshot: onb-18-parent-link-panel, onb-19-parent-page-ur, onb-20-parent-gate
-
-## 9. Cash closing / روزانہ کیش بند کرنا
-
-دن کے آخر میں گنی ہوئی رقم درج کریں اور دراز بند کریں۔
-
-Every collector has their own cash drawer. It opens with the first cash receipt of the day, or with
-**Open drawer** and an opening float.
-
-At the end of the day: **Cash** → today's drawer shows **Expected** (cash received minus cash paid
-out). Count the cash, enter **Counted cash (Rs)**, see the **Variance**, **Close drawer**.
-
-- Giving cash to the owner or depositing it in the bank: **Handover / bank deposit** (a transfer,
-  never income or expense).
-- A closed drawer takes no more entries. Only owner/admin can **Reopen**, with a reason. Cash cannot
-  be entered for a past day.
-
-Screenshot: onb-21-cash-close
-
-## 10. Month-end / مہینے کا اختتام
-
-نادہندگان کو یاد دہانی، رپورٹیں، تنخواہیں۔
-
-- **Defaulters** (Fees → Defaulters): who owes past the due date, by class and months overdue.
-  **Remind all** (Fee overdue or Fee due) queues one message per family; families reminded in the last
-  few days are skipped (the number of days is in Settings). **Print list** for class teachers.
-- **Reports**: fee register (one class, one month), collection by collector, concession register,
-  sponsor statements, monthly attendance register, expense register, salary register, income vs
-  expense, cashbook, account balances. All print and CSV.
-- **Expenses**: record each with category, amount, paid from (drawer or bank), optional bill photo.
-  A wrong one is voided with a reason.
-- **Salaries**: Salary → **Prepare payslips** for the month → check lines (allowances, deductions,
-  advance recovery) → **Approve** (owner/admin, never your own) → **Pay** (amount, from account) →
-  **Print slip**. Staff advances: **Advances**. Teachers see their own under **My payslips**.
-- **Concessions**: student page (fees part) or family statement → **Reduce fee** (reason, % or amount, from date). End it with a date
-  and reason; a change is end + new row.
-
-Screenshot: onb-22-defaulters, onb-23-reports-hub, onb-24-payslip
-
-## 11. Backups / بیک اپ
-
-ہر رات خودکار بیک اپ؛ مالک کبھی کبھی "Download everything" بھی کرے۔
-
-Owner: **Settings → Backup**.
-
-- **Nightly backup**: the last run (OK / Partial / Failed), size and copies. It runs every night at
-  02:30 Pakistan time, encrypted, to two cloud stores. If it shows Failed or an alarm says backups
-  have not run, tell the maintainer.
-- **Download everything**: one ZIP with every table as CSV, the database structure and a README. Do it
-  monthly and keep it safe (it holds every family, phone number and CNIC).
-- **Undo recent damage (Time Travel)**: a wrong change noticed within 7 days can be undone by the
-  maintainer, but everything entered after that minute must be typed in again from paper receipts.
-- **Restore drill (once a term)**: tick the steps with the maintainer, then **Record drill**.
-- **Alarms** also show as a banner on the owner's dashboard.
-
-The backup key and the parent-link secret are held by two trustees. Losing the key means losing every
-backup.
-
-Screenshot: onb-25-settings-backup
-
----
-
-Help: ask the maintainer (maktab@conceptlix.com). Technical runbooks: docs/backup.md,
-docs/restore.md, docs/deploy.md, docs/pilot-checklist.md.
+Help: ask the maintainer (maktab@conceptlix.com).

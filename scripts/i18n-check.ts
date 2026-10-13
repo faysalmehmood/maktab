@@ -13,6 +13,7 @@
 // the key is in ALLOW.
 
 import { RECEIPT_LABELS } from '../packages/shared/src/fees';
+import { GUIDE_SECTIONS, GUIDE_TASKS, GUIDE_UI } from '../packages/shared/src/guide';
 import { en } from '../packages/shared/src/i18n';
 import { screensEn } from '../packages/shared/src/i18n-screens';
 import { ur } from '../packages/shared/src/i18n-ur';
@@ -99,6 +100,27 @@ for (const [name, e, u] of pairs) {
   flatten(e, name, enFlat);
   flatten(u, name, urFlat);
 }
+
+// The Help & guide content (packages/shared/src/guide): every { en, ur } pair, by its path. A guide
+// text whose Urdu is exactly an English UI label is a button name and allowed as English.
+const uiLabels = new Set(flatten({ ...en, screens: screensEn }, '', new Map()).values());
+const guideAllowed = new Set<string>();
+function guidePairs(tree: unknown, prefix: string): void {
+  if (!tree || typeof tree !== 'object') return;
+  const o = tree as Record<string, unknown>;
+  if (typeof o.en === 'string' && typeof o.ur === 'string' && Object.keys(o).length === 2) {
+    enFlat.set(prefix, o.en);
+    urFlat.set(prefix, o.ur);
+    if (o.ur === o.en && uiLabels.has(o.en)) guideAllowed.add(prefix);
+    return;
+  }
+  for (const [k, v] of Object.entries(o)) {
+    const id = Array.isArray(tree) && v && typeof v === 'object' && 'id' in v ? String(v.id) : k;
+    guidePairs(v, `${prefix}.${id}`);
+  }
+}
+guidePairs({ ui: GUIDE_UI, sections: GUIDE_SECTIONS, tasks: GUIDE_TASKS }, 'guide');
+for (const k of guideAllowed) ALLOW.add(k);
 
 const problems: Record<string, string[]> = {
   missing: [],

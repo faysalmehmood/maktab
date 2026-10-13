@@ -21,6 +21,8 @@ jobs:
       - run: npm run lint
       - name: Urdu dictionary complete (no missing / empty / untranslated keys, Latin digits)
         run: npm run i18n:check
+      - name: docs/onboarding.md matches the in-app guide content
+        run: npm run docs:guide -- --check
       - run: npm test
       - run: npm run build
       - name: First-load bundle budget (entry < 150 KB gzip, no zod / Urdu up front); SW never serves /p or /api
