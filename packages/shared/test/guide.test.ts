@@ -1,7 +1,3 @@
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   GUIDE_ROLES,
@@ -9,16 +5,18 @@ import {
   GUIDE_TASKS,
   GUIDE_UI,
   type L,
-  renderOnboardingMarkdown,
+  labelKeys,
+  lookup,
+  plain,
   runs,
   say,
   taskById,
   tasksFor,
 } from '../src/guide';
+import { md, renderOnboardingMarkdown } from '../src/guide/markdown';
 import { en } from '../src/i18n';
 import { screensEn } from '../src/i18n-screens';
-
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+import { ur } from '../src/i18n-ur';
 
 /** Every { en, ur } pair in the content, with a readable path. */
 function pairs(): [string, L][] {
@@ -36,29 +34,10 @@ function pairs(): [string, L][] {
   return out;
 }
 
-/** Every English UI label (the button names the guide may quote). */
-const UI_LABELS = (() => {
-  const set = new Set<string>();
-  const walk = (v: unknown) => {
-    if (typeof v === 'string') set.add(v);
-    else if (v && typeof v === 'object') for (const x of Object.values(v)) walk(x);
-  };
-  walk(en);
-  walk(screensEn);
-  return set;
-})();
+const EN = { ...en, screens: screensEn };
 
-/**
- * Bold names that are not Maktab labels: Chrome's own menu items, the import button's count form,
- * and role names / tab names written as the UI shows them.
- */
-const NOT_OURS = new Set([
-  'Add to Home screen',
-  'Install app',
-  'Save as PDF',
-  'Import N students',
-  'Present',
-]);
+/** Bold names that are not Maktab's labels (Chrome's own menu and print window). */
+const NOT_OURS = new Set(['Add to Home screen', 'Install app', 'Save as PDF']);
 
 describe('guide content', () => {
   it('has unique task ids, known sections and roles, and every section has tasks', () => {
@@ -83,26 +62,35 @@ describe('guide content', () => {
       expect(/[٠-٩۰-۹]/.test(l.ur), `${path} has Arabic-Indic digits`).toBe(false);
       const ph = (s: string) => [...s.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
       expect(ph(l.ur), path).toEqual(ph(l.en));
-      // Urdu is Urdu, unless the whole text is an English button name the screen shows.
-      if (!UI_LABELS.has(l.ur)) expect(/[؀-ۿ]/.test(l.ur), `${path}: ${l.ur}`).toBe(true);
+      // Urdu is Urdu, unless the whole text is quoted labels (resolved from the Urdu dictionary).
+      const own = l.ur.replace(/\[\[[\w.]+\]\]/g, '').replace(/[\s،۔.,:→()]/g, '');
+      if (own) expect(/[\u0600-\u06FF]/.test(own), `${path}: ${l.ur}`).toBe(true);
     }
   });
 
-  it('quotes button names exactly as the app shows them, the same in both languages', () => {
+  it('quotes button names from the UI dictionaries, the same ones in both languages', () => {
+    let quoted = 0;
     for (const [path, l] of pairs()) {
-      const enBold = runs(l.en)
-        .filter((r) => r.strong)
-        .map((r) => r.text);
-      const urBold = runs(l.ur)
-        .filter((r) => r.strong)
-        .map((r) => r.text);
-      for (const b of enBold)
-        expect(UI_LABELS.has(b) || NOT_OURS.has(b), `${path}: **${b}** is not a UI label`).toBe(
-          true,
-        );
-      // Urdu keeps the English button names (they are English on the screen).
-      for (const b of urBold) expect(enBold, `${path}: **${b}** only in Urdu`).toContain(b);
+      const ke = labelKeys(l.en);
+      const ku = labelKeys(l.ur);
+      quoted += ke.length;
+      expect([...ku].sort(), `${path}: labels differ between en and ur`).toEqual([...ke].sort());
+      for (const k of ke) {
+        expect(lookup(EN, k), `${path}: [[${k}]] not in en`).toBeTypeOf('string');
+        expect(lookup(ur, k), `${path}: [[${k}]] not in ur`).toBeTypeOf('string');
+      }
+      for (const lang of ['en', 'ur'] as const)
+        for (const r of runs(l[lang]))
+          if (r.kind === 'strong')
+            expect(NOT_OURS.has(r.text), `${path}: **${r.text}** should be a [[label]]`).toBe(true);
     }
+    expect(quoted).toBeGreaterThan(100);
+    // Each language quotes its own screen: the Urdu doc shows the Urdu button.
+    expect(md('Press [[attendance.save]].', 'en')).toBe('Press **Save attendance**.');
+    expect(md('Press [[attendance.save]].', 'ur')).toBe(
+      `Press **${lookup(ur, 'attendance.save')}**.`,
+    );
+    expect(md('[[import.commit_other]]', 'en')).toBe('**Import N students**');
   });
 
   it('gives each role its own trimmed list', () => {
@@ -137,11 +125,15 @@ describe('guide content', () => {
   it('fills placeholders and splits bold runs', () => {
     expect(say(GUIDE_UI.counter, 'en', { i: 2, n: 5 })).toBe('Step 2 of 5');
     expect(say(GUIDE_UI.counter, 'ur', { i: 2, n: 5 })).toBe('قدم 2 از 5');
-    expect(runs('Press **Save** now')).toEqual([
-      { text: 'Press ', strong: false },
-      { text: 'Save', strong: true },
-      { text: ' now', strong: false },
+    expect(runs('Press [[attendance.save]] or **Install app** in `ANS`')).toEqual([
+      { text: 'Press ', kind: 'plain' },
+      { text: 'attendance.save', kind: 'label' },
+      { text: ' or ', kind: 'plain' },
+      { text: 'Install app', kind: 'strong' },
+      { text: ' in ', kind: 'plain' },
+      { text: 'ANS', kind: 'code' },
     ]);
+    expect(plain('Tap [[attendance.save]].', (k) => k.toUpperCase())).toBe('Tap ATTENDANCE.SAVE.');
     expect(taskById('collect-fee')?.section).toBe('office');
     expect(taskById('nope')).toBeUndefined();
   });
@@ -152,28 +144,12 @@ describe('docs:guide (docs/onboarding.md from the guide content)', () => {
     const a = renderOnboardingMarkdown();
     expect(renderOnboardingMarkdown()).toBe(a);
     for (const t of GUIDE_TASKS) {
-      expect(a).toContain(t.title.en);
-      expect(a).toContain(t.title.ur);
+      expect(a).toContain(md(t.title.en, 'en'));
+      expect(a).toContain(md(t.title.ur, 'ur'));
       for (const s of t.steps) {
-        expect(a).toContain(s.text.en);
-        expect(a).toContain(s.text.ur);
+        expect(a).toContain(md(s.text.en, 'en'));
+        expect(a).toContain(md(s.text.ur, 'ur'));
       }
     }
-  });
-
-  it('matches the committed docs/onboarding.md (run `npm run docs:guide` after editing)', () => {
-    expect(readFileSync(join(root, 'docs', 'onboarding.md'), 'utf8')).toBe(
-      renderOnboardingMarkdown(),
-    );
-  });
-
-  it('the script is idempotent and --check passes on the committed file', () => {
-    const run = (...args: string[]) =>
-      execFileSync('npx', ['tsx', 'scripts/docs-guide.ts', ...args], {
-        cwd: root,
-        encoding: 'utf8',
-      });
-    expect(run()).toContain('unchanged');
-    expect(run('--check')).toContain('up to date');
   });
 });

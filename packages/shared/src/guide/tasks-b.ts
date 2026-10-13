@@ -1,3 +1,4 @@
+import { TASK_ROLES } from './audience';
 import type { GuideTask } from './types';
 
 /* Month-end, parents, staff, keeping data safe, phone tips. */
@@ -6,7 +7,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'generate-fees',
     section: 'month',
-    roles: ['owner', 'admin'],
+    roles: TASK_ROLES['generate-fees'],
     title: { en: "Generate the month's fees", ur: 'مہینے کی فیس بنائیں' },
     summary: {
       en: 'One button bills every class for the month. It also runs by itself on the 1st.',
@@ -16,26 +17,26 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/fees/billing',
         text: {
-          en: '**Fees** → **Monthly billing**. Choose the **Month**.',
-          ur: '**Fees** → **Monthly billing**۔ **Month** چنیں۔',
+          en: '[[nav.fees]] → [[fee.nav.billing]]. Choose the [[fee.billing.period]].',
+          ur: '[[nav.fees]] → [[fee.nav.billing]]۔ [[fee.billing.period]] چنیں۔',
         },
       },
       {
         text: {
-          en: 'Press **Preview** and check the counts per class.',
-          ur: '**Preview** دبائیں اور ہر کلاس کی گنتی دیکھیں۔',
+          en: 'Press [[fee.billing.preview]] and check the counts per class.',
+          ur: '[[fee.billing.preview]] دبائیں اور ہر کلاس کی گنتی دیکھیں۔',
         },
       },
       {
         text: {
-          en: 'Press **Generate** and confirm. Pressing it twice never bills twice.',
-          ur: '**Generate** دبا کر تصدیق کریں۔ دو بار دبانے سے دو بار فیس نہیں لگتی۔',
+          en: 'Press [[fee.billing.generate]] and confirm. Pressing it twice never bills twice.',
+          ur: '[[fee.billing.generate]] دبا کر تصدیق کریں۔ دو بار دبانے سے دو بار فیس نہیں لگتی۔',
         },
       },
       {
         text: {
-          en: 'A class under "Finished with no fees" had no rate. Add the rate in **Settings** → **Fees**, press **Re-open period**, then **Generate** again.',
-          ur: '"Finished with no fees" والی کلاس کا ریٹ نہیں تھا۔ **Settings** → **Fees** میں ریٹ لکھیں، **Re-open period** دبائیں، پھر دوبارہ **Generate**۔',
+          en: 'A class under [[fee.billing.reopenTitle]] had no rate. Add the rate in [[nav.settings]] → [[settings.sections.fees]], press [[fee.billing.reopen]], then [[fee.billing.generate]] again.',
+          ur: '[[fee.billing.reopenTitle]] والی کلاس کا ریٹ نہیں تھا۔ [[nav.settings]] → [[settings.sections.fees]] میں ریٹ لکھیں، [[fee.billing.reopen]] دبائیں، پھر دوبارہ [[fee.billing.generate]]۔',
         },
       },
     ],
@@ -45,11 +46,13 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'ریٹ میں ترمیم کرنا: ریٹ بدلا نہیں جاتا۔ کسی تاریخ سے نیا ریٹ لگائیں؛ پرانے مہینے پرانے ریٹ پر رہتے ہیں۔',
       },
       {
-        en: 'Skipping **Preview**: you miss a class with no rate until parents ask.',
-        ur: '**Preview** نہ دیکھنا: بغیر ریٹ والی کلاس کا پتا تب چلتا ہے جب والدین پوچھیں۔',
+        en: 'Skipping [[fee.billing.preview]]: you miss a class with no rate until parents ask.',
+        ur: '[[fee.billing.preview]] نہ دیکھنا: بغیر ریٹ والی کلاس کا پتا تب چلتا ہے جب والدین پوچھیں۔',
       },
     ],
-    links: [{ to: '/fees/billing', label: { en: 'Monthly billing', ur: 'Monthly billing' } }],
+    links: [
+      { to: '/fees/billing', label: { en: '[[fee.nav.billing]]', ur: '[[fee.nav.billing]]' } },
+    ],
     tour: [
       {
         path: '/fees/billing',
@@ -63,7 +66,7 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         path: '/fees/billing',
         target: 'billing-preview',
-        title: { en: 'Preview', ur: 'Preview' },
+        title: { en: '[[fee.billing.preview]]', ur: '[[fee.billing.preview]]' },
         body: {
           en: 'Shows what will be billed. Nothing is saved yet.',
           ur: 'دکھاتا ہے کیا بنے گا۔ ابھی کچھ محفوظ نہیں ہوتا۔',
@@ -72,7 +75,7 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         path: '/fees/billing',
         target: 'billing-generate',
-        title: { en: 'Generate', ur: 'Generate' },
+        title: { en: '[[fee.billing.generate]]', ur: '[[fee.billing.generate]]' },
         body: {
           en: 'Bills the month after you confirm. Safe to press again.',
           ur: 'تصدیق کے بعد مہینے کی فیس بنا دیتا ہے۔ دوبارہ دبانا محفوظ ہے۔',
@@ -84,7 +87,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'apply-fines',
     section: 'month',
-    roles: ['owner', 'admin'],
+    roles: TASK_ROLES['apply-fines'],
     title: { en: 'Apply late fines', ur: 'لیٹ جرمانہ لگائیں' },
     summary: {
       en: 'After the fine day, add the late fine to unpaid tuition.',
@@ -94,21 +97,21 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/settings?section=fees',
         text: {
-          en: 'Once: in **Settings** → **Fees** set the late fine (on/off, the day of the month, fixed or percent, optional cap).',
-          ur: 'ایک بار: **Settings** → **Fees** میں لیٹ جرمانہ طے کریں (آن/آف، مہینے کا دن، مقررہ یا فیصد، حد)۔',
+          en: 'Once: in [[nav.settings]] → [[settings.sections.fees]] set the late fine (on/off, the day of the month, fixed or percent, optional cap).',
+          ur: 'ایک بار: [[nav.settings]] → [[settings.sections.fees]] میں لیٹ جرمانہ طے کریں (آن/آف، مہینے کا دن، مقررہ یا فیصد، حد)۔',
         },
       },
       {
         to: '/fees/billing',
         text: {
-          en: '**Monthly billing** → **Preview fines** shows who will be fined and how much.',
-          ur: '**Monthly billing** → **Preview fines** دکھاتا ہے کس پر کتنا جرمانہ لگے گا۔',
+          en: '[[fee.nav.billing]] → [[fee.billing.finesPreview]] shows who will be fined and how much.',
+          ur: '[[fee.nav.billing]] → [[fee.billing.finesPreview]] دکھاتا ہے کس پر کتنا جرمانہ لگے گا۔',
         },
       },
       {
         text: {
-          en: 'Press **Apply fines**. A fine can be waived at the **Fee counter** by the owner or admin.',
-          ur: '**Apply fines** دبائیں۔ مالک یا ایڈمن **Fee counter** پر جرمانہ معاف کر سکتا ہے۔',
+          en: 'Press [[fee.billing.finesApply]]. A fine can be waived at the [[fee.nav.counter]] by the owner or admin.',
+          ur: '[[fee.billing.finesApply]] دبائیں۔ مالک یا ایڈمن [[fee.nav.counter]] پر جرمانہ معاف کر سکتا ہے۔',
         },
       },
     ],
@@ -122,7 +125,9 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'اسپانسر کے حصے پر کبھی جرمانہ نہیں لگتا؛ صرف خاندان کے حصے پر۔',
       },
     ],
-    links: [{ to: '/fees/billing', label: { en: 'Monthly billing', ur: 'Monthly billing' } }],
+    links: [
+      { to: '/fees/billing', label: { en: '[[fee.nav.billing]]', ur: '[[fee.nav.billing]]' } },
+    ],
     tour: [
       {
         path: '/fees/billing',
@@ -136,10 +141,10 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         path: '/fees/billing',
         target: 'fines-preview',
-        title: { en: 'Preview fines', ur: 'Preview fines' },
+        title: { en: '[[fee.billing.finesPreview]]', ur: '[[fee.billing.finesPreview]]' },
         body: {
-          en: 'See the list first; **Apply fines** appears when there is something to fine.',
-          ur: 'پہلے فہرست دیکھیں؛ کچھ لگانا ہو تو **Apply fines** نظر آئے گا۔',
+          en: 'See the list first; [[fee.billing.finesApply]] appears when there is something to fine.',
+          ur: 'پہلے فہرست دیکھیں؛ کچھ لگانا ہو تو [[fee.billing.finesApply]] نظر آئے گا۔',
         },
       },
     ],
@@ -148,7 +153,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'defaulters',
     section: 'month',
-    roles: ['owner', 'admin', 'accountant'],
+    roles: TASK_ROLES.defaulters,
     title: { en: 'Defaulters and reminders', ur: 'نادہندگان اور یاد دہانی' },
     summary: {
       en: 'Who owes past the due date, and one reminder per family.',
@@ -158,34 +163,39 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/fees/defaulters',
         text: {
-          en: '**Fees** → **Defaulters**. Filter by class, months overdue or amount.',
-          ur: '**Fees** → **Defaulters**۔ کلاس، لیٹ مہینوں یا رقم سے چھانٹیں۔',
+          en: '[[nav.fees]] → [[fee.nav.defaulters]]. Filter by class, months overdue or amount.',
+          ur: '[[nav.fees]] → [[fee.nav.defaulters]]۔ کلاس، لیٹ مہینوں یا رقم سے چھانٹیں۔',
         },
       },
       {
         text: {
-          en: 'Press **Remind all**. One message per family goes to the send queue; families reminded in the last few days are skipped.',
-          ur: '**Remind all** دبائیں۔ ہر خاندان کا ایک پیغام قطار میں جاتا ہے؛ حال ہی میں یاد دلائے گئے خاندان چھوڑ دیے جاتے ہیں۔',
+          en: 'Press [[fee.defaulters.remindAll]]. One message per family goes to the send queue; families reminded in the last few days are skipped.',
+          ur: '[[fee.defaulters.remindAll]] دبائیں۔ ہر خاندان کا ایک پیغام قطار میں جاتا ہے؛ حال ہی میں یاد دلائے گئے خاندان چھوڑ دیے جاتے ہیں۔',
         },
       },
       {
         text: {
-          en: 'Then send them from **Messages** as usual. **Print list** gives class teachers a paper copy.',
-          ur: 'پھر معمول کے مطابق **Messages** سے بھیجیں۔ **Print list** سے کلاس ٹیچر کو کاغذی فہرست دیں۔',
+          en: 'Then send them from [[shell.nav.messages]] as usual. [[fee.defaulters.print]] gives class teachers a paper copy.',
+          ur: 'پھر معمول کے مطابق [[shell.nav.messages]] سے بھیجیں۔ [[fee.defaulters.print]] سے کلاس ٹیچر کو کاغذی فہرست دیں۔',
         },
       },
     ],
     mistakes: [
       {
-        en: 'Expecting **Remind all** to send by itself: it only queues. Open **Messages** to send.',
-        ur: 'یہ سمجھنا کہ **Remind all** خود بھیج دے گا: یہ صرف قطار میں ڈالتا ہے۔ بھیجنے کے لیے **Messages** کھولیں۔',
+        en: 'Expecting [[fee.defaulters.remindAll]] to send by itself: it only queues. Open [[shell.nav.messages]] to send.',
+        ur: 'یہ سمجھنا کہ [[fee.defaulters.remindAll]] خود بھیج دے گا: یہ صرف قطار میں ڈالتا ہے۔ بھیجنے کے لیے [[shell.nav.messages]] کھولیں۔',
       },
       {
         en: "A sponsored child never makes the family a defaulter for the sponsor's share.",
         ur: 'اسپانسر والے بچے کا اسپانسر حصہ خاندان کو نادہندہ نہیں بناتا۔',
       },
     ],
-    links: [{ to: '/fees/defaulters', label: { en: 'Defaulters', ur: 'Defaulters' } }],
+    links: [
+      {
+        to: '/fees/defaulters',
+        label: { en: '[[fee.nav.defaulters]]', ur: '[[fee.nav.defaulters]]' },
+      },
+    ],
     tour: [
       {
         path: '/fees/defaulters',
@@ -199,7 +209,7 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         path: '/fees/defaulters',
         target: 'def-remind',
-        title: { en: 'Remind all', ur: 'Remind all' },
+        title: { en: '[[fee.defaulters.remindAll]]', ur: '[[fee.defaulters.remindAll]]' },
         body: {
           en: 'Queues one reminder per family in their language.',
           ur: 'ہر خاندان کو اس کی زبان میں ایک یاد دہانی قطار میں ڈالتا ہے۔',
@@ -208,7 +218,7 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         path: '/fees/defaulters',
         target: 'def-print',
-        title: { en: 'Print list', ur: 'Print list' },
+        title: { en: '[[fee.defaulters.print]]', ur: '[[fee.defaulters.print]]' },
         body: { en: 'A paper list for class teachers.', ur: 'کلاس ٹیچر کے لیے کاغذی فہرست۔' },
       },
     ],
@@ -217,7 +227,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'income-expense',
     section: 'month',
-    roles: ['owner', 'admin', 'accountant'],
+    roles: TASK_ROLES['income-expense'],
     title: { en: 'Income vs expense', ur: 'آمدنی اور خرچ' },
     summary: {
       en: 'How the month went: fees in, expenses and salaries out.',
@@ -227,15 +237,15 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/expenses',
         text: {
-          en: 'During the month, record every expense in **Expenses** with category, amount and where it was paid from (drawer or bank). A bill photo helps.',
-          ur: 'مہینے بھر ہر خرچ **Expenses** میں درج کریں: قسم، رقم، اور کہاں سے دیا (دراز یا بینک)۔ بل کی تصویر بہتر ہے۔',
+          en: 'During the month, record every expense in [[money.nav.expenses]] with category, amount and where it was paid from (drawer or bank). A bill photo helps.',
+          ur: 'مہینے بھر ہر خرچ [[money.nav.expenses]] میں درج کریں: قسم، رقم، اور کہاں سے دیا (دراز یا بینک)۔ بل کی تصویر بہتر ہے۔',
         },
       },
       {
         to: '/reports/income-expense',
         text: {
-          en: '**Reports** → **Income vs expense**. Choose the months. You see income, expenses, salaries and the net.',
-          ur: '**Reports** → **Income vs expense**۔ مہینے چنیں۔ آمدنی، خرچ، تنخواہیں اور خالص بچت سامنے آئے گی۔',
+          en: '[[money.nav.reports]] → [[money.reports.incomeExpense]]. Choose the months. You see income, expenses, salaries and the net.',
+          ur: '[[money.nav.reports]] → [[money.reports.incomeExpense]]۔ مہینے چنیں۔ آمدنی، خرچ، تنخواہیں اور خالص بچت سامنے آئے گی۔',
         },
       },
       {
@@ -251,16 +261,16 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'غلط خرچ مٹانا: پیسوں کا اندراج مٹتا نہیں۔ وجہ لکھ کر منسوخ کریں اور دوبارہ درج کریں۔',
       },
       {
-        en: 'Counting a handover to the owner as an expense: it is a transfer, use **Handover / bank deposit**.',
-        ur: 'مالک کو دی گئی نقدی کو خرچ لکھنا: یہ منتقلی ہے، **Handover / bank deposit** استعمال کریں۔',
+        en: 'Counting a handover to the owner as an expense: it is a transfer, use [[fee.cash.transfer]].',
+        ur: 'مالک کو دی گئی نقدی کو خرچ لکھنا: یہ منتقلی ہے، [[fee.cash.transfer]] استعمال کریں۔',
       },
     ],
     links: [
       {
         to: '/reports/income-expense',
-        label: { en: 'Income vs expense', ur: 'Income vs expense' },
+        label: { en: '[[money.reports.incomeExpense]]', ur: '[[money.reports.incomeExpense]]' },
       },
-      { to: '/expenses', label: { en: 'Expenses', ur: 'Expenses' } },
+      { to: '/expenses', label: { en: '[[money.nav.expenses]]', ur: '[[money.nav.expenses]]' } },
     ],
     tour: [
       {
@@ -298,7 +308,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'parent-links',
     section: 'parents',
-    roles: ['owner', 'admin', 'accountant'],
+    roles: TASK_ROLES['parent-links'],
     title: {
       en: 'Create, renew or revoke a parent link',
       ur: 'والدین کا لنک: بنائیں، نیا کریں، بند کریں',
@@ -311,26 +321,26 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/students',
         text: {
-          en: 'Open the student. Under Guardians find **Parent page link**.',
-          ur: 'طالب علم کھولیں۔ Guardians کے نیچے **Parent page link** دیکھیں۔',
+          en: 'Open the student. Under Guardians find [[msg.link.title]].',
+          ur: 'طالب علم کھولیں۔ Guardians کے نیچے [[msg.link.title]] دیکھیں۔',
         },
       },
       {
         text: {
-          en: "**Create link**: choose the check before dues (school default, child's birth year, or a PIN), then **Copy link** or **Send via WhatsApp**. It is shown only once.",
-          ur: '**Create link**: بقایا دکھانے سے پہلے کی جانچ چنیں (اسکول کی ترتیب، بچے کا سالِ پیدائش، یا PIN)، پھر **Copy link** یا **Send via WhatsApp**۔ لنک صرف ایک بار دکھتا ہے۔',
+          en: "[[msg.link.create]]: choose the check before dues (school default, child's birth year, or a PIN), then [[msg.link.copy]] or [[msg.link.sendWa]]. It is shown only once.",
+          ur: '[[msg.link.create]]: بقایا دکھانے سے پہلے کی جانچ چنیں (اسکول کی ترتیب، بچے کا سالِ پیدائش، یا PIN)، پھر [[msg.link.copy]] یا [[msg.link.sendWa]]۔ لنک صرف ایک بار دکھتا ہے۔',
         },
       },
       {
         text: {
-          en: 'Phone lost or link forwarded? **New link**: the old one stops working at once.',
-          ur: 'فون گم ہو گیا یا لنک آگے چلا گیا؟ **New link**: پرانا فوراً بند ہو جاتا ہے۔',
+          en: 'Phone lost or link forwarded? [[msg.link.rotate]]: the old one stops working at once.',
+          ur: 'فون گم ہو گیا یا لنک آگے چلا گیا؟ [[msg.link.rotate]]: پرانا فوراً بند ہو جاتا ہے۔',
         },
       },
       {
         text: {
-          en: '**Revoke** turns the link off with no replacement. "Recent visits" shows when it was opened.',
-          ur: '**Revoke** لنک بند کر دیتا ہے، نیا نہیں بنتا۔ "Recent visits" بتاتا ہے کب کھولا گیا۔',
+          en: '[[msg.link.revoke]] turns the link off with no replacement. [[msg.link.access]] shows when it was opened.',
+          ur: '[[msg.link.revoke]] لنک بند کر دیتا ہے، نیا نہیں بنتا۔ [[msg.link.access]] بتاتا ہے کب کھولا گیا۔',
         },
       },
     ],
@@ -340,11 +350,11 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'لنک کلاس کے واٹس ایپ گروپ میں بھیجنا: یہ ایک خاندان کا نجی لنک ہے۔',
       },
       {
-        en: 'Looking for an old link later: Maktab does not keep it. Make a **New link**.',
-        ur: 'پرانا لنک بعد میں ڈھونڈنا: مکتب اسے محفوظ نہیں رکھتا۔ **New link** بنائیں۔',
+        en: 'Looking for an old link later: Maktab does not keep it. Make a [[msg.link.rotate]].',
+        ur: 'پرانا لنک بعد میں ڈھونڈنا: مکتب اسے محفوظ نہیں رکھتا۔ [[msg.link.rotate]] بنائیں۔',
       },
     ],
-    links: [{ to: '/students', label: { en: 'Students', ur: 'Students' } }],
+    links: [{ to: '/students', label: { en: '[[nav.students]]', ur: '[[nav.students]]' } }],
     tour: [
       {
         path: '/students',
@@ -359,10 +369,10 @@ export const TASKS_B: readonly GuideTask[] = [
         path: '/students/:id',
         target: 'parent-link',
         wait: true,
-        title: { en: 'Parent page link', ur: 'Parent page link' },
+        title: { en: '[[msg.link.title]]', ur: '[[msg.link.title]]' },
         body: {
-          en: '**Create link**, **New link** or **Revoke**, for each guardian.',
-          ur: 'ہر سرپرست کے لیے **Create link**، **New link** یا **Revoke**۔',
+          en: '[[msg.link.create]], [[msg.link.rotate]] or [[msg.link.revoke]], for each guardian.',
+          ur: 'ہر سرپرست کے لیے [[msg.link.create]]، [[msg.link.rotate]] یا [[msg.link.revoke]]۔',
         },
       },
     ],
@@ -371,7 +381,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'parent-view',
     section: 'parents',
-    roles: ['owner', 'admin', 'accountant', 'teacher'],
+    roles: TASK_ROLES['parent-view'],
     title: { en: 'What parents see', ur: 'والدین کو کیا نظر آتا ہے' },
     summary: {
       en: 'Attendance, dues, receipts and notices, in Urdu or English, with a Listen button.',
@@ -398,8 +408,8 @@ export const TASKS_B: readonly GuideTask[] = [
       },
       {
         text: {
-          en: 'The **Listen** button reads the page aloud, for parents who prefer to hear it.',
-          ur: '**Listen** کا بٹن صفحہ پڑھ کر سناتا ہے، ان والدین کے لیے جو سننا پسند کریں۔',
+          en: 'The [[msg.parent.listen]] button reads the page aloud, for parents who prefer to hear it.',
+          ur: '[[msg.parent.listen]] کا بٹن صفحہ پڑھ کر سناتا ہے، ان والدین کے لیے جو سننا پسند کریں۔',
         },
       },
     ],
@@ -409,8 +419,8 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'سالِ پیدائش کی جانچ کو پاس ورڈ سمجھنا: یہ صرف آگے بھیجے گئے لنک کو روکتی ہے۔',
       },
       {
-        en: 'A parent says "That does not match": check the date of birth on the student page.',
-        ur: 'والدین کہیں "That does not match": طالب علم کے صفحے پر تاریخ پیدائش دیکھیں۔',
+        en: 'A parent says [[errors.gate_failed]]: check the date of birth on the student page.',
+        ur: 'والدین کہیں [[errors.gate_failed]]: طالب علم کے صفحے پر تاریخ پیدائش دیکھیں۔',
       },
     ],
     links: [],
@@ -419,7 +429,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'invite-staff',
     section: 'staff',
-    roles: ['owner'],
+    roles: TASK_ROLES['invite-staff'],
     title: { en: 'Invite staff', ur: 'عملے کو دعوت دیں' },
     summary: {
       en: 'Each person signs in with their own Google email after you invite it.',
@@ -429,8 +439,8 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/settings?section=staff',
         text: {
-          en: '**Settings** → **Staff**. In **Invite staff** type the **Google email**, name and role (and the groups for a teacher).',
-          ur: '**Settings** → **Staff**۔ **Invite staff** میں **Google email**، نام اور کردار لکھیں (استاد کے لیے گروپ بھی)۔',
+          en: '[[nav.settings]] → [[settings.sections.staff]]. In [[staff.invite]] type the [[staff.email]], name and role (and the groups for a teacher).',
+          ur: '[[nav.settings]] → [[settings.sections.staff]]۔ [[staff.invite]] میں [[staff.email]]، نام اور کردار لکھیں (استاد کے لیے گروپ بھی)۔',
         },
       },
       {
@@ -441,8 +451,8 @@ export const TASKS_B: readonly GuideTask[] = [
       },
       {
         text: {
-          en: 'Staff who never use the app (a guard on the payroll): **Add staff without login**.',
-          ur: 'جو عملہ ایپ استعمال نہیں کرتا (تنخواہ والا چوکیدار): **Add staff without login**۔',
+          en: 'Staff who never use the app (a guard on the payroll): [[staff.addProfile]].',
+          ur: 'جو عملہ ایپ استعمال نہیں کرتا (تنخواہ والا چوکیدار): [[staff.addProfile]]۔',
         },
       },
       {
@@ -454,28 +464,33 @@ export const TASKS_B: readonly GuideTask[] = [
     ],
     mistakes: [
       {
-        en: 'A typo in the email: "Only staff invited by the school can sign in." Check it letter by letter.',
-        ur: 'ای میل میں غلطی: "Only staff invited by the school can sign in." حرف بہ حرف دیکھیں۔',
+        en: 'A typo in the email: [[auth.inviteOnly]] Check it letter by letter.',
+        ur: 'ای میل میں غلطی: [[auth.inviteOnly]] حرف بہ حرف دیکھیں۔',
       },
       {
         en: 'Sharing one account between two people: the audit log cannot tell who did what.',
         ur: 'دو لوگوں کا ایک اکاؤنٹ: آڈٹ لاگ میں پتا نہیں چلتا کس نے کیا کیا۔',
       },
     ],
-    links: [{ to: '/settings?section=staff', label: { en: 'Staff', ur: 'Staff' } }],
+    links: [
+      {
+        to: '/settings?section=staff',
+        label: { en: '[[settings.sections.staff]]', ur: '[[settings.sections.staff]]' },
+      },
+    ],
     tour: [
       {
         path: '/settings',
         target: 'settings-tab-staff',
         click: true,
-        title: { en: 'Staff', ur: 'Staff' },
+        title: { en: '[[settings.sections.staff]]', ur: '[[settings.sections.staff]]' },
         body: { en: 'Next opens the staff section.', ur: '"آگے" سے عملے کا حصہ کھلے گا۔' },
       },
       {
         path: '/settings',
         target: 'staff-invite',
         wait: true,
-        title: { en: 'Invite staff', ur: 'Invite staff' },
+        title: { en: '[[staff.invite]]', ur: '[[staff.invite]]' },
         body: {
           en: 'Google email, name, role. They can sign in right after.',
           ur: 'گوگل ای میل، نام، کردار۔ اس کے فوراً بعد سائن اِن کر سکتے ہیں۔',
@@ -487,35 +502,35 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'roles',
     section: 'staff',
-    roles: ['owner', 'admin'],
+    roles: TASK_ROLES.roles,
     title: { en: 'Roles: who can do what', ur: 'کردار: کون کیا کر سکتا ہے' },
     summary: {
-      en: 'Owner, Admin, Accountant, Teacher. Each sees only their work.',
-      ur: 'Owner، Admin، Accountant، Teacher۔ ہر ایک کو صرف اپنا کام نظر آتا ہے۔',
+      en: '[[staff.roles.owner]], [[staff.roles.admin]], [[staff.roles.accountant]], [[staff.roles.teacher]]. Each sees only their work.',
+      ur: '[[staff.roles.owner]]، [[staff.roles.admin]]، [[staff.roles.accountant]]، [[staff.roles.teacher]]۔ ہر ایک کو صرف اپنا کام نظر آتا ہے۔',
     },
     steps: [
       {
         text: {
-          en: '**Owner**: everything, including staff roles, backup and the audit log.',
-          ur: '**Owner**: سب کچھ، عملے کے کردار، بیک اپ اور آڈٹ لاگ سمیت۔',
+          en: '[[staff.roles.owner]]: everything, including staff roles, backup and the audit log.',
+          ur: '[[staff.roles.owner]]: سب کچھ، عملے کے کردار، بیک اپ اور آڈٹ لاگ سمیت۔',
         },
       },
       {
         text: {
-          en: '**Admin**: like the owner except roles, backup and the audit log. Bills fees, gives concessions, approves payslips, corrects registers.',
-          ur: '**Admin**: مالک جیسا، سوائے کردار، بیک اپ اور آڈٹ لاگ کے۔ فیس بناتا، رعایت دیتا، تنخواہ منظور کرتا، رجسٹر درست کرتا ہے۔',
+          en: '[[staff.roles.admin]]: like the owner except roles, backup and the audit log. Bills fees, gives concessions, approves payslips, corrects registers.',
+          ur: '[[staff.roles.admin]]: مالک جیسا، سوائے کردار، بیک اپ اور آڈٹ لاگ کے۔ فیس بناتا، رعایت دیتا، تنخواہ منظور کرتا، رجسٹر درست کرتا ہے۔',
         },
       },
       {
         text: {
-          en: "**Accountant**: students, fee counter, receipts, own cash drawer, expenses, payroll (not the owner's pay), messages. Cannot reverse receipts or bill the month.",
-          ur: '**Accountant**: طلبہ، فیس کاؤنٹر، رسیدیں، اپنا کیش دراز، خرچ، تنخواہیں (مالک کی نہیں)، پیغامات۔ رسید واپس یا مہینے کی فیس نہیں بنا سکتا۔',
+          en: "[[staff.roles.accountant]]: students, fee counter, receipts, own cash drawer, expenses, payroll (not the owner's pay), messages. Cannot reverse receipts or bill the month.",
+          ur: '[[staff.roles.accountant]]: طلبہ، فیس کاؤنٹر، رسیدیں، اپنا کیش دراز، خرچ، تنخواہیں (مالک کی نہیں)، پیغامات۔ رسید واپس یا مہینے کی فیس نہیں بنا سکتا۔',
         },
       },
       {
         text: {
-          en: '**Teacher**: own groups only: attendance, those students, absence messages, own payslips. No money.',
-          ur: '**Teacher**: صرف اپنے گروپ: حاضری، وہی طلبہ، غیر حاضری کے پیغام، اپنی تنخواہ کی پرچی۔ پیسوں تک رسائی نہیں۔',
+          en: '[[staff.roles.teacher]]: own groups only: attendance, those students, absence messages, own payslips. No money.',
+          ur: '[[staff.roles.teacher]]: صرف اپنے گروپ: حاضری، وہی طلبہ، غیر حاضری کے پیغام، اپنی تنخواہ کی پرچی۔ پیسوں تک رسائی نہیں۔',
         },
       },
     ],
@@ -525,17 +540,22 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'احتیاطاً اکاؤنٹنٹ کو ایڈمن بنانا: ایڈمن فیس بنا اور رعایت دے سکتا ہے۔',
       },
       {
-        en: 'Nobody approves their own payslip. An owner on the payroll needs a second owner or admin.',
-        ur: 'کوئی اپنی تنخواہ خود منظور نہیں کرتا۔ تنخواہ لینے والے مالک کو دوسرا Owner یا Admin چاہیے۔',
+        en: 'Nobody approves their own payslip. An owner on the payroll needs a second [[staff.roles.owner]] or [[staff.roles.admin]].',
+        ur: 'کوئی اپنی تنخواہ خود منظور نہیں کرتا۔ تنخواہ لینے والے مالک کو دوسرا [[staff.roles.owner]] یا [[staff.roles.admin]] چاہیے۔',
       },
     ],
-    links: [{ to: '/settings?section=staff', label: { en: 'Staff', ur: 'Staff' } }],
+    links: [
+      {
+        to: '/settings?section=staff',
+        label: { en: '[[settings.sections.staff]]', ur: '[[settings.sections.staff]]' },
+      },
+    ],
   },
 
   {
     id: 'payslips',
     section: 'staff',
-    roles: ['owner', 'admin', 'accountant'],
+    roles: TASK_ROLES.payslips,
     title: { en: 'Payslips', ur: 'تنخواہ کی پرچیاں' },
     summary: {
       en: 'Prepare, check, approve, pay, print. Once a month.',
@@ -545,8 +565,8 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/salary',
         text: {
-          en: '**Payroll**: choose the month and press **Prepare payslips**.',
-          ur: '**Payroll**: مہینہ چنیں اور **Prepare payslips** دبائیں۔',
+          en: '[[shell.nav.payroll]]: choose the month and press [[money.salary.generate]].',
+          ur: '[[shell.nav.payroll]]: مہینہ چنیں اور [[money.salary.generate]] دبائیں۔',
         },
       },
       {
@@ -557,21 +577,21 @@ export const TASKS_B: readonly GuideTask[] = [
       },
       {
         text: {
-          en: '**Approve** (owner or admin, never your own slip). Then **Pay**: amount and the account it is paid from.',
-          ur: '**Approve** (مالک یا ایڈمن، اپنی پرچی کبھی نہیں)۔ پھر **Pay**: رقم اور جس اکاؤنٹ سے دی۔',
+          en: '[[money.salary.approve]] (owner or admin, never your own slip). Then [[money.salary.payButton]]: amount and the account it is paid from.',
+          ur: '[[money.salary.approve]] (مالک یا ایڈمن، اپنی پرچی کبھی نہیں)۔ پھر [[money.salary.payButton]]: رقم اور جس اکاؤنٹ سے دی۔',
         },
       },
       {
         text: {
-          en: '**Print slip** for the staff member. Teachers see their own under **My payslips**.',
-          ur: 'ملازم کے لیے **Print slip**۔ اساتذہ اپنی پرچی **My payslips** میں دیکھتے ہیں۔',
+          en: '[[money.salary.printSlip]] for the staff member. Teachers see their own under [[money.nav.myPayslips]].',
+          ur: 'ملازم کے لیے [[money.salary.printSlip]]۔ اساتذہ اپنی پرچی [[money.nav.myPayslips]] میں دیکھتے ہیں۔',
         },
       },
     ],
     mistakes: [
       {
-        en: 'Paying salary as an expense: use **Pay** on the slip, so the salary register stays right.',
-        ur: 'تنخواہ کو خرچ میں لکھنا: پرچی پر **Pay** استعمال کریں تاکہ تنخواہ رجسٹر درست رہے۔',
+        en: 'Paying salary as an expense: use [[money.salary.payButton]] on the slip, so the salary register stays right.',
+        ur: 'تنخواہ کو خرچ میں لکھنا: پرچی پر [[money.salary.payButton]] استعمال کریں تاکہ تنخواہ رجسٹر درست رہے۔',
       },
       {
         en: 'Lines are frozen once approved: check before you approve.',
@@ -579,8 +599,8 @@ export const TASKS_B: readonly GuideTask[] = [
       },
     ],
     links: [
-      { to: '/salary', label: { en: 'Payroll', ur: 'Payroll' } },
-      { to: '/advances', label: { en: 'Advances', ur: 'Advances' } },
+      { to: '/salary', label: { en: '[[shell.nav.payroll]]', ur: '[[shell.nav.payroll]]' } },
+      { to: '/advances', label: { en: '[[money.nav.advances]]', ur: '[[money.nav.advances]]' } },
     ],
     tour: [
       {
@@ -592,7 +612,7 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         path: '/salary',
         target: 'salary-prepare',
-        title: { en: 'Prepare payslips', ur: 'Prepare payslips' },
+        title: { en: '[[money.salary.generate]]', ur: '[[money.salary.generate]]' },
         body: {
           en: 'Makes a draft slip for every paid staff member. Safe to press again.',
           ur: 'ہر ملازم کی کچی پرچی بنا دیتا ہے۔ دوبارہ دبانا محفوظ ہے۔',
@@ -604,7 +624,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'my-payslips',
     section: 'staff',
-    roles: ['teacher'],
+    roles: TASK_ROLES['my-payslips'],
     title: { en: 'My payslips', ur: 'میری تنخواہ کی پرچیاں' },
     summary: {
       en: 'Your own approved slips, to view and print.',
@@ -614,14 +634,14 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/my/payslips',
         text: {
-          en: 'Open **My payslips** from the menu (on the phone: **More**).',
-          ur: 'مینو سے **My payslips** کھولیں (فون پر: **More**)۔',
+          en: 'Open [[money.nav.myPayslips]] from the menu (on the phone: [[shell.nav.more]]).',
+          ur: 'مینو سے [[money.nav.myPayslips]] کھولیں (فون پر: [[shell.nav.more]])۔',
         },
       },
       {
         text: {
-          en: 'Tap a month to see the lines, then **Print slip** if you need paper.',
-          ur: 'کسی مہینے پر ٹیپ کر کے لائنیں دیکھیں، کاغذ چاہیے تو **Print slip**۔',
+          en: 'Tap a month to see the lines, then [[money.salary.printSlip]] if you need paper.',
+          ur: 'کسی مہینے پر ٹیپ کر کے لائنیں دیکھیں، کاغذ چاہیے تو [[money.salary.printSlip]]۔',
         },
       },
     ],
@@ -631,13 +651,18 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'کوئی مہینہ نظر نہیں آ رہا: ابھی منظور نہیں ہوا۔ دفتر سے پوچھیں۔',
       },
     ],
-    links: [{ to: '/my/payslips', label: { en: 'My payslips', ur: 'My payslips' } }],
+    links: [
+      {
+        to: '/my/payslips',
+        label: { en: '[[money.nav.myPayslips]]', ur: '[[money.nav.myPayslips]]' },
+      },
+    ],
   },
 
   {
     id: 'backups',
     section: 'safe',
-    roles: ['owner'],
+    roles: TASK_ROLES.backups,
     title: { en: 'Backups', ur: 'بیک اپ' },
     summary: {
       en: 'An encrypted copy every night, in two places. Check that it ran.',
@@ -647,8 +672,8 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/settings?section=backup',
         text: {
-          en: '**Settings** → **Backup** → **Nightly backup** shows the last run (OK / Partial / Failed), its size and copies.',
-          ur: '**Settings** → **Backup** → **Nightly backup** میں آخری بیک اپ (OK / Partial / Failed)، سائز اور کاپیاں نظر آتی ہیں۔',
+          en: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.status.title]] shows the last run (OK / Partial / Failed), its size and copies.',
+          ur: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.status.title]] میں آخری بیک اپ (OK / Partial / Failed)، سائز اور کاپیاں نظر آتی ہیں۔',
         },
       },
       {
@@ -674,20 +699,25 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'بیک اپ کی چابی کھو دینا: چابی دو امانت داروں کے پاس ہے۔ اس کے بغیر کوئی بیک اپ نہیں کھلتا۔',
       },
     ],
-    links: [{ to: '/settings?section=backup', label: { en: 'Backup', ur: 'Backup' } }],
+    links: [
+      {
+        to: '/settings?section=backup',
+        label: { en: '[[settings.sections.backup]]', ur: '[[settings.sections.backup]]' },
+      },
+    ],
     tour: [
       {
         path: '/settings',
         target: 'settings-tab-backup',
         click: true,
-        title: { en: 'Backup', ur: 'Backup' },
+        title: { en: '[[settings.sections.backup]]', ur: '[[settings.sections.backup]]' },
         body: { en: 'Next opens the backup section.', ur: '"آگے" سے بیک اپ کا حصہ کھلے گا۔' },
       },
       {
         path: '/settings',
         target: 'backup-status',
         wait: true,
-        title: { en: 'Nightly backup', ur: 'Nightly backup' },
+        title: { en: '[[backup.status.title]]', ur: '[[backup.status.title]]' },
         body: {
           en: 'The last run and where the copies are. OK is what you want to see.',
           ur: 'آخری بیک اپ اور کاپیاں کہاں ہیں۔ OK نظر آنا چاہیے۔',
@@ -696,7 +726,7 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         path: '/settings',
         target: 'backup-drill',
-        title: { en: 'Restore drill', ur: 'Restore drill' },
+        title: { en: '[[backup.status.kinds.drill]]', ur: '[[backup.status.kinds.drill]]' },
         body: {
           en: 'Once a term, with the maintainer. Record it here.',
           ur: 'ہر ٹرم میں ایک بار، مینٹینر کے ساتھ۔ یہاں درج کریں۔',
@@ -708,7 +738,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'restore-drill',
     section: 'safe',
-    roles: ['owner'],
+    roles: TASK_ROLES['restore-drill'],
     title: { en: 'Restore drill', ur: 'ریسٹور کی مشق' },
     summary: {
       en: 'Once a term, prove the backup opens. Takes about an hour with the maintainer.',
@@ -730,8 +760,8 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/settings?section=backup',
         text: {
-          en: '**Settings** → **Backup** → **Restore drill (once a term)**: tick the steps, add a note, **Record drill**.',
-          ur: '**Settings** → **Backup** → **Restore drill (once a term)**: قدموں پر نشان لگائیں، نوٹ لکھیں، **Record drill**۔',
+          en: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.drill.title]]: tick the steps, add a note, [[backup.drill.record]].',
+          ur: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.drill.title]]: قدموں پر نشان لگائیں، نوٹ لکھیں، [[backup.drill.record]]۔',
         },
       },
     ],
@@ -741,13 +771,18 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'بیک اپ OK دیکھ کر مشق چھوڑ دینا: جو بیک اپ کبھی کھولا نہ گیا وہ صرف اندازہ ہے۔',
       },
     ],
-    links: [{ to: '/settings?section=backup', label: { en: 'Backup', ur: 'Backup' } }],
+    links: [
+      {
+        to: '/settings?section=backup',
+        label: { en: '[[settings.sections.backup]]', ur: '[[settings.sections.backup]]' },
+      },
+    ],
   },
 
   {
     id: 'download-everything',
     section: 'safe',
-    roles: ['owner'],
+    roles: TASK_ROLES['download-everything'],
     title: { en: 'Download everything', ur: 'سب کچھ ڈاؤن لوڈ کریں' },
     summary: {
       en: "Your own copy of all the school's data, once a month.",
@@ -757,8 +792,8 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/settings?section=backup',
         text: {
-          en: '**Settings** → **Backup** → **Download everything**. Keep the page open until it says Saved.',
-          ur: '**Settings** → **Backup** → **Download everything**۔ Saved آنے تک صفحہ کھلا رکھیں۔',
+          en: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.everything.start]]. Keep the page open until it says Saved.',
+          ur: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.everything.start]]۔ Saved آنے تک صفحہ کھلا رکھیں۔',
         },
       },
       {
@@ -780,20 +815,25 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'تیاری کے دوران ٹیب بند کرنا: ڈاؤن لوڈ رک جاتا ہے۔ دوبارہ شروع کریں۔',
       },
     ],
-    links: [{ to: '/settings?section=backup', label: { en: 'Backup', ur: 'Backup' } }],
+    links: [
+      {
+        to: '/settings?section=backup',
+        label: { en: '[[settings.sections.backup]]', ur: '[[settings.sections.backup]]' },
+      },
+    ],
     tour: [
       {
         path: '/settings',
         target: 'settings-tab-backup',
         click: true,
-        title: { en: 'Backup', ur: 'Backup' },
+        title: { en: '[[settings.sections.backup]]', ur: '[[settings.sections.backup]]' },
         body: { en: 'Next opens the backup section.', ur: '"آگے" سے بیک اپ کا حصہ کھلے گا۔' },
       },
       {
         path: '/settings',
         target: 'backup-everything',
         wait: true,
-        title: { en: 'Download everything', ur: 'Download everything' },
+        title: { en: '[[backup.everything.start]]', ur: '[[backup.everything.start]]' },
         body: {
           en: 'One ZIP with all the data. Keep it somewhere private.',
           ur: 'سارا ڈیٹا ایک ZIP میں۔ کسی نجی جگہ رکھیں۔',
@@ -805,7 +845,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'install-app',
     section: 'phone',
-    roles: ['owner', 'admin', 'accountant', 'teacher'],
+    roles: TASK_ROLES['install-app'],
     title: { en: 'Install the app on the phone', ur: 'فون پر ایپ انسٹال کریں' },
     summary: {
       en: 'Opens like an app from the home screen, and works without internet.',
@@ -820,8 +860,8 @@ export const TASKS_B: readonly GuideTask[] = [
       },
       {
         text: {
-          en: 'When the banner "Install Maktab on this phone" shows, tap **Install**. No banner? Chrome menu (⋮) → **Add to Home screen** or **Install app**.',
-          ur: 'جب "Install Maktab on this phone" کی پٹی آئے تو **Install** دبائیں۔ پٹی نہیں آئی؟ Chrome مینو (⋮) → **Add to Home screen** یا **Install app**۔',
+          en: 'When the banner [[pwa.installTitle]] shows, tap [[pwa.install]]. No banner? Chrome menu (⋮) → **Add to Home screen** or **Install app**.',
+          ur: 'جب [[pwa.installTitle]] کی پٹی آئے تو [[pwa.install]] دبائیں۔ پٹی نہیں آئی؟ Chrome مینو (⋮) → **Add to Home screen** یا **Install app**۔',
         },
       },
       {
@@ -843,7 +883,7 @@ export const TASKS_B: readonly GuideTask[] = [
   {
     id: 'offline',
     section: 'phone',
-    roles: ['owner', 'admin', 'accountant', 'teacher'],
+    roles: TASK_ROLES.offline,
     title: { en: 'Working without internet', ur: 'انٹرنیٹ کے بغیر کام' },
     summary: {
       en: 'Registers save on the phone and go when the internet is back. Money needs the internet.',
@@ -858,8 +898,8 @@ export const TASKS_B: readonly GuideTask[] = [
       },
       {
         text: {
-          en: 'Offline, **Save attendance** still works: "Saved on this phone". The top bar shows how many are waiting.',
-          ur: 'بغیر انٹرنیٹ بھی **Save attendance** کام کرتا ہے: "Saved on this phone"۔ اوپر کی پٹی بتاتی ہے کتنے باقی ہیں۔',
+          en: 'Offline, [[attendance.save]] still works: [[attendance.savedOffline]]. The top bar shows how many are waiting.',
+          ur: 'بغیر انٹرنیٹ بھی [[attendance.save]] کام کرتا ہے: [[attendance.savedOffline]]۔ اوپر کی پٹی بتاتی ہے کتنے باقی ہیں۔',
         },
       },
       {
@@ -885,13 +925,13 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'باقی رجسٹر کے ہوتے Chrome کا ڈیٹا صاف کرنا: وہ ضائع ہو جاتے ہیں۔',
       },
     ],
-    links: [{ to: '/attendance', label: { en: 'Attendance', ur: 'Attendance' } }],
+    links: [{ to: '/attendance', label: { en: '[[nav.attendance]]', ur: '[[nav.attendance]]' } }],
   },
 
   {
     id: 'printing',
     section: 'phone',
-    roles: ['owner', 'admin', 'accountant'],
+    roles: TASK_ROLES.printing,
     title: { en: 'Printing receipts (thermal and A5)', ur: 'رسید پرنٹ (تھرمل اور A5)' },
     summary: {
       en: 'Choose the paper on the receipt screen, then Print. Each fits one page.',
@@ -900,14 +940,14 @@ export const TASKS_B: readonly GuideTask[] = [
     steps: [
       {
         text: {
-          en: 'On the receipt: **58 mm** for a thermal printer, **A5** for a normal printer.',
-          ur: 'رسید پر: تھرمل پرنٹر کے لیے **58 mm**، عام پرنٹر کے لیے **A5**۔',
+          en: 'On the receipt: [[fee.receipt.thermal]] for a thermal printer, [[fee.receipt.a5]] for a normal printer.',
+          ur: 'رسید پر: تھرمل پرنٹر کے لیے [[fee.receipt.thermal]]، عام پرنٹر کے لیے [[fee.receipt.a5]]۔',
         },
       },
       {
         text: {
-          en: 'Choose the **Receipt language** (English or Urdu), then **Print**.',
-          ur: '**Receipt language** چنیں (انگریزی یا اردو)، پھر **Print**۔',
+          en: 'Choose the [[fee.receipt.language]] (English or Urdu), then [[fee.receipt.print]].',
+          ur: '[[fee.receipt.language]] چنیں (انگریزی یا اردو)، پھر [[fee.receipt.print]]۔',
         },
       },
       {
@@ -927,13 +967,15 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'کاپی کے لیے دوبارہ پرنٹ ٹھیک ہے؛ دوسری رسید جاری کرنا نہیں۔',
       },
     ],
-    links: [{ to: '/fees/counter', label: { en: 'Fee counter', ur: 'Fee counter' } }],
+    links: [
+      { to: '/fees/counter', label: { en: '[[fee.nav.counter]]', ur: '[[fee.nav.counter]]' } },
+    ],
   },
 
   {
     id: 'whatsapp',
     section: 'phone',
-    roles: ['owner', 'admin', 'accountant', 'teacher'],
+    roles: TASK_ROLES.whatsapp,
     title: { en: 'Handing off to WhatsApp', ur: 'واٹس ایپ پر بھیجنا' },
     summary: {
       en: 'Maktab prepares; WhatsApp sends; you come back and tap Sent.',
@@ -948,20 +990,20 @@ export const TASKS_B: readonly GuideTask[] = [
       },
       {
         text: {
-          en: "**Open WhatsApp** opens the right chat with the text ready, in the guardian's language. Press send in WhatsApp.",
-          ur: '**Open WhatsApp** درست چیٹ میں سرپرست کی زبان میں پیغام تیار کھول دیتا ہے۔ واٹس ایپ میں بھیج دیں۔',
+          en: "[[msg.queue.openWa]] opens the right chat with the text ready, in the guardian's language. Press send in WhatsApp.",
+          ur: '[[msg.queue.openWa]] درست چیٹ میں سرپرست کی زبان میں پیغام تیار کھول دیتا ہے۔ واٹس ایپ میں بھیج دیں۔',
         },
       },
       {
         text: {
-          en: 'Come back with the back button; Maktab is still where you left it. Tap **Sent & next**.',
-          ur: 'بیک بٹن سے واپس آئیں؛ مکتب وہیں کھلا ملے گا۔ **Sent & next** دبائیں۔',
+          en: 'Come back with the back button; Maktab is still where you left it. Tap [[msg.queue.sentNext]].',
+          ur: 'بیک بٹن سے واپس آئیں؛ مکتب وہیں کھلا ملے گا۔ [[msg.queue.sentNext]] دبائیں۔',
         },
       },
       {
         text: {
-          en: 'Class WhatsApp groups: **Copy all texts for this class** (absence and notice texts only; fee texts are private).',
-          ur: 'کلاس کے واٹس ایپ گروپ: **Copy all texts for this class** (صرف غیر حاضری اور نوٹس؛ فیس کے پیغام نجی ہیں)۔',
+          en: 'Class WhatsApp groups: [[msg.queue.copyAllGroup]] (absence and notice texts only; fee texts are private).',
+          ur: 'کلاس کے واٹس ایپ گروپ: [[msg.queue.copyAllGroup]] (صرف غیر حاضری اور نوٹس؛ فیس کے پیغام نجی ہیں)۔',
         },
       },
     ],
@@ -971,10 +1013,12 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'پیغام کے آخر سے لنک ہٹا دینا: والدین اپنا صفحہ نہیں کھول سکتے۔',
       },
       {
-        en: 'Pop-up blocked: tap **Open WhatsApp** again, or allow pop-ups for Maktab.',
-        ur: 'پاپ اپ بند ہو گیا: دوبارہ **Open WhatsApp** دبائیں، یا مکتب کے لیے پاپ اپ کی اجازت دیں۔',
+        en: 'Pop-up blocked: tap [[msg.queue.openWa]] again, or allow pop-ups for Maktab.',
+        ur: 'پاپ اپ بند ہو گیا: دوبارہ [[msg.queue.openWa]] دبائیں، یا مکتب کے لیے پاپ اپ کی اجازت دیں۔',
       },
     ],
-    links: [{ to: '/messages', label: { en: 'Messages', ur: 'Messages' } }],
+    links: [
+      { to: '/messages', label: { en: '[[shell.nav.messages]]', ur: '[[shell.nav.messages]]' } },
+    ],
   },
 ];

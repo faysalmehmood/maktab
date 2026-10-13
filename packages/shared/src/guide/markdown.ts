@@ -1,7 +1,25 @@
-import { TASKS_A } from './tasks-a';
-import { TASKS_B } from './tasks-b';
-import type { GuideTask, L } from './types';
+import { en } from '../i18n';
+import { screensEn } from '../i18n-screens';
+import { ur } from '../i18n-ur';
+import { GUIDE_TASKS, LABEL_VARS, lookup, runs } from './index';
+import type { GuideLang, GuideTask, L } from './types';
 import { GUIDE_SECTIONS, GUIDE_UI } from './ui';
+
+const DICT: Record<GuideLang, unknown> = { en: { ...en, screens: screensEn }, ur };
+
+/** A guide text as Markdown in one language: quoted labels resolved and bold. */
+export function md(text: string, lang: GuideLang): string {
+  return runs(text)
+    .map((r) => {
+      if (r.kind === 'plain') return r.text;
+      if (r.kind === 'code') return `\`${r.text}\``;
+      if (r.kind === 'strong') return `**${r.text}**`;
+      const label = lookup(DICT[lang], r.text);
+      if (label === undefined) throw new Error(`guide: no ${lang} label ${r.text}`);
+      return `**${label.replace(/\{\{(\w+)\}\}/g, (_, k: keyof typeof LABEL_VARS) => LABEL_VARS[k] ?? '')}**`;
+    })
+    .join('');
+}
 
 /*
  * docs/onboarding.md is generated from the guide content (`npm run docs:guide`), so the in-app guide
@@ -46,66 +64,58 @@ const MAINTAINER_NOTES = `## For the maintainer
 Help: ask the maintainer (maktab@conceptlix.com).
 `;
 
-const both = (l: L) => `${l.en} / ${l.ur}`;
+const both = (l: L) => `${md(l.en, 'en')} / ${md(l.ur, 'ur')}`;
 const rtl = (body: string) => `<div dir="rtl" lang="ur">\n\n${body}\n\n</div>`;
 const list = (items: readonly string[], numbered: boolean) =>
   items.map((s, i) => `${numbered ? `${i + 1}.` : '-'} ${s}`).join('\n');
 
 function task(t: GuideTask): string {
-  const out: string[] = [`### ${both(t.title)}`, '', `*${t.summary.en}*`, ''];
-  out.push(
-    list(
-      t.steps.map((s) => s.text.en),
-      true,
-    ),
-    '',
-  );
-  if (t.mistakes.length)
-    out.push(
-      `**${GUIDE_UI.mistakes.en}**`,
+  const lang = (l: GuideLang) => {
+    const body = [
+      `*${md(t.summary[l], l)}*`,
       '',
       list(
-        t.mistakes.map((m) => m.en),
-        false,
+        t.steps.map((s) => md(s.text[l], l)),
+        true,
       ),
-      '',
-    );
+    ];
+    if (t.mistakes.length)
+      body.push(
+        '',
+        `**${GUIDE_UI.mistakes[l]}**`,
+        '',
+        list(
+          t.mistakes.map((m) => md(m[l], l)),
+          false,
+        ),
+      );
+    return body.join('\n');
+  };
   const meta = [`In the app: \`/guide/${t.id}\``, `for ${t.roles.join(', ')}`];
   if (t.tour?.length) meta.push(`"${GUIDE_UI.showMe.en}" tour: ${t.tour.length} steps`);
-  out.push(`${meta.join(' · ')}.`, '');
-  const ur: string[] = [
-    `*${t.summary.ur}*`,
+  return [
+    `### ${both(t.title)}`,
     '',
-    list(
-      t.steps.map((s) => s.text.ur),
-      true,
-    ),
-  ];
-  if (t.mistakes.length)
-    ur.push(
-      '',
-      `**${GUIDE_UI.mistakes.ur}**`,
-      '',
-      list(
-        t.mistakes.map((m) => m.ur),
-        false,
-      ),
-    );
-  out.push(rtl(ur.join('\n')), '');
-  return out.join('\n');
+    lang('en'),
+    '',
+    `${meta.join(' · ')}.`,
+    '',
+    rtl(lang('ur')),
+    '',
+  ].join('\n');
 }
 
 /** The whole of docs/onboarding.md. Pure and deterministic (same content → same bytes). */
 export function renderOnboardingMarkdown(): string {
-  const tasks = [...TASKS_A, ...TASKS_B];
+  const tasks = GUIDE_TASKS;
   const parts: string[] = [
     '<!-- Generated from packages/shared/src/guide by `npm run docs:guide`. Do not edit by hand. -->',
     '',
     `# Maktab onboarding guide / مکتب: شروع کرنے کی رہنمائی`,
     '',
     'For the school owner, the office and teachers. The same text is in the app under **Help & guide**',
-    '(`/guide`), where each task also has a "Show me" tour on the real screen. Button names are the',
-    'English labels in the app; the Urdu screen has the same buttons in the same places.',
+    '(`/guide`), where each task also has a "Show me" tour on the real screen. Button names are quoted',
+    "exactly as each language's screen shows them (English steps: English screen; Urdu steps: Urdu screen).",
     '',
     '## Before you start / شروع کرنے سے پہلے',
     '',
@@ -126,7 +136,7 @@ export function renderOnboardingMarkdown(): string {
   ];
   for (const s of GUIDE_SECTIONS) {
     const ts = tasks.filter((t) => t.section === s.id);
-    parts.push(`- ${s.title.en}: ${ts.map((t) => t.title.en).join('; ')}`);
+    parts.push(`- ${s.title.en}: ${ts.map((t) => md(t.title.en, 'en')).join('; ')}`);
   }
   parts.push('');
   for (const s of GUIDE_SECTIONS) {

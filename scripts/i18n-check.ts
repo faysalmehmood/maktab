@@ -101,17 +101,28 @@ for (const [name, e, u] of pairs) {
   flatten(u, name, urFlat);
 }
 
-// The Help & guide content (packages/shared/src/guide): every { en, ur } pair, by its path. A guide
-// text whose Urdu is exactly an English UI label is a button name and allowed as English.
-const uiLabels = new Set(flatten({ ...en, screens: screensEn }, '', new Map()).values());
+// The Help & guide content (packages/shared/src/guide): every { en, ur } pair, by its path. A quoted
+// UI label `[[a.b]]` must exist in both dictionaries and appear in both texts: it is compared as the
+// placeholder {{a_b}}. A text that is only labels needs no Urdu letters of its own.
+const urUi = flatten(ur, '', new Map());
+const enUi = flatten({ ...en, screens: screensEn }, '', new Map());
 const guideAllowed = new Set<string>();
+const unknownLabels: string[] = [];
+const LABEL = /\[\[([\w.]+)\]\]/g;
+const asPlaceholders = (path: string, s: string) =>
+  s.replace(LABEL, (_, k: string) => {
+    if (!enUi.has(k) || !urUi.has(k)) unknownLabels.push(`${path}  [[${k}]]`);
+    return `{{${k.replace(/\./g, '_')}}}`;
+  });
 function guidePairs(tree: unknown, prefix: string): void {
   if (!tree || typeof tree !== 'object') return;
   const o = tree as Record<string, unknown>;
   if (typeof o.en === 'string' && typeof o.ur === 'string' && Object.keys(o).length === 2) {
-    enFlat.set(prefix, o.en);
-    urFlat.set(prefix, o.ur);
-    if (o.ur === o.en && uiLabels.has(o.en)) guideAllowed.add(prefix);
+    const e = asPlaceholders(prefix, o.en);
+    const u = asPlaceholders(prefix, o.ur);
+    enFlat.set(prefix, e);
+    urFlat.set(prefix, u);
+    if (languageNeutral(e.replace(/\*\*[^*]*\*\*/g, ' '))) guideAllowed.add(prefix);
     return;
   }
   for (const [k, v] of Object.entries(o)) {
@@ -130,6 +141,7 @@ const problems: Record<string, string[]> = {
   placeholders: [],
   digits: [],
   latinOnly: [],
+  unknownLabels,
 };
 
 for (const [key, enText] of enFlat) {
@@ -164,6 +176,7 @@ const labels: Record<string, string> = {
   placeholders: 'Placeholder mismatch',
   digits: 'Arabic-Indic digits in ur (use 0-9)',
   latinOnly: 'No Urdu letters in ur (translate, or add to ALLOW / LATIN_OK if purely technical)',
+  unknownLabels: 'Guide quotes a [[label]] missing from the en or ur dictionary',
 };
 
 const total = Object.values(problems).reduce((n, list) => n + list.length, 0);

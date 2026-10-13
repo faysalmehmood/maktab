@@ -8,7 +8,9 @@
     ".": "./src/index.ts",
     "./i18n-ur": "./src/i18n-ur.ts",
     "./i18n-screens": "./src/i18n-screens.ts",
-    "./guide": "./src/guide/index.ts"
+    "./guide": "./src/guide/index.ts",
+    "./guide-audience": "./src/guide/audience.ts",
+    "./guide-markdown": "./src/guide/markdown.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
