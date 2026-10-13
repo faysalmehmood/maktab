@@ -106,6 +106,24 @@ export function demoPlan(): Step[] {
   return all;
 }
 
+let signature: string | null = null;
+/**
+ * Names of every step, hashed: stored when a reset starts. A deploy that changes the plan while a
+ * reset is running would make the saved step index point at another step, so the runner restarts
+ * the reset from the wipe instead (every step is idempotent, nothing is lost but time).
+ */
+export function demoPlanSignature(): string {
+  if (!signature) {
+    let h = 2166136261;
+    for (const c of demoPlan()
+      .map((s) => s.name)
+      .join('|'))
+      h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+    signature = `${demoPlan().length}:${(h >>> 0).toString(36)}`;
+  }
+  return signature;
+}
+
 // ---- state ----------------------------------------------------------------------------------------
 
 export type DemoStatus = {
@@ -172,6 +190,7 @@ export async function startDemoReset(
       reason: o.reason,
       dirty: '0',
       force: null,
+      plan: demoPlanSignature(),
     }),
   );
   return demoStatus(db);
@@ -224,6 +243,12 @@ export async function advanceDemoSeed(
   if (lease?.value !== token) return { ...(await demoStatus(db)), calls: 0, leased: false };
 
   const plan = demoPlan();
+  if (st0.plan !== demoPlanSignature()) {
+    // Started by another version of the plan: begin again from the wipe (see demoPlanSignature).
+    st0.step = '0';
+    st0.sub = '0';
+    await runBatch(db, setState({ step: '0', sub: '0', schema: null, plan: demoPlanSignature() }));
+  }
   const ctx: StepCtx = { db, w: world(), parentSecret: o.parentSecret, ownerEmail: o.ownerEmail };
   let step = Number(st0.step ?? 0);
   let sub = Number(st0.sub ?? 0);

@@ -193,6 +193,21 @@ describe('demo dataset', () => {
     expect(await fresh([...keys].reverse())).toEqual(await fresh(keys));
   });
 
+  it('a reset started by another version of the plan begins again from the wipe', async () => {
+    const db3 = createTestDb();
+    await startDemoReset(db3, { reason: 'test' });
+    await advanceDemoSeed(db3, { deadline: Number.POSITIVE_INFINITY, maxCalls: 8 });
+    await db3.run(sql`UPDATE _demo_state SET value = 'old-plan' WHERE key = 'plan'`);
+    await db3.run(sql`UPDATE _demo_state SET value = '40' WHERE key = 'step'`);
+    const r = await advanceDemoSeed(db3, { deadline: Number.POSITIVE_INFINITY, maxCalls: 1 });
+    // Back to the start: the one call allowed ran the wipe's snapshot step (step 0) again.
+    expect(r.step).toBe(1);
+    expect(
+      (await db3.all<{ value: string }>(sql`SELECT value FROM _demo_state WHERE key = 'plan'`))[0]
+        ?.value,
+    ).not.toBe('old-plan');
+  });
+
   it('refuses to wipe a database that belongs to another school', async () => {
     const other = createTestDb();
     await other.run(sql`INSERT INTO school (id, name) VALUES ('S', 'Global Science Academy')`);

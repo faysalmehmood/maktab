@@ -1798,19 +1798,41 @@ const parentLinksStep: Step = {
 let cachedSteps: Step[] | null = null;
 
 /** The whole dataset, in order (wipe steps are prepended by the runner). */
+const monthPlans = new Map<string, Map<string, Op[]>>();
+/** A month's ops by day, computed the first time a step of that month runs (not at start-up). */
+function monthPlan(period: string): Map<string, Op[]> {
+  let m = monthPlans.get(period);
+  if (!m) {
+    m = new Map(monthDays(world(), period).map((d) => [d.day, d.ops]));
+    monthPlans.set(period, m);
+  }
+  return m;
+}
+
+/** One step per office day (fixed list, cheap to build); days with nothing to do finish at once. */
+function dayStep(period: string, day: string): Step {
+  return {
+    name: `day:${day}`,
+    run: async (ctx, sub) => {
+      const ops = monthPlan(period).get(day) ?? [];
+      const op = ops[sub];
+      if (op) await op.run(ctx);
+      return sub + 1 < ops.length ? sub + 1 : null;
+    },
+  };
+}
+
+/**
+ * The whole dataset, in order (wipe steps are prepended by the runner). Building the list is cheap
+ * on purpose: a cold Worker isolate on the free plan has ~10 ms of CPU, so the payment schedules
+ * are worked out per month only when that month's steps run.
+ */
 export function seedSteps(): Step[] {
   if (cachedSteps) return cachedSteps;
-  const w = world();
   const steps: Step[] = [opsStep('base', [baseData]), opsStep('people', [people]), concessionsStep];
   for (const period of DEMO_MONTHS) {
     steps.push(generateStep(period));
-    for (const { day, ops } of monthDays(w, period))
-      steps.push(
-        opsStep(
-          `day:${day}`,
-          ops.map((o) => o.run),
-        ),
-      );
+    for (const day of officeDays(period)) steps.push(dayStep(period, day));
   }
   for (const day of daysOf(ATTENDANCE_MONTH).filter(schoolDay)) steps.push(attendanceStep(day));
   steps.push(messagesStep, parentLinksStep);
