@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { initI18n, setLanguage } from '@/i18n';
 import { StudentsList } from '@/pages/students/StudentsList';
@@ -68,5 +68,51 @@ describe('students list', () => {
     await screen.findByText(/No student/);
     expect(screen.queryByRole('link', { name: /Admit/ })).toBeNull();
     expect(screen.queryByRole('link', { name: /Import/ })).toBeNull();
+  });
+
+  it('desktop: the shared DataTable (captioned, column heads, one link per row) and inline filters', async () => {
+    mockApi({
+      'GET /api/groups': { items: [group] },
+      'GET /api/students': { items: [student(1, 'Ali')], total: 1, page: 1, page_size: 50 },
+    });
+    renderAt('/students', '/students', <StudentsList />);
+    const table = await screen.findByRole('table', { name: 'Students' });
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Students', 'Class', 'Father name', 'Phone', 'Admission no.']);
+    expect(within(table).getByRole('link', { name: /Ali/ }).getAttribute('href')).toBe(
+      `/students/${student(1, 'Ali').id}`,
+    );
+    expect(document.getElementById('student-filters')?.dataset.layout).toBe('inline');
+    expect(document.getElementById('student-filter-group')).toBeTruthy();
+  });
+
+  it('phone: cards, a Filters sheet and a chip per applied filter that clears it', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('max-width'),
+      media: q,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    const api = mockApi({
+      'GET /api/groups': { items: [group] },
+      'GET /api/students': { items: [student(1, 'Ali')], total: 1, page: 1, page_size: 50 },
+    });
+    renderAt(`/students?group=${ids.group}&status=left`, '/students', <StudentsList />);
+    await screen.findByText('Ali');
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(document.getElementById('students-table')?.dataset.layout).toBe('cards');
+    expect(document.getElementById('student-filters')?.dataset.layout).toBe('sheet');
+    // The selects live in the sheet, not on the page.
+    expect(document.getElementById('student-filter-group')).toBeNull();
+    const chips = within(screen.getByRole('list', { name: 'Filters applied' })).getAllByRole(
+      'button',
+    );
+    expect(chips).toHaveLength(2);
+    fireEvent.click(chips[1] as HTMLElement); // status: Left → back to the default (active)
+    await screen.findByText('Ali');
+    expect(api.calls.at(-1)?.path).toBe(`/api/students?group=${ids.group}&status=active&page=1`);
   });
 });

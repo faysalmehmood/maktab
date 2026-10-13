@@ -1,10 +1,8 @@
 import type { MonthDashboardDto } from '@maktab/shared';
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
 import { Num } from '@/components/form';
-import { Mny } from '@/components/page';
+import { Mny, StatStrip } from '@/components/page';
 import { getJson } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -24,36 +22,6 @@ function monthName(period: string, lang: string): string {
   }).format(new Date(`${period}-15T12:00:00Z`));
 }
 
-function Stat({
-  id,
-  title,
-  to,
-  children,
-}: {
-  id: string;
-  title: string;
-  to?: string;
-  children: ReactNode;
-}) {
-  const body = (
-    <>
-      <span className="text-meta text-muted-foreground">{title}</span>
-      <span className="text-lg font-bold">{children}</span>
-    </>
-  );
-  return (
-    <div id={id} className="flex flex-col border-e border-b px-4 py-3 last:border-e-0">
-      {to ? (
-        <Link to={to} className="flex min-h-11 flex-col hover:underline">
-          {body}
-        </Link>
-      ) : (
-        body
-      )}
-    </div>
-  );
-}
-
 /**
  * PLAN §14.11 "Month" as one strip (M7b): income, spending, net and dues outstanding, then the
  * month's defaulters, admissions and leavers on a quieter line.
@@ -62,6 +30,10 @@ export function MonthTiles() {
   const { t, i18n } = useTranslation();
   const d = useMonthDashboard().data;
   if (!d) return null;
+  const vs = t('shell.compare.vs', {
+    month: monthName(d.previous.period, i18n.language),
+  });
+  const spending = d.expenses + d.salaries;
   return (
     <section
       className="overflow-hidden rounded-xl border bg-card"
@@ -72,40 +44,63 @@ export function MonthTiles() {
           {t('money.dash.month')} <Num>{monthName(d.period, i18n.language)}</Num>
         </h2>
       </header>
-      <div className="grid grid-cols-2 lg:grid-cols-4 [&>*:nth-child(2n)]:border-e-0 lg:[&>*:nth-child(2n)]:border-e lg:[&>*:nth-child(4n)]:border-e-0">
-        <Stat id="tile-month-income" title={t('money.dash.income')} to="/reports/income-expense">
-          <Mny paisa={d.income} />
-        </Stat>
-        <Stat
-          id="tile-month-spending"
-          // Without owner pay visible the figure leaves management out, and says so (F1).
-          title={
-            d.salaries_scope === 'excluding_owners'
-              ? t('money.dash.spendingExMgmt')
-              : t('money.dash.spending')
-          }
-          to="/reports/income-expense"
-        >
-          <Mny paisa={d.expenses + d.salaries} />
-        </Stat>
-        <Stat id="tile-month-net" title={t('money.dash.net')}>
-          <Mny paisa={d.net} className={cn(d.net < 0 && 'text-bad')} />
-        </Stat>
-        <Stat id="tile-month-dues" title={t('money.dash.dues')}>
-          <Mny paisa={d.dues_outstanding} />
-        </Stat>
-      </div>
-      <div className="grid grid-cols-3 text-sm [&>*]:border-b-0">
-        <Stat id="tile-month-defaulters" title={t('money.dash.defaulters')} to="/fees/defaulters">
-          <Num>{d.defaulters}</Num>
-        </Stat>
-        <Stat id="tile-month-admissions" title={t('money.dash.admissions')}>
-          <Num>{d.admissions}</Num>
-        </Stat>
-        <Stat id="tile-month-left" title={t('money.dash.left')}>
-          <Num>{d.left}</Num>
-        </Stat>
-      </div>
+      <StatStrip
+        className="rounded-none border-0"
+        items={[
+          {
+            id: 'tile-month-income',
+            label: t('money.dash.income'),
+            value: <Mny paisa={d.income} />,
+            to: '/reports/income-expense',
+            compare: { now: d.income, before: d.previous.income, label: vs },
+          },
+          {
+            id: 'tile-month-spending',
+            // Without owner pay visible the figure leaves management out, and says so (F1).
+            label:
+              d.salaries_scope === 'excluding_owners'
+                ? t('money.dash.spendingExMgmt')
+                : t('money.dash.spending'),
+            value: <Mny paisa={spending} />,
+            to: '/reports/income-expense',
+            compare: {
+              now: spending,
+              before: d.previous.spending,
+              label: vs,
+              higherIsBetter: false,
+            },
+          },
+          {
+            id: 'tile-month-net',
+            label: t('money.dash.net'),
+            value: <Mny paisa={d.net} className={cn(d.net < 0 && 'text-bad')} />,
+            compare: { now: d.net, before: d.previous.net, label: vs },
+          },
+          {
+            id: 'tile-month-dues',
+            label: t('money.dash.dues'),
+            value: <Mny paisa={d.dues_outstanding} />,
+          },
+        ]}
+      />
+      {/* The quieter line: the month's defaulters, admissions and leavers. */}
+      <StatStrip
+        className="rounded-none border-0 border-t text-sm lg:grid-cols-3 [&_dd]:text-base"
+        items={[
+          {
+            id: 'tile-month-defaulters',
+            label: t('money.dash.defaulters'),
+            value: <Num>{d.defaulters}</Num>,
+            to: '/fees/defaulters',
+          },
+          {
+            id: 'tile-month-admissions',
+            label: t('money.dash.admissions'),
+            value: <Num>{d.admissions}</Num>,
+          },
+          { id: 'tile-month-left', label: t('money.dash.left'), value: <Num>{d.left}</Num> },
+        ]}
+      />
     </section>
   );
 }

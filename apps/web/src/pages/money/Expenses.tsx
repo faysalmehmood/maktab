@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Camera, ImageIcon, Plus, ReceiptText } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { type Column, DataTable } from '@/components/data-table';
 import { AmountInput, ReasonDialog } from '@/components/fees/common';
+import { type ActiveFilter, FilterBar } from '@/components/filter-bar';
 import { Field } from '@/components/form';
 import {
   AccountSelect,
@@ -20,6 +22,7 @@ import {
   Panel,
   StatusBadge,
 } from '@/components/page';
+import { RowMenu } from '@/components/row-menu';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -278,84 +281,129 @@ function AddPhotoButton({ e }: { e: ExpenseDto }) {
   );
 }
 
+/** The bill cell: look at the photo, or add a missing one (never only Void; UI plan 4.6.8). */
+function BillCell({ e, canAddPhoto }: { e: ExpenseDto; canAddPhoto: boolean }) {
+  const { t } = useTranslation();
+  if (e.has_photo)
+    return (
+      <Button asChild variant="outline" size="sm">
+        <a href={`/api/expenses/${e.id}/photo`} target="_blank" rel="noreferrer">
+          <ImageIcon aria-hidden />
+          {t('money.expense.viewPhoto')}
+        </a>
+      </Button>
+    );
+  if (!e.voided && canAddPhoto) return <AddPhotoButton e={e} />;
+  return <span className="text-muted-foreground">—</span>;
+}
+
 /**
- * One expense. Its first actions look at it (the bill photo, or adding one that is missing); Void
- * is secondary, at the far end, never the only thing a row offers (UI plan 4.6.8).
+ * The expense list on the shared DataTable: what was bought (category, vendor, note, a void reason)
+ * as the row's name, its number, date, account and amount, the bill; Void (owner/admin) sits in the
+ * row's "more" menu, last and red, behind the reason dialog.
  */
-function ExpenseRow({
-  e,
+function ExpenseTable({
+  rows,
   onVoid,
-  canAddPhoto = false,
+  canAddPhoto,
 }: {
-  e: ExpenseDto;
+  rows: readonly ExpenseDto[];
   onVoid?: (e: ExpenseDto) => void;
-  canAddPhoto?: boolean;
+  canAddPhoto: boolean;
 }) {
   const { t, i18n } = useTranslation();
-  const actions =
-    e.has_photo || (!e.has_photo && !e.voided && canAddPhoto) || (onVoid && !e.voided);
-  return (
-    <li className="flex flex-col gap-1.5 px-4 py-3" data-expense={e.id}>
-      <div className="flex items-start gap-3">
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="font-medium">
+  const columns: Column<ExpenseDto>[] = [
+    {
+      id: 'what',
+      header: t('money.common.category'),
+      primary: true,
+      cell: (e) => (
+        <span className="flex min-w-0 flex-col gap-0.5" data-expense={e.id}>
+          <span>
             <bdi>
               {nameIn({ name: e.category_name, name_ur: e.category_name_ur }, i18n.language)}
             </bdi>
             {e.vendor && (
-              <span className="text-muted-foreground">
+              <span className="font-normal text-muted-foreground">
                 {' · '}
                 <bdi>{e.vendor}</bdi>
               </span>
             )}
           </span>
-          <span className="flex flex-wrap items-center gap-x-2 text-meta text-muted-foreground">
-            <bdi className="num">{e.expense_no}</bdi>
-            <bdi className="num">{e.date}</bdi>
-            <bdi>{e.account_name}</bdi>
-          </span>
-        </div>
-        <span className="flex flex-col items-end gap-1">
+          {e.note && (
+            <span className="text-meta font-normal text-muted-foreground">
+              <bdi>{e.note}</bdi>
+            </span>
+          )}
+          {e.voided && e.void_reason && (
+            <span className="text-meta font-normal text-bad">
+              {t('money.common.reason')}: <bdi>{e.void_reason}</bdi>
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: 'no',
+      header: t('money.expense.number'),
+      cell: (e) => <bdi className="num whitespace-nowrap">{e.expense_no}</bdi>,
+    },
+    {
+      id: 'date',
+      header: t('money.common.date'),
+      cell: (e) => <bdi className="num whitespace-nowrap">{e.date}</bdi>,
+    },
+    {
+      id: 'account',
+      header: t('money.common.account'),
+      cell: (e) => <bdi>{e.account_name}</bdi>,
+    },
+    {
+      id: 'amount',
+      header: t('money.common.amount'),
+      numeric: true,
+      cell: (e) => (
+        <span className="inline-flex flex-col items-end gap-1">
           <Mny paisa={e.amount} className={e.voided ? 'line-through opacity-70' : undefined} />
           {e.voided && <StatusBadge tone="bad">{t('money.common.voided')}</StatusBadge>}
         </span>
-      </div>
-      {e.note && (
-        <p className="text-sm text-muted-foreground">
-          <bdi>{e.note}</bdi>
-        </p>
-      )}
-      {e.voided && e.void_reason && (
-        <p className="text-sm text-bad">
-          {t('money.common.reason')}: <bdi>{e.void_reason}</bdi>
-        </p>
-      )}
-      {actions && (
-        <div className="flex flex-wrap gap-2 print:hidden">
-          {e.has_photo && (
-            <Button asChild variant="outline" size="sm">
-              <a href={`/api/expenses/${e.id}/photo`} target="_blank" rel="noreferrer">
-                <ImageIcon aria-hidden />
-                {t('money.expense.viewPhoto')}
-              </a>
-            </Button>
-          )}
-          {!e.has_photo && !e.voided && canAddPhoto && <AddPhotoButton e={e} />}
-          {onVoid && !e.voided && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ms-auto text-muted-foreground hover:text-bad"
-              id={`expense-void-${e.id}`}
-              onClick={() => onVoid(e)}
-            >
-              <Ban aria-hidden />
-              {t('money.common.void')}
-            </Button>
-          )}
-        </div>
-      )}
-    </li>
+      ),
+    },
+    {
+      id: 'bill',
+      header: t('money.expense.photo'),
+      className: 'print:hidden',
+      cell: (e) => <BillCell e={e} canAddPhoto={canAddPhoto} />,
+    },
+  ];
+  return (
+    <DataTable
+      id="expense-table"
+      caption={t('money.expense.title')}
+      columns={columns}
+      rows={rows}
+      rowKey={(e) => e.id}
+      rowActions={
+        onVoid
+          ? (e) =>
+              e.voided ? null : (
+                <RowMenu
+                  className="print:hidden"
+                  label={`${t('shell.rowMenu')}: ${e.expense_no}`}
+                  actions={[
+                    {
+                      id: `expense-void-${e.id}`,
+                      label: t('money.common.void'),
+                      icon: Ban,
+                      destructive: true,
+                      onSelect: () => onVoid(e),
+                    },
+                  ]}
+                />
+              )
+          : undefined
+      }
+    />
   );
 }
 
@@ -395,8 +443,58 @@ export function ExpenseFilters({ f }: { f: ReturnType<typeof useExpenseFilters> 
   const { t, i18n } = useTranslation();
   const cats = useExpenseCategories().data?.categories ?? [];
   const accounts = useAccounts().data?.accounts ?? [];
+  const cat = cats.find((c) => c.id === f.category);
+  const acc = accounts.find((a) => a.id === f.account);
+  // Dates are always set (this month by default), so only the optional filters become chips.
+  const active: ActiveFilter[] = [];
+  if (f.category)
+    active.push({
+      id: 'category',
+      label: (
+        <>
+          {t('money.common.category')}: <bdi>{cat ? nameIn(cat, i18n.language) : '…'}</bdi>
+        </>
+      ),
+      onClear: () => f.setCategory(''),
+    });
+  if (f.account)
+    active.push({
+      id: 'account',
+      label: (
+        <>
+          {t('money.common.account')}: <bdi>{acc?.name ?? '…'}</bdi>
+        </>
+      ),
+      onClear: () => f.setAccount(''),
+    });
+  if (f.includeVoid)
+    active.push({
+      id: 'void',
+      label: t('money.common.includeVoid'),
+      onClear: () => f.setIncludeVoid(false),
+    });
   return (
-    <div className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-3 print:hidden">
+    <FilterBar
+      id="expense-filters"
+      className="rounded-xl border bg-card p-4"
+      search={
+        <Field id="exp-q" label="money.common.search">
+          <Input
+            id="exp-q"
+            type="search"
+            value={f.q}
+            maxLength={60}
+            onChange={(e) => f.setQ(e.target.value)}
+          />
+        </Field>
+      }
+      active={active}
+      onClearAll={() => {
+        f.setCategory('');
+        f.setAccount('');
+        f.setIncludeVoid(false);
+      }}
+    >
       <Field id="exp-from" label="money.common.from">
         <Input
           id="exp-from"
@@ -439,9 +537,6 @@ export function ExpenseFilters({ f }: { f: ReturnType<typeof useExpenseFilters> 
           onChange={f.setAccount}
         />
       </Field>
-      <Field id="exp-q" label="money.common.search">
-        <Input id="exp-q" value={f.q} maxLength={60} onChange={(e) => f.setQ(e.target.value)} />
-      </Field>
       {/* The shared 44 px row label: the whole line is the touch target (verify pass). */}
       <Checkbox
         id="exp-include-void"
@@ -450,7 +545,7 @@ export function ExpenseFilters({ f }: { f: ReturnType<typeof useExpenseFilters> 
         onChange={(e) => f.setIncludeVoid(e.target.checked)}
         label={t('money.common.includeVoid')}
       />
-    </div>
+    </FilterBar>
   );
 }
 
@@ -511,16 +606,11 @@ export function ExpensesPage() {
             </span>
           }
         >
-          <ul className="flex flex-col divide-y">
-            {q.data.expenses.map((e) => (
-              <ExpenseRow
-                key={e.id}
-                e={e}
-                onVoid={canVoidExpense(roles) ? setVoiding : undefined}
-                canAddPhoto={canCreateExpense(roles)}
-              />
-            ))}
-          </ul>
+          <ExpenseTable
+            rows={q.data.expenses}
+            onVoid={canVoidExpense(roles) ? setVoiding : undefined}
+            canAddPhoto={canCreateExpense(roles)}
+          />
         </Panel>
       )}
       <AddExpenseDialog open={adding} onOpenChange={setAdding} />

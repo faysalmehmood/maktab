@@ -1,6 +1,7 @@
 import {
   type AppDb,
   accountBalances,
+  addPeriods,
   advanceRegister,
   approvePayslip,
   cashbook,
@@ -912,11 +913,16 @@ export function moneyRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const db = c.get('db');
       const period = q.period ?? thisMonth();
       const today = todayPk();
+      // One report over the month before and this month (same five queries): the strip compares
+      // income, spending and net with the previous month.
+      const prev = addPeriods(period, -1);
       const r = await incomeExpense(
         db,
-        { from: period, to: period },
+        { from: prev, to: period },
         { excludeOwners: !ownersVisible(c) },
       );
+      const cur = r.months.find((m) => m.period === period);
+      const before = r.months.find((m) => m.period === prev);
       const [dues] = await db.all<{ n: number }>(
         sql`SELECT coalesce(sum(max(0, d.due - coalesce(pc.credit, 0))), 0) AS n
             FROM (SELECT payer_id, sum(due) AS due FROM charge_status
@@ -931,11 +937,17 @@ export function moneyRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const late = await defaulters(db, { today, limit: 5000 });
       const body: MonthDashboardDto = {
         period,
-        income: r.income.total,
-        expenses: r.expenses.total,
-        salaries: r.salaries.pay,
+        income: cur?.income ?? 0,
+        expenses: cur?.expenses ?? 0,
+        salaries: cur?.salaries ?? 0,
         salaries_scope: r.salaries.scope,
-        net: r.net,
+        net: cur?.net ?? 0,
+        previous: {
+          period: prev,
+          income: before?.income ?? 0,
+          spending: (before?.expenses ?? 0) + (before?.salaries ?? 0),
+          net: before?.net ?? 0,
+        },
         dues_outstanding: Number(dues?.n ?? 0),
         defaulters: late.length,
         admissions: people?.admissions ?? 0,

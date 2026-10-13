@@ -7,7 +7,7 @@ import type {
   StaffRole,
 } from '@maktab/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -174,6 +174,8 @@ const month: MonthDashboardDto = {
   defaulters: 2,
   admissions: 3,
   left: 1,
+  // Income up 8000 vs 4000 (good), spending 4000 vs 5000 (down: good), net 4000 vs -1000.
+  previous: { period: '2026-01', income: RS(4000), spending: RS(5000), net: -RS(1000) },
 };
 const API = {
   'GET /api/accounts': accounts,
@@ -239,6 +241,16 @@ const API = {
   'GET /api/dashboard/month': month,
 };
 
+/** Radix menus measure with ResizeObserver (missing in jsdom). */
+const stubResizeObserver = () =>
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
 const byId = (id: string) =>
   waitFor(() => {
     const el = document.getElementById(id);
@@ -316,14 +328,27 @@ describe('expenses', () => {
     expect(typeof body.id).toBe('string');
   });
 
-  it('void: admin with a reason; an accountant sees no void button', async () => {
+  /** Open a row's "more" menu (RowMenu) by its accessible name. */
+  const openRowMenu = async (no: string) => {
+    fireEvent.keyDown(await screen.findByRole('button', { name: `More actions: ${no}` }), {
+      key: 'Enter',
+    });
+    return screen.findByRole('menu');
+  };
+
+  it('void: admin with a reason, from the row menu; an already void row has no menu', async () => {
+    stubResizeObserver();
     const api = mockApi({
       ...API,
       'POST /api/expenses/E1/void': { expense: expense({ voided: true }) },
     });
     renderAt('/expenses', '/expenses', <ExpensesPage />, ['admin']);
-    fireEvent.click(await byId('expense-void-E1'));
-    expect(document.getElementById('expense-void-E2')).toBeNull(); // already void
+    const menu = await openRowMenu('EXP-2026-00001');
+    const item = within(menu).getByRole('menuitem', { name: 'Void' });
+    expect(item.id).toBe('row-action-expense-void-E1');
+    expect(item.dataset.destructive).toBe('true');
+    expect(screen.queryByRole('button', { name: 'More actions: EXP-2026-00002' })).toBeNull();
+    fireEvent.click(item);
     fireEvent.click(await byId('expense-void-confirm'));
     await screen.findByText('Required');
     expect(posts(api.calls, '/api/expenses/E1/void')).toEqual([]);
@@ -334,7 +359,7 @@ describe('expenses', () => {
     );
   });
 
-  it('Void is never the only row action: a row without a bill offers "Add bill photo" first', async () => {
+  it('Void is never the only row action: a row without a bill offers "Add bill photo" in the row', async () => {
     mockApi({
       ...API,
       'GET /api/expenses': {
@@ -345,12 +370,15 @@ describe('expenses', () => {
       },
     });
     renderAt('/expenses', '/expenses', <ExpensesPage />, ['admin']);
-    const voidBtn = await byId('expense-void-E3');
-    const row = voidBtn.closest('[data-expense]') as HTMLElement;
-    const actions = [...row.querySelectorAll('a, button, label')].map((b) => b.textContent);
-    expect(actions).toEqual(['Add bill photo', 'Void']);
-    // Void is the secondary (ghost) action at the far end.
-    expect(voidBtn.getAttribute('data-variant') ?? voidBtn.className).toMatch(/ghost|ms-auto/);
+    // The shared DataTable: a captioned table, the bill action in the row, Void behind the menu.
+    const table = await screen.findByRole('table', { name: 'Expenses' });
+    const row = (table.querySelector('[data-expense="E3"]') as HTMLElement).closest(
+      'tr',
+    ) as HTMLElement;
+    const visible = [...row.querySelectorAll('a, button, label')].map(
+      (b) => b.getAttribute('aria-label') ?? b.textContent,
+    );
+    expect(visible).toEqual(['Add bill photo', 'More actions: EXP-2026-00001']);
     expect(row.querySelector('input[type="file"]')?.getAttribute('capture')).toBe('environment');
   });
 
@@ -358,7 +386,7 @@ describe('expenses', () => {
     mockApi(API);
     renderAt('/expenses', '/expenses', <ExpensesPage />, ['accountant']);
     await screen.findAllByText('Landlord');
-    expect(document.getElementById('expense-void-E1')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^More actions/ })).toBeNull();
   });
 });
 
@@ -447,6 +475,18 @@ describe('dashboard month tiles', () => {
     expect((await byId('tile-month-spending')).textContent).toContain('PKR 4,000');
     expect((await byId('tile-month-admissions')).textContent).toContain('3');
     expect((await byId('tile-month-left')).textContent).toContain('1');
+    // StatStrip comparison against the previous month, toned by whether higher is better.
+    const income = (await byId('tile-month-income')).querySelector('[data-compare]') as HTMLElement;
+    expect(income.dataset.compare).toBe('up');
+    expect(income.textContent).toContain('Up 100%');
+    expect(income.textContent).toContain('vs January 2026');
+    expect(income.className).toContain('text-ok');
+    const spending = (await byId('tile-month-spending')).querySelector(
+      '[data-compare]',
+    ) as HTMLElement;
+    expect(spending.textContent).toContain('Down 20%');
+    expect(spending.className).toContain('text-ok');
+    expect(document.querySelector('#tile-month-dues [data-compare]')).toBeNull();
   });
 });
 

@@ -60,7 +60,7 @@ export function FilterBar({
 
   return (
     <div id={id} data-layout="sheet" className={cn('flex flex-col gap-2 print:hidden', className)}>
-      <div className="flex gap-2">
+      <div className="flex items-end gap-2">
         {search && <div className="min-w-0 flex-1">{search}</div>}
         <Button
           type="button"

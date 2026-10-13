@@ -81,13 +81,13 @@ export function DataTable<R>({
             <>
               <span className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="font-medium">{primary?.cell(r)}</span>
-                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-meta">
+                <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 text-meta">
                   {columns
                     .filter((c) => c !== primary && !c.hideOnPhone)
                     .map((c) => (
                       <div key={c.id} className="contents">
                         <dt className="text-muted-foreground">{c.header}</dt>
-                        <dd className={cn('min-w-0', c.numeric && 'text-end')}>{c.cell(r)}</dd>
+                        <dd className="min-w-0">{c.cell(r)}</dd>
                       </div>
                     ))}
                 </dl>

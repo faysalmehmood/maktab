@@ -41,6 +41,7 @@ export const shellEn = {
     upNoPct: 'Up',
     downNoPct: 'Down',
     same: 'No change',
+    vs: 'vs {{month}}',
   },
   rowMenu: 'More actions',
   filters: {

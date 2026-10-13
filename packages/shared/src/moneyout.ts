@@ -348,6 +348,8 @@ export type MonthDashboardDto = {
   defaulters: number;
   admissions: number;
   left: number;
+  /** The month before, for the strip's "vs last month" (spending = expenses + salaries). */
+  previous: { period: string; income: number; spending: number; net: number };
 };
 
 /** Row shown for a money-out error code (the web maps it to a sentence). */

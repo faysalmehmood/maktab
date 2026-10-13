@@ -110,6 +110,7 @@ describe('F1/F8: salaries without management', () => {
       defaulters: 0,
       admissions: 0,
       left: 0,
+      previous: { period: '2026-01', income: 0, spending: 0, net: 0 },
     };
     mockApi({ 'GET /api/dashboard/month': month });
     renderAt('/', '/', <MonthTiles />, ['accountant']);

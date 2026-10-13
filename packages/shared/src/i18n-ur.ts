@@ -1275,6 +1275,7 @@ export const shellUr: Shape<typeof shellEn> = {
     upNoPct: 'زیادہ',
     downNoPct: 'کم',
     same: 'کوئی فرق نہیں',
+    vs: '{{month}} کے مقابلے میں',
   },
   rowMenu: 'مزید اقدامات',
   filters: {

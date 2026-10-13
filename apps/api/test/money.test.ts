@@ -450,6 +450,9 @@ describe('reports, drawer, audit, dashboard over HTTP', () => {
       expenses: RS(300),
       admissions: 1,
     });
+    // The strip compares with the month before (nothing booked then in this test).
+    expect(month.body.previous.period < period).toBe(true);
+    expect(month.body.previous).toMatchObject({ income: 0, spending: 0, net: 0 });
 
     expect((await s.as.admin('GET', '/api/audit')).status).toBe(403);
     const audit = await s.as.owner<AuditListDto>('GET', '/api/audit?entity=expense');

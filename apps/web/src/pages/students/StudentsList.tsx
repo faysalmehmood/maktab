@@ -5,8 +5,10 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
 import { Avatar } from '@/components/avatar';
-import { Num } from '@/components/form';
-import { EmptyState, ListSkeleton, Page, PageHeader, Panel, StatusBadge } from '@/components/page';
+import { type Column, DataTable } from '@/components/data-table';
+import { type ActiveFilter, FilterBar } from '@/components/filter-bar';
+import { Field, Num } from '@/components/form';
+import { EmptyState, Page, PageHeader, Panel, StatusBadge } from '@/components/page';
 import { isolate } from '@/components/students/fields';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,6 +57,74 @@ export function StudentsList() {
   const data = list.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / data.page_size)) : 1;
   const filtered = !!(q || group || statusParam !== 'active');
+  const groupRow = groups.find((g) => g.id === group);
+  // Applied filters as chips on a phone (the default "active" status is not a filter).
+  const active: ActiveFilter[] = [];
+  if (group)
+    active.push({
+      id: 'group',
+      label: (
+        <>
+          {t('student.group')}: <bdi>{groupRow ? groupRow.name : '…'}</bdi>
+        </>
+      ),
+      onClear: () => update({ group: '' }),
+    });
+  if (statusParam !== 'active')
+    active.push({
+      id: 'status',
+      label: (
+        <>
+          {t('student.status')}:{' '}
+          {status ? t(`student.statuses.${status}`) : t('student.allStatuses')}
+        </>
+      ),
+      onClear: () => update({ status: '' }),
+    });
+
+  const columns: Column<StudentListItem>[] = [
+    {
+      id: 'name',
+      header: t('student.title'),
+      primary: true,
+      cell: (s) => (
+        <span className="flex min-w-0 items-center gap-3">
+          <Avatar name={s.name} src={s.has_photo ? `/api/students/${s.id}/photo` : null} />
+          <span className="flex min-w-0 flex-col">
+            <bdi className="truncate">{s.name}</bdi>
+            {s.status !== 'active' && (
+              <span>
+                <StatusBadge tone="neutral">{t(`student.statuses.${s.status}`)}</StatusBadge>
+              </span>
+            )}
+          </span>
+        </span>
+      ),
+    },
+    {
+      id: 'group',
+      header: t('student.group'),
+      cell: (s) => (s.group_name ? <bdi>{s.group_name}</bdi> : '—'),
+    },
+    {
+      id: 'father',
+      header: t('student.fatherName'),
+      cell: (s) => (s.father_name ? <bdi>{s.father_name}</bdi> : '—'),
+    },
+    {
+      id: 'phone',
+      header: t('guardian.phone'),
+      hideOnPhone: true,
+      className: 'text-muted-foreground',
+      cell: (s) => (s.guardian_phone ? <Num>{formatPkPhone(s.guardian_phone)}</Num> : '—'),
+    },
+    {
+      id: 'admission',
+      header: t('student.admissionNo'),
+      numeric: true,
+      cell: (s) => <Num>{s.admission_no}</Num>,
+    },
+  ];
 
   return (
     <Page width="full" className="max-w-[1240px]">
@@ -81,28 +151,34 @@ export function StudentsList() {
         }
       />
 
-      <div className="flex flex-col gap-2 md:flex-row">
-        <form
-          className="flex flex-1 gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            update({ q: text.trim() });
-          }}
-        >
-          <Input
-            type="search"
-            aria-label={t('common.search')}
-            placeholder={t('student.searchPlaceholder')}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <Button type="submit" size="icon" aria-label={t('common.search')}>
-            <Search aria-hidden />
-          </Button>
-        </form>
-        <div className="grid grid-cols-2 gap-2 md:w-[26rem]">
+      <FilterBar
+        id="student-filters"
+        search={
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              update({ q: text.trim() });
+            }}
+          >
+            <Input
+              type="search"
+              aria-label={t('common.search')}
+              placeholder={t('student.searchPlaceholder')}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+            <Button type="submit" size="icon" aria-label={t('common.search')}>
+              <Search aria-hidden />
+            </Button>
+          </form>
+        }
+        active={active}
+        onClearAll={() => update({ group: '', status: '' })}
+      >
+        <Field id="student-filter-group" label="student.group">
           <Select
-            aria-label={t('student.group')}
+            id="student-filter-group"
             value={group}
             onChange={(e) => update({ group: e.target.value })}
           >
@@ -113,8 +189,10 @@ export function StudentsList() {
               </option>
             ))}
           </Select>
+        </Field>
+        <Field id="student-filter-status" label="student.status">
           <Select
-            aria-label={t('student.status')}
+            id="student-filter-status"
             value={statusParam}
             onChange={(e) => update({ status: e.target.value })}
           >
@@ -125,89 +203,34 @@ export function StudentsList() {
               </option>
             ))}
           </Select>
-        </div>
-      </div>
+        </Field>
+      </FilterBar>
 
       <Panel bodyClassName="flex flex-col">
-        {/* Column heads (desktop): one row markup serves both the table and the phone list. */}
-        <div
-          aria-hidden
-          className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)_7rem] gap-4 border-b px-4 py-2 text-meta font-semibold text-muted-foreground md:grid"
-        >
-          <span>{t('student.title')}</span>
-          <span>{t('student.group')}</span>
-          <span>{t('student.fatherName')}</span>
-          <span>{t('guardian.phone')}</span>
-          <span className="text-end">{t('student.admissionNo')}</span>
-        </div>
-        {list.isPending ? (
-          <ListSkeleton rows={8} />
-        ) : list.isError ? (
-          <p role="alert" className="p-4">
-            {t('common.error')}
-          </p>
-        ) : data && data.items.length === 0 ? (
-          <EmptyState
-            icon={UserRound}
-            title={filtered ? t('student.emptyFilter') : t('student.empty')}
-            action={
-              !filtered &&
-              canWriteStudents(roles) && (
-                <Button asChild variant="outline">
-                  <Link to="/students/new">{t('student.admit')}</Link>
-                </Button>
-              )
-            }
-          />
-        ) : (
-          <ul className="flex flex-col divide-y">
-            {data?.items.map((s) => (
-              <li key={s.id}>
-                <Link
-                  to={`/students/${s.id}`}
-                  className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-2 hover:bg-accent md:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)_7rem]"
-                >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <Avatar
-                      name={s.name}
-                      src={s.has_photo ? `/api/students/${s.id}/photo` : null}
-                    />
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate font-medium">
-                        <bdi>{s.name}</bdi>
-                      </span>
-                      {/* Phone: the class and guardian under the name. */}
-                      <span className="truncate text-meta text-muted-foreground md:hidden">
-                        {s.group_name ? <bdi>{s.group_name}</bdi> : '—'}
-                        {s.father_name && (
-                          <>
-                            {' · '}
-                            <bdi>{s.father_name}</bdi>
-                          </>
-                        )}
-                      </span>
-                    </span>
-                  </span>
-                  <span className="hidden truncate text-sm md:block">
-                    {s.group_name ? <bdi>{s.group_name}</bdi> : '—'}
-                  </span>
-                  <span className="hidden truncate text-sm md:block">
-                    {s.father_name ? <bdi>{s.father_name}</bdi> : '—'}
-                  </span>
-                  <span className="hidden truncate text-sm text-muted-foreground md:block">
-                    {s.guardian_phone ? <Num>{formatPkPhone(s.guardian_phone)}</Num> : '—'}
-                  </span>
-                  <span className="flex flex-col items-end gap-1 text-sm">
-                    <Num>{s.admission_no}</Num>
-                    {s.status !== 'active' && (
-                      <StatusBadge tone="neutral">{t(`student.statuses.${s.status}`)}</StatusBadge>
-                    )}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
+        <DataTable
+          id="students-table"
+          caption={t('student.title')}
+          columns={columns}
+          rows={data?.items}
+          rowKey={(s) => s.id}
+          rowHref={(s) => `/students/${s.id}`}
+          loading={list.isPending}
+          error={list.isError ? t('common.error') : undefined}
+          empty={
+            <EmptyState
+              icon={UserRound}
+              title={filtered ? t('student.emptyFilter') : t('student.empty')}
+              action={
+                !filtered &&
+                canWriteStudents(roles) && (
+                  <Button asChild variant="outline">
+                    <Link to="/students/new">{t('student.admit')}</Link>
+                  </Button>
+                )
+              }
+            />
+          }
+        />
       </Panel>
 
       {data && data.total > data.page_size && (
