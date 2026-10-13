@@ -7,8 +7,8 @@ import { clientIp } from './turnstile';
 /**
  * Fixed-window counter per key, in the isolate's memory. Best effort by design: a Worker runs many
  * isolates, so this stops a single client hammering one isolate (and keeps one parent link from
- * burning the D1 budget), while the hard limits are Cloudflare rate-limiting rules (docs/deploy.md
- * "Rate limiting": /p* and /api/p* 60/min, /api/auth/* 20/min, POST /api/* 300/min, per IP).
+ * burning the D1 budget), while the hard limits are Cloudflare rate-limiting rules (docs/deploy.md §7:
+ * /p, /p/…, /api/p, /api/p/… 60/min; /api/auth, /api/auth/… 20/min; POST /api/* 300/min, per IP).
  */
 export class RateLimiter {
   private readonly hits = new Map<string, { start: number; n: number }>();
@@ -51,6 +51,31 @@ export const IP_RATES = {
   parent: { limit: 60, windowMs: 60_000 },
   auth: { limit: 20, windowMs: 60_000 },
 } as const;
+
+/**
+ * Which per-IP limit a path falls under, matched exactly like the WAF expressions in docs/deploy.md
+ * §7: the segment itself or anything below it — `/api/payroll`, `/api/payslips`, `/api/parent-links`
+ * and `/api/programmes` are not parent routes, `/api/authority` would not be a sign-in route.
+ */
+export function rateClass(path: string): keyof typeof IP_RATES | null {
+  const under = (prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
+  if (under('/api/p')) return 'parent';
+  if (under('/api/auth')) return 'auth';
+  return null;
+}
+
+/** One middleware for every limited surface on `/api/*`, routed by `rateClass`. */
+export function apiRateLimits(): MiddlewareHandler<AppEnv> {
+  const byClass = {
+    parent: ipRateLimit('p', IP_RATES.parent),
+    auth: ipRateLimit('auth', IP_RATES.auth),
+  };
+  return async (c, next) => {
+    const k = rateClass(c.req.path);
+    if (!k) return next();
+    return byClass[k](c, next);
+  };
+}
 
 /**
  * Per-IP limiter middleware. Sets the IETF draft `RateLimit-*` headers on every answer and

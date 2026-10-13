@@ -9,7 +9,14 @@ import {
   verifyIdToken,
 } from '../auth/google';
 import { nowSec, SESSION_TTL_SEC, sessionCookieName } from '../auth/principal';
-import { oauthClaims, sign, signSession, verify, verifySession } from '../auth/signed';
+import {
+  oauthClaims,
+  sign,
+  signSession,
+  verify,
+  verifyLogout,
+  verifySession,
+} from '../auth/signed';
 import { createSession, endSession, resolveGoogleUser } from '../auth/signin';
 import type { AppEnv } from '../env';
 import { randomToken } from '../lib/b64';
@@ -19,6 +26,11 @@ import { clientIp, TURNSTILE_SCRIPT, turnstileSiteKey, verifyTurnstile } from '.
 import { defineRoute, publicRoute, type RouteTable } from '../perm/routes';
 
 const OAUTH_COOKIE = 'maktab_oauth';
+/**
+ * Set by the web app (not HttpOnly) when a sign-out could not reach the server: it carries the old
+ * session's logout token, and the OAuth callback revokes that session before the new one starts.
+ */
+export const LOGOUT_PENDING_COOKIE = 'maktab_logout_pending';
 const OAUTH_TTL_SEC = 10 * 60;
 
 export type AuthDeps = {
@@ -79,6 +91,7 @@ export function authRoutes(app: Hono<AppEnv>, table: RouteTable, deps: AuthDeps)
             deps.fetch,
             ts,
             clientIp((h) => c.req.header(h)),
+            'open',
           ))
         )
           return loginError(c, 'turnstile_failed');
@@ -124,6 +137,22 @@ export function authRoutes(app: Hono<AppEnv>, table: RouteTable, deps: AuthDeps)
         nowSec(),
       );
       deleteCookie(c, OAUTH_COOKIE, { path: '/api/auth', secure: secure(c) });
+      // A sign-out queued offline on this phone: end exactly that old session now, whatever happens
+      // to this sign-in. On a D1 error the cookie stays and the app's own retry sends it later.
+      const pending = await verifyLogout(
+        c.env.SESSION_SECRET,
+        getCookie(c, LOGOUT_PENDING_COOKIE),
+        nowSec(),
+      );
+      if (pending) {
+        try {
+          await withD1Retry(() => endSession(c.get('db'), pending.sid));
+          deleteCookie(c, LOGOUT_PENDING_COOKIE, { path: '/', secure: secure(c) });
+        } catch (err) {
+          console.warn('pending logout not revoked at sign-in:', err);
+        }
+      } else if (getCookie(c, LOGOUT_PENDING_COOKIE) !== undefined)
+        deleteCookie(c, LOGOUT_PENDING_COOKIE, { path: '/', secure: secure(c) });
       if (c.req.query('error')) return loginError(c, 'denied');
       const code = c.req.query('code');
       // State binds the callback to the browser that started the flow (login CSRF).
@@ -190,9 +219,33 @@ export function authRoutes(app: Hono<AppEnv>, table: RouteTable, deps: AuthDeps)
     async (c) => {
       const name = sessionCookieName(c.env.APP_ORIGIN);
       const claims = await verifySession(c.env.SESSION_SECRET, getCookie(c, name), nowSec());
+      // `{logout_token}` (M7a): revoke exactly the session it names — a sign-out queued offline and
+      // sent after someone else signed in on this phone must not end the new session. Idempotent;
+      // a bad or expired token revokes nothing (an expired one's session has expired too).
+      let body: unknown = null;
+      try {
+        const text = await c.req.text();
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        throw new ApiError(400, 'invalid', 'Body must be JSON');
+      }
+      const raw =
+        body && typeof body === 'object' && 'logout_token' in body
+          ? (body as { logout_token: unknown }).logout_token
+          : undefined;
+      if (raw !== undefined) {
+        if (typeof raw !== 'string' || raw.length > 1024)
+          throw new ApiError(400, 'invalid', 'logout_token: must be a string');
+        const target = await verifyLogout(c.env.SESSION_SECRET, raw, nowSec());
+        if (target) await endSession(c.get('db'), target.sid);
+        // The cookie goes only when it belongs to the session just ended.
+        if (claims && target && claims.sid === target.sid)
+          deleteCookie(c, name, { path: '/', secure: secure(c) });
+        return c.json({ ok: true, revoked: !!target });
+      }
       if (claims) await endSession(c.get('db'), claims.sid);
       deleteCookie(c, name, { path: '/', secure: secure(c) });
-      return c.json({ ok: true });
+      return c.json({ ok: true, revoked: !!claims });
     },
   );
 }

@@ -13,7 +13,7 @@ import * as ob from '@/offline/outbox';
 import { _reset, startAutoSync, syncNow } from '@/offline/sync';
 import { RegisterPage } from '@/pages/attendance/Register';
 import { TodayPage } from '@/pages/attendance/Today';
-import { ids, mockApi, renderAt } from './api-mock';
+import { ids, meAs, mockApi, renderAt } from './api-mock';
 
 /** What the browser reports: navigator.onLine plus the matching window event. */
 function setOnline(on: boolean) {
@@ -69,7 +69,11 @@ beforeAll(async () => {
 beforeEach(async () => {
   await act(() => setLanguage('en'));
   ob._close();
-  ob.configure({ dbName: `att-ui-${n++}`, now: () => Date.now() });
+  ob.configure({
+    dbName: `att-ui-${n++}`,
+    now: () => Date.now(),
+    userId: meAs(['teacher']).user.id,
+  });
   _reset();
 });
 afterEach(() => {

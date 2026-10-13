@@ -17,12 +17,28 @@ export const turnstileSiteKey = (env: Bindings): string | null =>
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
-/** true = a human (or Turnstile is off). A network error or a malformed answer is a failure. */
+/**
+ * What to do when siteverify cannot answer (network error, timeout, 5xx):
+ *   'open'   sign-in: Google is the real authentication and the sign-in rate limits still apply, so a
+ *            Turnstile outage must not lock staff out;
+ *   'closed' the parent gate: the atomic 5-attempt lockout in D1 is the real limiter, and a parent
+ *            only has to try again.
+ * An explicit `success: false`, a token for another hostname, or a missing token is a failure under
+ * both policies.
+ */
+export type TurnstilePolicy = 'open' | 'closed';
+
+/** Local testing keys answer with hostname "example.com": only checked off localhost. */
+const isLocalOrigin = (origin: string): boolean =>
+  /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin.replace(/\/$/, ''));
+
+/** true = a human (or Turnstile is off). */
 export async function verifyTurnstile(
   env: Bindings,
   fetchFn: Fetch,
   token: string | undefined | null,
   ip: string | undefined,
+  policy: TurnstilePolicy,
 ): Promise<boolean> {
   if (!turnstileSiteKey(env)) return true;
   if (!token || token.length > 2048) return false;
@@ -30,14 +46,25 @@ export async function verifyTurnstile(
   form.append('secret', env.TURNSTILE_SECRET ?? '');
   form.append('response', token);
   if (ip) form.append('remoteip', ip);
+  let body: { success?: unknown; hostname?: unknown };
   try {
     const res = await fetchFn(TURNSTILE_VERIFY_URL, { method: 'POST', body: form });
+    if (res.status >= 500) return policy === 'open';
     if (!res.ok) return false;
-    const body = (await res.json()) as { success?: unknown };
-    return body.success === true;
+    body = (await res.json()) as typeof body;
+  } catch {
+    // Unreachable, or an unreadable answer.
+    return policy === 'open';
+  }
+  if (body.success !== true) return false;
+  if (isLocalOrigin(env.APP_ORIGIN)) return true;
+  let host: string;
+  try {
+    host = new URL(env.APP_ORIGIN).hostname;
   } catch {
     return false;
   }
+  return typeof body.hostname === 'string' && body.hostname.toLowerCase() === host.toLowerCase();
 }
 
 export const clientIp = (h: (name: string) => string | undefined): string | undefined =>

@@ -161,6 +161,7 @@ beforeEach(() => {
     now: () => Date.now(),
     chunk: MAX_SUBMISSIONS_PER_SYNC,
     maxMarks: MAX_MARKS_PER_SYNC,
+    userId: 'u-teacher',
   });
   server = fakeServer();
 });

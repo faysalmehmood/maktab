@@ -1,6 +1,7 @@
 import type { MeResponse } from '@maktab/shared';
 import type { Hono } from 'hono';
 import { loadPrincipal } from '../auth/principal';
+import { signLogout } from '../auth/signed';
 import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
 import { defineRoute, publicRoute, type RouteTable, requires } from '../perm/routes';
@@ -20,7 +21,11 @@ export function coreRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     async (c) => {
       const p = await loadPrincipal(c);
       if (!p) throw new ApiError(401, 'unauthenticated', 'Sign in first');
-      const body: MeResponse = { user: p.user, roles: p.roles };
+      const body: MeResponse = {
+        user: p.user,
+        roles: p.roles,
+        logout_token: await signLogout(c.env.SESSION_SECRET, p.session.id, p.session.exp),
+      };
       return c.json(body);
     },
   );

@@ -1,6 +1,28 @@
 import { type MeResponse, STAFF_ROLES, USER_STATUSES } from '@maktab/shared';
 import { useQuery } from '@tanstack/react-query';
-import { flushLogout, logoutPending } from '@/offline/logout';
+import { API_CACHE } from '@/offline/api-cache';
+import { setCurrentUser } from '@/offline/current-user';
+import { flushLogout, signedOutLocally } from '@/offline/logout';
+
+const LAST_USER = 'maktab.lastUserId';
+
+/**
+ * A different account on this phone than last time (M7a): the offline API copy (who I am,
+ * rosters, a family's dues) belongs to the previous account and goes; the outbox keeps the other
+ * account's registers but sends only this user's.
+ */
+async function noteUser(userId: string): Promise<void> {
+  setCurrentUser(userId);
+  let last: string | null = null;
+  try {
+    last = localStorage.getItem(LAST_USER);
+    localStorage.setItem(LAST_USER, userId);
+  } catch {
+    return;
+  }
+  if (last !== null && last !== userId && typeof caches !== 'undefined')
+    await caches.delete(API_CACHE).catch(() => false);
+}
 
 export class ApiError extends Error {
   constructor(
@@ -27,10 +49,13 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<un
 }
 
 export async function fetchMe(): Promise<MeResponse> {
-  // Signed out while offline and the revocation not sent yet: signed out, whatever the cookie says.
-  if (logoutPending() && (await flushLogout()) === 'queued')
+  // Signed out while offline and the revocation not sent yet (nor consumed by a new sign-in):
+  // signed out, whatever the old cookie says.
+  if (signedOutLocally() && (await flushLogout()) !== 'done')
     throw new ApiError(401, 'unauthenticated', 'Signed out');
-  return parseMe(await apiFetch('/api/me'));
+  const me = parseMe(await apiFetch('/api/me'));
+  await noteUser(me.user.id);
+  return me;
 }
 
 // Hand-written guards instead of the zod schemas in @maktab/shared: the shell is the only web code
@@ -60,9 +85,11 @@ export function parseMe(body: unknown): MeResponse {
     Array.isArray(roles) &&
     roles.every((r) => (STAFF_ROLES as readonly unknown[]).includes(r));
   if (!ok) throw new ApiError(500, 'bad_response', 'Unexpected /api/me response');
+  const token = isObj(body) && isStr(body.logout_token) ? body.logout_token : undefined;
   return {
     user: { id: u.id, email: u.email, name: u.name, status: u.status },
     roles,
+    ...(token ? { logout_token: token } : {}),
   } as MeResponse;
 }
 

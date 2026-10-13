@@ -1,4 +1,4 @@
-import type { I18nKey, StaffRole } from '@maktab/shared';
+import type { I18nKey, MeResponse, StaffRole } from '@maktab/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Banknote,
@@ -23,6 +23,14 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Sheet,
   SheetContent,
@@ -166,13 +174,21 @@ export function AppShell() {
     return stop;
   }, []);
 
+  const [unsentConfirm, setUnsentConfirm] = useState(false);
   const signOut = async () => {
-    // Offline too: local state goes now, the server revocation waits in a queue (offline/logout.ts).
-    void queueLogout();
+    // Offline too: local state goes now; the server revocation of *this* session waits in a queue
+    // (offline/logout.ts) bound to this session's logout token.
+    const me = queryClient.getQueryData<MeResponse>(['me']);
+    void queueLogout(me?.logout_token);
     queryClient.clear();
     // The offline API copy (who I am, rosters) must not outlive the session on a shared phone.
     if (typeof caches !== 'undefined') await caches.delete(API_CACHE).catch(() => false);
     navigate('/login', { replace: true });
+  };
+  // Registers this user saved but has not sent: only they can send them, so ask first.
+  const requestSignOut = () => {
+    if (outbox.pending + outbox.failed > 0) setUnsentConfirm(true);
+    else void signOut();
   };
 
   return (
@@ -206,7 +222,7 @@ export function AppShell() {
               </span>
             )}
             <LanguageToggle />
-            <Button variant="ghost" size="sm" onClick={() => void signOut()}>
+            <Button variant="ghost" size="sm" onClick={requestSignOut}>
               <LogOut aria-hidden className="rtl:-scale-x-100" />
               <span className="sr-only sm:not-sr-only">{t('auth.signOut')}</span>
             </Button>
@@ -218,6 +234,34 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {unsentConfirm && (
+        <Dialog open onOpenChange={(o) => !o && setUnsentConfirm(false)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t('auth.unsentTitle')}</DialogTitle>
+              <DialogDescription>
+                {t('auth.unsentBody', { n: outbox.pending + outbox.failed })}
+              </DialogDescription>
+            </DialogHeader>
+            <p className="text-sm">{t('auth.unsentHint')}</p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setUnsentConfirm(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setUnsentConfirm(false);
+                  void signOut();
+                }}
+              >
+                {t('auth.signOutAnyway')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="start" className="w-72 p-0">

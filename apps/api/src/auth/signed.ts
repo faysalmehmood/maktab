@@ -74,3 +74,21 @@ export const signSession = (secret: string, sid: string, exp: number) =>
 
 export const verifySession = (secret: string, token: string | undefined, nowSec: number) =>
   verify(secret, token, 'session', sessionClaims, nowSec);
+
+/**
+ * A logout token (M7a): names one session so a sign-out queued offline can later revoke exactly
+ * that session — never whichever session the phone's cookie belongs to by then. Handed to the
+ * signed-in client by /api/me; it can do nothing but end its own session.
+ */
+export const logoutClaims = z.object({
+  typ: z.literal('logout'),
+  exp: z.number().int(),
+  sid: z.string(),
+});
+export type LogoutClaims = z.infer<typeof logoutClaims>;
+
+export const signLogout = (secret: string, sid: string, exp: number) =>
+  sign(secret, { typ: 'logout', sid, exp } satisfies LogoutClaims);
+
+export const verifyLogout = (secret: string, token: string | undefined, nowSec: number) =>
+  verify(secret, token, 'logout', logoutClaims, nowSec);

@@ -1,4 +1,4 @@
-import type { MouseEvent } from 'react';
+import { type MouseEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { LanguageToggle } from '@/components/LanguageToggle';
@@ -34,12 +34,18 @@ export function Login() {
   const [params] = useSearchParams();
   const failed = params.has('error');
   const turnstile = params.get('error') === 'turnstile_failed';
-  // A sign-out queued offline is sent before a new sign-in, so it can never end the new session.
+  const [needNet, setNeedNet] = useState(false);
+  // A sign-out queued offline is sent before a new sign-in. The queued revocation names the old
+  // session only (and rides along in a cookie the OAuth callback honours), so a 5xx / 429 now does
+  // not block sign-in — but with no connection at all, Google cannot be reached anyway: say so.
   const signInClick = (e: MouseEvent<HTMLAnchorElement>) => {
     if (!logoutPending()) return;
     e.preventDefault();
     const href = e.currentTarget.href;
-    void flushLogout().then(() => window.location.assign(href));
+    void flushLogout().then((r) => {
+      if (r === 'offline') setNeedNet(true);
+      else window.location.assign(href);
+    });
   };
 
   return (
@@ -58,6 +64,11 @@ export function Login() {
           {failed && (
             <p role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {turnstile ? t('auth.turnstileFailed') : t('auth.failed')}
+            </p>
+          )}
+          {needNet && (
+            <p role="alert" className="rounded-md bg-amber-100 p-3 text-sm text-amber-950">
+              {t('auth.connectToSignIn')}
             </p>
           )}
           {/* A full navigation, not fetch: the OAuth flow is a chain of redirects. */}

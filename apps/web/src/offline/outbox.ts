@@ -16,6 +16,11 @@
  *   408 / 429 / 5xx / network retry with backoff
  *   any other 4xx             the request itself is bad: entries move to `failed`
  * Triggers are the caller's job (online, visibilitychange, a timer); Background Sync is not relied on.
+ *
+ * Per user (M7a): every entry records who saved it (`user_id`, set with configure({ userId })). Sync,
+ * the counts and retry/dismiss see only the signed-in user's entries; another account's registers on
+ * a shared phone are kept untouched until that account signs in again (`others()` counts them). An
+ * entry from before M7a (no user_id) belongs to whoever is signed in.
  */
 import {
   type AttendanceSubmission,
@@ -39,6 +44,8 @@ export type OutboxEntry = {
   label?: string | null;
   seq: number;
   created_at: number;
+  /** Who saved it; only that user's session sends it. */
+  user_id?: string | null;
 };
 
 export type SyncOutcome = {
@@ -66,6 +73,8 @@ const cfg = {
   maxMarks: MAX_MARKS_PER_SYNC,
   dbName: 'attendance-outbox',
   url: '/api/attendance/sync',
+  /** The signed-in user (from /api/me); null = nobody known yet: nothing is sent. */
+  userId: null as string | null,
   now: (): number => Date.now(),
   jitter: (): number => 0,
 };
@@ -189,6 +198,7 @@ export async function enqueue(
       next_at: 0,
       error: null,
       label: info.label ?? null,
+      user_id: cfg.userId,
       seq,
       created_at: cfg.now(),
     };
@@ -206,12 +216,25 @@ async function all(): Promise<OutboxEntry[]> {
   >;
 }
 
+/** Saved by the signed-in user (an entry from before M7a counts as theirs). */
+const mine = (e: OutboxEntry): boolean =>
+  cfg.userId !== null && (e.user_id ?? cfg.userId) === cfg.userId;
+
+async function own(): Promise<OutboxEntry[]> {
+  return (await all()).filter(mine);
+}
+
 export async function pending(): Promise<number> {
-  return (await all()).filter((e) => e.state === 'pending').length;
+  return (await own()).filter((e) => e.state === 'pending').length;
 }
 
 export async function failed(): Promise<OutboxEntry[]> {
-  return (await all()).filter((e) => e.state === 'failed');
+  return (await own()).filter((e) => e.state === 'failed');
+}
+
+/** Registers another account saved on this phone (kept until that account signs in). */
+export async function others(): Promise<number> {
+  return cfg.userId === null ? 0 : (await all()).filter((e) => !mine(e)).length;
 }
 
 /** Failed entries (all, or only `ids`) go back to pending with a fresh backoff. */
@@ -220,7 +243,7 @@ export async function retryFailed(ids?: readonly string[]): Promise<void> {
   const tx = d.transaction('outbox', 'readwrite');
   const s = tx.objectStore('outbox');
   for (const e of (await req(s.getAll())) as OutboxEntry[]) {
-    if (e.state === 'failed' && (!ids || ids.includes(e.client_id)))
+    if (mine(e) && e.state === 'failed' && (!ids || ids.includes(e.client_id)))
       s.put({ ...e, state: 'pending', attempts: 0, next_at: 0, error: null, error_code: null });
   }
   await done(tx);
@@ -232,7 +255,8 @@ export async function discardFailed(ids?: readonly string[]): Promise<void> {
   const tx = d.transaction('outbox', 'readwrite');
   const s = tx.objectStore('outbox');
   for (const e of (await req(s.getAll())) as OutboxEntry[]) {
-    if (e.state === 'failed' && (!ids || ids.includes(e.client_id))) s.delete(e.client_id);
+    if (mine(e) && e.state === 'failed' && (!ids || ids.includes(e.client_id)))
+      s.delete(e.client_id);
   }
   await done(tx);
 }
@@ -307,7 +331,7 @@ async function runOnce(fetchImpl: FetchLike, force: boolean): Promise<SyncOutcom
   // the server see them out of order.
   const blocked = new Set<string>();
   const due: OutboxEntry[] = [];
-  for (const e of await all()) {
+  for (const e of await own()) {
     if (e.state !== 'pending') continue;
     const k = keyOf(e.submission);
     if (blocked.has(k)) continue;
@@ -386,7 +410,7 @@ async function runOnce(fetchImpl: FetchLike, force: boolean): Promise<SyncOutcom
   // Effective due time of an entry = max over earlier entries with the same key.
   const eff = new Map<string, number>();
   let min: number | null = null;
-  for (const e of await all()) {
+  for (const e of await own()) {
     if (e.state !== 'pending') continue;
     const k = keyOf(e.submission);
     const at = Math.max(e.next_at, eff.get(k) ?? 0);

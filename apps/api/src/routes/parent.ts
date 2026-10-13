@@ -317,6 +317,7 @@ export function parentRoutes(app: Hono<AppEnv>, table: RouteTable, deps: { fetch
         deps.fetch,
         input.turnstile_token,
         clientIp((h) => c.req.header(h)),
+        'closed',
       ))
     )
       throw new ApiError(400, 'turnstile_failed', 'Please complete the check and try again');

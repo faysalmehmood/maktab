@@ -5,7 +5,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { createJwksClient, type JwksClient } from './auth/google';
 import type { AppEnv, Bindings } from './env';
 import { notFound, onError } from './lib/errors';
-import { IP_RATES, ipRateLimit } from './lib/ratelimit';
+import { apiRateLimits } from './lib/ratelimit';
 import { TURNSTILE_SCRIPT, turnstileSiteKey } from './lib/turnstile';
 import { denyUndeclared, RouteTable } from './perm/routes';
 import { admissionRoutes } from './routes/admissions';
@@ -68,9 +68,8 @@ export function createApp(deps: AppDeps) {
   app.use('/api/*', (c, next) => csrf({ origin: c.env.APP_ORIGIN })(c, next));
   app.use('/api/*', denyUndeclared(routes));
   // Per-IP limits in front of the public surfaces (M7, best effort per isolate; the WAF rules in
-  // docs/deploy.md are the real limit). Hono's '/api/p/*' also matches '/api/p' itself.
-  app.use('/api/p/*', ipRateLimit('p', IP_RATES.parent));
-  app.use('/api/auth/*', ipRateLimit('auth', IP_RATES.auth));
+  // docs/deploy.md §7 are the real limit), with the same exact path match (`rateClass`).
+  app.use('/api/*', apiRateLimits());
 
   coreRoutes(app, routes);
   const fetchFn = deps.fetch ?? ((input: string, init?: RequestInit) => fetch(input, init));

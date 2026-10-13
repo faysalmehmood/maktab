@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { registerPath, STATUS_CLASS, timeOf, useRejectionText } from '@/lib/attendance';
+import { useRoles } from '@/lib/roles';
 import { cn, isolate } from '@/lib/utils';
 import type { OutboxEntry } from '@/offline/outbox';
 import { discardFailed, failedEntries, retryFailed, useOutboxStatus } from '@/offline/sync';
@@ -136,7 +137,10 @@ export function TodayList({ items, date }: { items: TodayItem[]; date: string })
 export function SyncBanner() {
   const { t } = useTranslation();
   const s = useOutboxStatus();
-  if (!s.pending && !s.failed && !s.paused && !s.offline) return null;
+  const roles = useRoles();
+  // Another account's registers on this phone: only the owner/admin is told how many (M7a).
+  const others = roles.some((r) => r === 'owner' || r === 'admin') ? s.others : 0;
+  if (!s.pending && !s.failed && !s.paused && !s.offline && !others) return null;
   return (
     <div className="flex flex-col gap-1 border-b bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-50 print:hidden">
       {(s.offline || s.pending > 0) && (
@@ -156,6 +160,12 @@ export function SyncBanner() {
         </p>
       )}
       {s.failed > 0 && <FailedList count={s.failed} />}
+      {others > 0 && (
+        <p className="flex min-h-11 items-center gap-2" role="status">
+          <CloudOff className="size-4 shrink-0" aria-hidden />
+          <span>{t('attendance.otherAccount', { n: others })}</span>
+        </p>
+      )}
     </div>
   );
 }

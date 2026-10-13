@@ -42,6 +42,12 @@ export const en = {
     inviteOnly: 'Only staff invited by the school can sign in.',
     failed: 'Sign-in failed. Ask the school owner to invite your Google email.',
     turnstileFailed: 'The "are you a person" check did not pass. Try signing in again.',
+    connectToSignIn: 'Connect to the internet to sign in.',
+    unsentTitle: 'Registers not sent yet',
+    unsentBody: '{{n}} registers not yet sent — sign out anyway?',
+    unsentHint:
+      'They stay on this phone and are sent the next time you sign in here. Nobody else can send them.',
+    signOutAnyway: 'Sign out anyway',
   },
   common: {
     language: 'Language',
@@ -451,6 +457,8 @@ export const en = {
       'This group has {{n}} students; one register holds at most {{max}}. Ask the office to split it into sections.',
     offline: 'You are offline',
     signInAgain: 'Sign in again to send saved attendance',
+    otherAccount:
+      '{{n}} registers saved by another account on this phone; they are sent when that account signs in here.',
     signIn: 'Sign in',
     queued: '{{n}} absence messages queued',
     openQueue: 'Open send queue',

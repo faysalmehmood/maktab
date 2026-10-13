@@ -92,24 +92,43 @@ cd apps/api && npx wrangler deploy --env production
 
 ## 7. Rate limiting (Cloudflare WAF rules — set by hand in the dashboard)
 
-The Worker has an in-memory per-IP limiter on `/api/p*` (60/min) and `/api/auth/*` (20/min), which
-answers `429 rate_limited` with `Retry-After` and `RateLimit-Limit/Remaining/Reset` headers. It is
-per isolate, so it is defence in depth only; **the real limits are these three rules**. Dashboard →
-the `conceptlix.com` zone → Security → WAF → **Rate limiting rules** → Create rule (the free plan
-allows one rule with a 10 s period; if only one is available, create rule 1 and note it in
-docs/deploy-log.md; on Pro or above create all three exactly as below):
+The Worker has an in-memory per-IP limiter on `/api/p` + `/api/p/…` (60/min) and `/api/auth/…`
+(20/min), which answers `429 rate_limited` with `Retry-After` and `RateLimit-Limit/Remaining/Reset`
+headers. Its path match is exact (`rateClass` in `apps/api/src/lib/ratelimit.ts`): `/api/payroll`,
+`/api/payslips`, `/api/parent-links`, `/api/programmes` are **not** parent routes. It is per isolate,
+so it is defence in depth only; **the real limits are the WAF rules below**. Dashboard → the
+`conceptlix.com` zone → Security → WAF → **Rate limiting rules** → Create rule.
+
+Match paths precisely, never with a bare `starts_with(path, "/p")` (that would also count `/payroll`,
+`/api/payslips`, `/api/programmes` … against the parent limit):
 
 | # | Rule name | If incoming requests match (expression) | Characteristics | Rate | Action | Duration |
 |---|---|---|---|---|---|---|
-| 1 | maktab parent page | `(http.host eq "maktab.conceptlix.com" and (starts_with(http.request.uri.path, "/p") or starts_with(http.request.uri.path, "/api/p")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
-| 2 | maktab sign-in | `(http.host eq "maktab.conceptlix.com" and starts_with(http.request.uri.path, "/api/auth/"))` | IP | 20 requests / 1 minute | Block (429) | 1 minute |
+| 1 | maktab parent page | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
+| 2 | maktab sign-in | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 20 requests / 1 minute | Block (429) | 1 minute |
 | 3 | maktab API writes | `(http.host eq "maktab.conceptlix.com" and http.request.method eq "POST" and starts_with(http.request.uri.path, "/api/"))` | IP | 300 requests / 1 minute | Block (429) | 1 minute |
 
-Notes: rule 1 matches `/p` and `/p#…` (the fragment never reaches the server) and every `/api/p*`
+**Free plan: one rule only** (and a 10 s period, so "60 / 1 minute" becomes "10 / 10 seconds", and
+"20 / 1 minute" becomes "4 / 10 seconds" — Cloudflare counts per period). Rules 1 and 2 cannot keep
+their own rates in one rule, so on the free plan create this **single merged rule** at the stricter
+sign-in rate and record it in docs/deploy-log.md:
+
+| Rule name | Expression | Characteristics | Rate | Action | Duration |
+|---|---|---|---|---|---|
+| maktab public surfaces | `(http.host eq "maktab.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 10 requests / 10 seconds | Block (429) | 10 seconds |
+
+A parent page load is about 3–4 requests (shell, `/api/p`, the logo, a gate attempt) and a sign-in
+is 2–3, so 10 per 10 s per IP leaves room for a whole office on one NAT IP; the Worker's own per-IP
+limits (60/min parent, 20/min sign-in) and the 5-attempt D1 gate lockout still apply underneath.
+Rule 3 is then not available; the D1 budget and the Worker limiter are what stand in front of
+`POST /api/*` until the zone moves to Pro.
+
+Notes: rule 1 matches `/p` and `/p#…` (the fragment never reaches the server) and every `/api/p/…`
 call. Rule 3 also covers `POST /api/backup/runs` (token-only; no Turnstile needed there). A school
 behind one NAT IP (all office phones on one Wi-Fi) stays far below 300 POSTs a minute; if a busy
 counter ever hits it, raise rule 3, never remove it. Check: `for i in $(seq 70); do curl -s -o
-/dev/null -w '%{http_code}\n' https://maktab.conceptlix.com/api/p; done | sort | uniq -c` shows 429s.
+/dev/null -w '%{http_code}\n' https://maktab.conceptlix.com/api/p; done | sort | uniq -c` shows 429s,
+and the same loop on `/api/payroll` (a 401, signed out) never does.
 
 ## 8. Turnstile (optional; set by hand)
 
@@ -130,9 +149,19 @@ Off until both values exist; with either missing everything behaves as before. O
    `https://challenges.cloudflare.com`; open a parent link with a gate on a phone: the widget shows
    under the birth-year box and "Open" waits for it.
 
+Failure policy (`apps/api/src/lib/turnstile.ts`): Cloudflare's answer is checked for
+`success: true` **and** a `hostname` equal to the host of `APP_ORIGIN` (a token solved on another
+site is refused); the client IP goes along as `remoteip`. If siteverify itself cannot be reached
+(network error, timeout, 5xx), **sign-in fails open** — staff can still reach Google, which is the
+real authentication, and the sign-in rate limits still apply — while the **parent gate fails
+closed** ("try again"): the gate's real limiter is the atomic 5-attempt lockout in D1, so a short
+Turnstile outage only delays a parent, it never opens extra guesses. An explicit `success: false`
+fails closed on both.
+
 To turn it off again: `npx wrangler secret delete TURNSTILE_SECRET --env production` (or remove the
 var) and deploy. Testing keys for a local check (`apps/api/.dev.vars`): site key
-`1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA` always pass.
+`1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA` always pass (they answer with hostname
+`example.com`, so the hostname check is skipped only while `APP_ORIGIN` is `http://localhost…`).
 
 ## First deploy notes (2026-10-10, see docs/deploy-log.md)
 

@@ -172,6 +172,23 @@ describe('Turnstile on the parent gate', () => {
     expect(csp).toContain('frame-src https://challenges.cloudflare.com');
   });
 
+  it('fails closed when siteverify is down (M7a): no attempt counted, no way in', async () => {
+    const down = (async () => {
+      throw new TypeError('network');
+    }) as typeof globalThis.fetch;
+    const f = await parentFixture(TS_ON, down);
+    const r = await f.asParent('POST', '/api/p/gate', {
+      birth_year: 2015,
+      turnstile_token: 'good',
+    });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ error: { code: 'turnstile_failed' } });
+    const [row] = await f.db.all<{ gate_failures: number }>(
+      sql`SELECT gate_failures FROM parent_link`,
+    );
+    expect(row?.gate_failures).toBe(0);
+  });
+
   it('only one key set counts as off', async () => {
     const f = await parentFixture({ TURNSTILE_SITE_KEY: 'x' });
     expect((await f.asParent('POST', '/api/p/gate', { birth_year: 2015 })).status).toBe(200);

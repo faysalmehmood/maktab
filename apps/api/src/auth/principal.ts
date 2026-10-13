@@ -10,6 +10,8 @@ export type Principal = {
   kind: 'staff';
   user: User;
   roles: StaffRole[];
+  /** The session this request came with (and its expiry, epoch seconds). */
+  session: { id: string; exp: number };
 };
 
 /** Roles the permission matrix evaluates; parents will get their own principal kind with magic links. */
@@ -45,7 +47,12 @@ export async function loadPrincipal(c: Context<AppEnv>): Promise<Principal | nul
       );
     if (row) {
       const roles = await db.select({ role: role.role }).from(role).where(eq(role.userId, row.id));
-      principal = { kind: 'staff', user: row, roles: roles.map((r) => r.role) };
+      principal = {
+        kind: 'staff',
+        user: row,
+        roles: roles.map((r) => r.role),
+        session: { id: claims.sid, exp: claims.exp },
+      };
     }
   }
   c.set('principal', principal);

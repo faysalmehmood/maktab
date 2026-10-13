@@ -15,6 +15,7 @@
  */
 import type { AttendanceSubmission, AttendanceSyncResult } from '@maktab/shared';
 import { useSyncExternalStore } from 'react';
+import { onCurrentUser } from './current-user';
 import * as outbox from './outbox';
 
 export type OutboxStatus = {
@@ -22,9 +23,12 @@ export type OutboxStatus = {
   failed: number;
   paused: boolean;
   offline: boolean;
+  /** Registers another account saved on this phone (not sent with this session). */
+  others: number;
 };
 
-let status: OutboxStatus = { pending: 0, failed: 0, paused: false, offline: false };
+const EMPTY: OutboxStatus = { pending: 0, failed: 0, paused: false, offline: false, others: 0 };
+let status: OutboxStatus = { ...EMPTY };
 const listeners = new Set<() => void>();
 
 function set(next: Partial<OutboxStatus>): void {
@@ -33,7 +37,8 @@ function set(next: Partial<OutboxStatus>): void {
     merged.pending === status.pending &&
     merged.failed === status.failed &&
     merged.paused === status.paused &&
-    merged.offline === status.offline
+    merged.offline === status.offline &&
+    merged.others === status.others
   )
     return;
   status = merged;
@@ -81,12 +86,13 @@ const hasIdb = () => typeof indexedDB !== 'undefined';
 
 export async function refreshStatus(): Promise<OutboxStatus> {
   if (!hasIdb()) return status;
-  const [pending, failed, paused] = await Promise.all([
+  const [pending, failed, paused, others] = await Promise.all([
     outbox.pending(),
     outbox.failed(),
     outbox.authPaused(),
+    outbox.others(),
   ]);
-  set({ pending, failed: failed.length, paused: !!paused });
+  set({ pending, failed: failed.length, paused: !!paused, others });
   return status;
 }
 
@@ -208,9 +214,23 @@ export function startAutoSync(): () => void {
   };
 }
 
+/**
+ * Who is signed in (fetchMe): new registers are saved under this user and only theirs are sent.
+ * A change of user refreshes the counts.
+ */
+export function setOutboxUser(userId: string | null): void {
+  outbox.configure({ userId });
+  if (hasIdb()) refreshStatus().catch(() => undefined);
+}
+
+// Follow the signed-in user (set by fetchMe) from the moment this module loads.
+onCurrentUser((id) => {
+  if (id !== null) setOutboxUser(id);
+});
+
 /** Test helper: forget in-memory state between tests. */
 export function _reset(): void {
-  status = { pending: 0, failed: 0, paused: false, offline: false };
+  status = { ...EMPTY };
   answers.clear();
   answerListeners.clear();
   if (timer) clearTimeout(timer);

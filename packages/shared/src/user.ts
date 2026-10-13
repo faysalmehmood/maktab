@@ -18,6 +18,11 @@ export type User = z.infer<typeof userSchema>;
 export const meResponseSchema = z.object({
   user: userSchema,
   roles: z.array(staffRoleSchema),
+  /**
+   * Revokes this session and nothing else (POST /api/auth/logout `{logout_token}`): kept by the
+   * phone at sign-out so a revocation sent later never ends a newer session (M7a).
+   */
+  logout_token: z.string().optional(),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
 
