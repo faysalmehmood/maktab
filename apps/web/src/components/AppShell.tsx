@@ -46,7 +46,7 @@ import { useIsPhone } from '@/lib/media';
 import { useSchool } from '@/lib/queries';
 import { type GrantRef, holds, isTeacherOnly, useRoles } from '@/lib/roles';
 import { setThemePref, THEMES, type ThemePref, useBrand, useThemePref } from '@/lib/theme';
-import { useActiveTour } from '@/lib/tour';
+import { stopTour, tourFor, useActiveTour } from '@/lib/tour';
 import { cn } from '@/lib/utils';
 import { API_CACHE } from '@/offline/api-cache';
 import { queueLogout } from '@/offline/logout';
@@ -369,7 +369,12 @@ const TourRunner = lazy(() => import('@/guide/TourRunner'));
 
 /** The running "Show me" tour, if any (the engine loads only when a tour starts). */
 function TourHost() {
-  const active = useActiveTour();
+  const running = useActiveTour();
+  const active = tourFor(running, useMe().data?.user.id);
+  // A tour left over from another account (or from before sign-out) ends here.
+  useEffect(() => {
+    if (running && !active) stopTour();
+  }, [running, active]);
   if (!active) return null;
   return (
     <Suspense fallback={null}>
@@ -585,6 +590,7 @@ export function AppShell() {
     // (offline/logout.ts) bound to this session's logout token.
     const me = queryClient.getQueryData<MeResponse>(['me']);
     void queueLogout(me?.logout_token);
+    stopTour();
     queryClient.clear();
     // The offline API copy (who I am, rosters) must not outlive the session on a shared phone.
     if (typeof caches !== 'undefined') await caches.delete(API_CACHE).catch(() => false);

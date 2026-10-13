@@ -11,20 +11,20 @@ export const TASKS_B: readonly GuideTask[] = [
     title: { en: "Generate the month's fees", ur: 'مہینے کی فیس بنائیں' },
     summary: {
       en: 'One button bills every class for the month. It also runs by itself on the 1st.',
-      ur: 'ایک بٹن سے ہر کلاس کی مہینے کی فیس بن جاتی ہے۔ یکم کو یہ خود بھی چلتا ہے۔',
+      ur: 'ایک بٹن سے ہر جماعت کی مہینے کی فیس بن جاتی ہے۔ یکم کو یہ خود بھی چلتا ہے۔',
     },
     steps: [
       {
         to: '/fees/billing',
         text: {
           en: '[[nav.fees]] → [[fee.nav.billing]]. Choose the [[fee.billing.period]].',
-          ur: '[[nav.fees]] → [[fee.nav.billing]]۔ [[fee.billing.period]] چنیں۔',
+          ur: '[[nav.fees]] ← [[fee.nav.billing]]۔ [[fee.billing.period]] چنیں۔',
         },
       },
       {
         text: {
           en: 'Press [[fee.billing.preview]] and check the counts per class.',
-          ur: '[[fee.billing.preview]] دبائیں اور ہر کلاس کی گنتی دیکھیں۔',
+          ur: '[[fee.billing.preview]] دبائیں اور ہر جماعت کی گنتی دیکھیں۔',
         },
       },
       {
@@ -36,18 +36,18 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         text: {
           en: 'A class under [[fee.billing.reopenTitle]] had no rate. Add the rate in [[nav.settings]] → [[settings.sections.fees]], press [[fee.billing.reopen]], then [[fee.billing.generate]] again.',
-          ur: '[[fee.billing.reopenTitle]] والی کلاس کا ریٹ نہیں تھا۔ [[nav.settings]] → [[settings.sections.fees]] میں ریٹ لکھیں، [[fee.billing.reopen]] دبائیں، پھر دوبارہ [[fee.billing.generate]]۔',
+          ur: '[[fee.billing.reopenTitle]] والی جماعت کا نرخ نہیں تھا۔ [[nav.settings]] ← [[settings.sections.fees]] میں نرخ لکھیں، [[fee.billing.reopen]] دبائیں، پھر دوبارہ [[fee.billing.generate]]۔',
         },
       },
     ],
     mistakes: [
       {
         en: 'Changing a rate by editing it: rates are never edited. Add a new rate from a date; old months keep the old rate.',
-        ur: 'ریٹ میں ترمیم کرنا: ریٹ بدلا نہیں جاتا۔ کسی تاریخ سے نیا ریٹ لگائیں؛ پرانے مہینے پرانے ریٹ پر رہتے ہیں۔',
+        ur: 'نرخ میں ترمیم کرنا: نرخ بدلا نہیں جاتا۔ کسی تاریخ سے نیا نرخ لگائیں؛ پرانے مہینے پرانے نرخ پر رہتے ہیں۔',
       },
       {
         en: 'Skipping [[fee.billing.preview]]: you miss a class with no rate until parents ask.',
-        ur: '[[fee.billing.preview]] نہ دیکھنا: بغیر ریٹ والی کلاس کا پتا تب چلتا ہے جب والدین پوچھیں۔',
+        ur: '[[fee.billing.preview]] نہ دیکھنا: بغیر نرخ والی جماعت کا پتا تب چلتا ہے جب والدین پوچھیں۔',
       },
     ],
     links: [
@@ -88,7 +88,7 @@ export const TASKS_B: readonly GuideTask[] = [
     id: 'apply-fines',
     section: 'month',
     roles: TASK_ROLES['apply-fines'],
-    title: { en: 'Apply late fines', ur: 'لیٹ جرمانہ لگائیں' },
+    title: { en: 'Apply late fines', ur: 'تاخیر جرمانہ لگائیں' },
     summary: {
       en: 'After the fine day, add the late fine to unpaid tuition.',
       ur: 'جرمانے کے دن کے بعد، ادا نہ ہونے والی ٹیوشن پر جرمانہ۔',
@@ -98,20 +98,20 @@ export const TASKS_B: readonly GuideTask[] = [
         to: '/settings?section=fees',
         text: {
           en: 'Once: in [[nav.settings]] → [[settings.sections.fees]] set the late fine (on/off, the day of the month, fixed or percent, optional cap).',
-          ur: 'ایک بار: [[nav.settings]] → [[settings.sections.fees]] میں لیٹ جرمانہ طے کریں (آن/آف، مہینے کا دن، مقررہ یا فیصد، حد)۔',
+          ur: 'ایک بار: [[nav.settings]] ← [[settings.sections.fees]] میں تاخیر جرمانہ طے کریں (آن/آف، مہینے کا دن، مقررہ یا فیصد، حد)۔',
         },
       },
       {
         to: '/fees/billing',
         text: {
           en: '[[fee.nav.billing]] → [[fee.billing.finesPreview]] shows who will be fined and how much.',
-          ur: '[[fee.nav.billing]] → [[fee.billing.finesPreview]] دکھاتا ہے کس پر کتنا جرمانہ لگے گا۔',
+          ur: '[[fee.nav.billing]] ← [[fee.billing.finesPreview]] دکھاتا ہے کس پر کتنا جرمانہ لگے گا۔',
         },
       },
       {
         text: {
-          en: 'Press [[fee.billing.finesApply]]. A fine can be waived at the [[fee.nav.counter]] by the owner or admin.',
-          ur: '[[fee.billing.finesApply]] دبائیں۔ مالک یا ایڈمن [[fee.nav.counter]] پر جرمانہ معاف کر سکتا ہے۔',
+          en: 'Press [[fee.billing.finesApply]]. A fine can be waived at the [[fee.nav.counter]] by the [[staff.roles.owner]] or [[staff.roles.admin]].',
+          ur: '[[fee.billing.finesApply]] دبائیں۔ [[staff.roles.owner]] یا [[staff.roles.admin]] [[fee.nav.counter]] پر جرمانہ معاف کر سکتا ہے۔',
         },
       },
     ],
@@ -132,7 +132,7 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         path: '/fees/billing',
         target: 'billing-fines',
-        title: { en: 'Late fines', ur: 'لیٹ جرمانہ' },
+        title: { en: '[[fee.billing.fines]]', ur: '[[fee.billing.fines]]' },
         body: {
           en: 'Fines live next to the month, on the same screen.',
           ur: 'جرمانے اسی اسکرین پر مہینے کے ساتھ ہیں۔',
@@ -157,14 +157,14 @@ export const TASKS_B: readonly GuideTask[] = [
     title: { en: 'Defaulters and reminders', ur: 'نادہندگان اور یاد دہانی' },
     summary: {
       en: 'Who owes past the due date, and one reminder per family.',
-      ur: 'کس کی فیس مقررہ تاریخ سے لیٹ ہے، اور ہر خاندان کو ایک یاد دہانی۔',
+      ur: 'کس کی فیس کی مقررہ تاریخ گزر چکی ہے، اور ہر خاندان کو ایک یاد دہانی۔',
     },
     steps: [
       {
         to: '/fees/defaulters',
         text: {
           en: '[[nav.fees]] → [[fee.nav.defaulters]]. Filter by class, months overdue or amount.',
-          ur: '[[nav.fees]] → [[fee.nav.defaulters]]۔ کلاس، لیٹ مہینوں یا رقم سے چھانٹیں۔',
+          ur: '[[nav.fees]] ← [[fee.nav.defaulters]]۔ جماعت، تاخیر کے مہینوں یا رقم سے چھانٹیں۔',
         },
       },
       {
@@ -203,7 +203,7 @@ export const TASKS_B: readonly GuideTask[] = [
         title: { en: 'Narrow the list', ur: 'فہرست چھوٹی کریں' },
         body: {
           en: 'One class, two months or more, above an amount.',
-          ur: 'ایک کلاس، دو یا زیادہ مہینے، کسی رقم سے اوپر۔',
+          ur: 'ایک جماعت، دو یا زیادہ مہینے، کسی رقم سے اوپر۔',
         },
       },
       {
@@ -245,7 +245,7 @@ export const TASKS_B: readonly GuideTask[] = [
         to: '/reports/income-expense',
         text: {
           en: '[[money.nav.reports]] → [[money.reports.incomeExpense]]. Choose the months. You see income, expenses, salaries and the net.',
-          ur: '[[money.nav.reports]] → [[money.reports.incomeExpense]]۔ مہینے چنیں۔ آمدنی، خرچ، تنخواہیں اور خالص بچت سامنے آئے گی۔',
+          ur: '[[money.nav.reports]] ← [[money.reports.incomeExpense]]۔ مہینے چنیں۔ آمدنی، خرچ، تنخواہیں اور خالص بچت سامنے آئے گی۔',
         },
       },
       {
@@ -321,8 +321,8 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/students',
         text: {
-          en: 'Open the student. Under Guardians find [[msg.link.title]].',
-          ur: 'طالب علم کھولیں۔ Guardians کے نیچے [[msg.link.title]] دیکھیں۔',
+          en: 'Open the student. Under [[student.guardians]] find [[msg.link.title]].',
+          ur: 'طالب علم کھولیں۔ [[student.guardians]] کے نیچے [[msg.link.title]] دیکھیں۔',
         },
       },
       {
@@ -347,7 +347,7 @@ export const TASKS_B: readonly GuideTask[] = [
     mistakes: [
       {
         en: 'Sending the link in a class WhatsApp group: it is private to one family.',
-        ur: 'لنک کلاس کے واٹس ایپ گروپ میں بھیجنا: یہ ایک خاندان کا نجی لنک ہے۔',
+        ur: 'لنک جماعت کے واٹس ایپ گروپ میں بھیجنا: یہ ایک خاندان کا نجی لنک ہے۔',
       },
       {
         en: 'Looking for an old link later: Maktab does not keep it. Make a [[msg.link.rotate]].',
@@ -370,7 +370,7 @@ export const TASKS_B: readonly GuideTask[] = [
         target: 'profile-tab-guardians',
         wait: true,
         click: true,
-        title: { en: 'Guardians tab', ur: 'سرپرستوں کا ٹیب' },
+        title: { en: '[[student.guardians]] tab', ur: '[[student.guardians]] کا ٹیب' },
         body: {
           en: 'Each guardian has their own link. Next opens the tab.',
           ur: 'ہر سرپرست کا اپنا لنک ہوتا ہے۔ "آگے" سے یہ ٹیب کھلے گا۔',
@@ -451,7 +451,7 @@ export const TASKS_B: readonly GuideTask[] = [
         to: '/settings?section=staff',
         text: {
           en: '[[nav.settings]] → [[settings.sections.staff]]. In [[staff.invite]] type the [[staff.email]], name and role (and the groups for a teacher).',
-          ur: '[[nav.settings]] → [[settings.sections.staff]]۔ [[staff.invite]] میں [[staff.email]]، نام اور کردار لکھیں (استاد کے لیے گروپ بھی)۔',
+          ur: '[[nav.settings]] ← [[settings.sections.staff]]۔ [[staff.invite]] میں [[staff.email]]، نام اور کردار لکھیں (استاد کے لیے گروپ بھی)۔',
         },
       },
       {
@@ -540,15 +540,15 @@ export const TASKS_B: readonly GuideTask[] = [
       },
       {
         text: {
-          en: '[[staff.roles.teacher]]: own groups only: attendance, those students, absence messages, own payslips. No money.',
-          ur: '[[staff.roles.teacher]]: صرف اپنے گروپ: حاضری، وہی طلبہ، غیر حاضری کے پیغام، اپنی تنخواہ کی پرچی۔ پیسوں تک رسائی نہیں۔',
+          en: '[[staff.roles.teacher]]: own groups only: attendance, those students, absence messages, own payslips. Cannot take or see payments; sees who owes in own classes.',
+          ur: '[[staff.roles.teacher]]: صرف اپنے گروپ: حاضری، وہی طلبہ، غیر حاضری کے پیغام، اپنی تنخواہ کی پرچی۔ فیس نہ وصول کر سکتا ہے نہ ادائیگیاں دیکھ سکتا ہے؛ اپنی جماعتوں میں دیکھتا ہے کس کی فیس باقی ہے۔',
         },
       },
     ],
     mistakes: [
       {
-        en: 'Making the accountant an admin "to be safe": admins can bill and give concessions.',
-        ur: 'احتیاطاً اکاؤنٹنٹ کو ایڈمن بنانا: ایڈمن فیس بنا اور رعایت دے سکتا ہے۔',
+        en: 'Making the [[staff.roles.accountant]] an [[staff.roles.admin]] "to be safe": an [[staff.roles.admin]] can bill and give concessions.',
+        ur: 'احتیاطاً [[staff.roles.accountant]] کو [[staff.roles.admin]] بنانا: [[staff.roles.admin]] فیس بنا اور رعایت دے سکتا ہے۔',
       },
       {
         en: 'Nobody approves their own payslip. An owner on the payroll needs a second [[staff.roles.owner]] or [[staff.roles.admin]].',
@@ -588,8 +588,8 @@ export const TASKS_B: readonly GuideTask[] = [
       },
       {
         text: {
-          en: '[[money.salary.approve]] (owner or admin, never your own slip). Then [[money.salary.payButton]]: amount and the account it is paid from.',
-          ur: '[[money.salary.approve]] (مالک یا ایڈمن، اپنی پرچی کبھی نہیں)۔ پھر [[money.salary.payButton]]: رقم اور جس اکاؤنٹ سے دی۔',
+          en: '[[money.salary.approve]] ([[staff.roles.owner]] or [[staff.roles.admin]], never your own slip). Then [[money.salary.payButton]]: amount and the account it is paid from.',
+          ur: '[[money.salary.approve]] ([[staff.roles.owner]] یا [[staff.roles.admin]]، اپنی پرچی کبھی نہیں)۔ پھر [[money.salary.payButton]]: رقم اور جس اکاؤنٹ سے دی۔',
         },
       },
       {
@@ -683,14 +683,14 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/settings?section=backup',
         text: {
-          en: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.status.title]] shows the last run (OK / Partial / Failed), its size and copies.',
-          ur: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.status.title]] میں آخری بیک اپ (OK / Partial / Failed)، سائز اور کاپیاں نظر آتی ہیں۔',
+          en: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.status.title]] shows the last run ([[backup.status.statuses.ok]] / [[backup.status.statuses.partial]] / [[backup.status.statuses.failed]]), its size and copies.',
+          ur: '[[nav.settings]] ← [[settings.sections.backup]] ← [[backup.status.title]] میں آخری بیک اپ ([[backup.status.statuses.ok]] / [[backup.status.statuses.partial]] / [[backup.status.statuses.failed]])، سائز اور کاپیاں نظر آتی ہیں۔',
         },
       },
       {
         text: {
-          en: 'It runs every night at 02:30 Pakistan time. Failed, or an alarm that backups have not run: tell the maintainer the same day.',
-          ur: 'یہ ہر رات 02:30 (پاکستانی وقت) چلتا ہے۔ Failed ہو یا الارم آئے کہ بیک اپ نہیں بنا: اسی دن مینٹینر کو بتائیں۔',
+          en: 'It runs every night at 02:30 Pakistan time. [[backup.status.statuses.failed]], or an alarm that backups have not run: tell the maintainer the same day.',
+          ur: 'یہ ہر رات 02:30 (پاکستانی وقت) چلتا ہے۔ [[backup.status.statuses.failed]] ہو یا الارم آئے کہ بیک اپ نہیں بنا: اسی دن مینٹینر کو بتائیں۔',
         },
       },
       {
@@ -730,8 +730,8 @@ export const TASKS_B: readonly GuideTask[] = [
         wait: true,
         title: { en: '[[backup.status.title]]', ur: '[[backup.status.title]]' },
         body: {
-          en: 'The last run and where the copies are. OK is what you want to see.',
-          ur: 'آخری بیک اپ اور کاپیاں کہاں ہیں۔ OK نظر آنا چاہیے۔',
+          en: 'The last run and where the copies are. [[backup.status.statuses.ok]] is what you want to see.',
+          ur: 'آخری بیک اپ اور کاپیاں کہاں ہیں۔ [[backup.status.statuses.ok]] نظر آنا چاہیے۔',
         },
       },
       {
@@ -772,14 +772,14 @@ export const TASKS_B: readonly GuideTask[] = [
         to: '/settings?section=backup',
         text: {
           en: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.drill.title]]: tick the steps, add a note, [[backup.drill.record]].',
-          ur: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.drill.title]]: قدموں پر نشان لگائیں، نوٹ لکھیں، [[backup.drill.record]]۔',
+          ur: '[[nav.settings]] ← [[settings.sections.backup]] ← [[backup.drill.title]]: قدموں پر نشان لگائیں، نوٹ لکھیں، [[backup.drill.record]]۔',
         },
       },
     ],
     mistakes: [
       {
-        en: 'Skipping the drill because backups say OK: a backup nobody has opened is a guess.',
-        ur: 'بیک اپ OK دیکھ کر مشق چھوڑ دینا: جو بیک اپ کبھی کھولا نہ گیا وہ صرف اندازہ ہے۔',
+        en: 'Skipping the drill because backups say [[backup.status.statuses.ok]]: a backup nobody has opened is a guess.',
+        ur: 'بیک اپ [[backup.status.statuses.ok]] دیکھ کر مشق چھوڑ دینا: جو بیک اپ کبھی کھولا نہ گیا وہ صرف اندازہ ہے۔',
       },
     ],
     links: [
@@ -803,20 +803,20 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         to: '/settings?section=backup',
         text: {
-          en: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.everything.start]]. Keep the page open until it says Saved.',
-          ur: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.everything.start]]۔ Saved آنے تک صفحہ کھلا رکھیں۔',
+          en: '[[nav.settings]] → [[settings.sections.backup]] → [[backup.everything.start]]. Keep the page open until it says the file is saved.',
+          ur: '[[nav.settings]] ← [[settings.sections.backup]] ← [[backup.everything.start]]۔ فائل محفوظ ہونے کا پیغام آنے تک صفحہ کھلا رکھیں۔',
         },
       },
       {
         text: {
           en: 'You get one ZIP: a CSV file for every table (opens in Excel), the database structure and a README.',
-          ur: 'ایک ZIP ملے گی: ہر ٹیبل کی CSV فائل (Excel میں کھلتی ہے)، ڈیٹابیس کا ڈھانچہ اور README۔',
+          ur: 'ایک ZIP ملے گی: ہر ٹیبل کی CSV فائل (ایکسل میں کھلتی ہے)، ڈیٹا بیس کا ڈھانچہ اور README۔',
         },
       },
       {
         text: {
           en: 'Keep it on a USB or a private drive, not in WhatsApp: it holds every family, phone number and CNIC.',
-          ur: 'اسے USB یا نجی ڈرائیو میں رکھیں، واٹس ایپ میں نہیں: اس میں ہر خاندان، فون نمبر اور CNIC ہے۔',
+          ur: 'اسے یو ایس بی یا نجی ڈرائیو میں رکھیں، واٹس ایپ میں نہیں: اس میں ہر خاندان، فون نمبر اور شناختی کارڈ نمبر ہے۔',
         },
       },
     ],
@@ -872,7 +872,7 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         text: {
           en: 'When the banner [[pwa.installTitle]] shows, tap [[pwa.install]]. No banner? Chrome menu (⋮) → **Add to Home screen** or **Install app**.',
-          ur: 'جب [[pwa.installTitle]] کی پٹی آئے تو [[pwa.install]] دبائیں۔ پٹی نہیں آئی؟ Chrome مینو (⋮) → **Add to Home screen** یا **Install app**۔',
+          ur: 'جب [[pwa.installTitle]] کی پٹی آئے تو [[pwa.install]] دبائیں۔ پٹی نہیں آئی؟ Chrome مینو (⋮) ← **Add to Home screen** یا **Install app**۔',
         },
       },
       {
@@ -904,7 +904,7 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         text: {
           en: 'Open the app and each class register once while online; then they also open offline.',
-          ur: 'انٹرنیٹ ہوتے ہوئے ایپ اور ہر کلاس کا رجسٹر ایک بار کھول لیں؛ پھر یہ بغیر انٹرنیٹ بھی کھلیں گے۔',
+          ur: 'انٹرنیٹ ہوتے ہوئے ایپ اور ہر جماعت کا رجسٹر ایک بار کھول لیں؛ پھر یہ بغیر انٹرنیٹ بھی کھلیں گے۔',
         },
       },
       {
@@ -945,8 +945,8 @@ export const TASKS_B: readonly GuideTask[] = [
     roles: TASK_ROLES.printing,
     title: { en: 'Printing receipts (thermal and A5)', ur: 'رسید پرنٹ (تھرمل اور A5)' },
     summary: {
-      en: 'Choose the paper on the receipt screen, then Print. Each fits one page.',
-      ur: 'رسید کی اسکرین پر کاغذ چنیں، پھر Print۔ ہر رسید ایک صفحے پر۔',
+      en: 'Choose the paper on the receipt screen, then [[fee.receipt.print]]. Each fits one page.',
+      ur: 'رسید کی اسکرین پر کاغذ چنیں، پھر [[fee.receipt.print]]۔ ہر رسید ایک صفحے پر۔',
     },
     steps: [
       {
@@ -970,8 +970,8 @@ export const TASKS_B: readonly GuideTask[] = [
     ],
     mistakes: [
       {
-        en: 'Margins set to "Default" on a thermal printer cut the sides: choose "None".',
-        ur: 'تھرمل پرنٹر پر مارجن "Default" سے کنارے کٹ جاتے ہیں: "None" چنیں۔',
+        en: "On a thermal printer, Chrome's margins set to **Default** cut the sides: choose **None**.",
+        ur: 'تھرمل پرنٹر پر Chrome کے مارجن **Default** ہوں تو کنارے کٹ جاتے ہیں: **None** چنیں۔',
       },
       {
         en: 'Printing twice for a copy is fine; issuing a second receipt is not.',
@@ -989,14 +989,14 @@ export const TASKS_B: readonly GuideTask[] = [
     roles: TASK_ROLES.whatsapp,
     title: { en: 'Handing off to WhatsApp', ur: 'واٹس ایپ پر بھیجنا' },
     summary: {
-      en: 'Maktab prepares; WhatsApp sends; you come back and tap Sent.',
-      ur: 'مکتب تیار کرتا ہے؛ واٹس ایپ بھیجتا ہے؛ آپ واپس آ کر Sent دباتے ہیں۔',
+      en: 'Maktab prepares; WhatsApp sends; you come back and tap [[msg.queue.sentNext]].',
+      ur: 'مکتب تیار کرتا ہے؛ واٹس ایپ بھیجتا ہے؛ آپ واپس آ کر [[msg.queue.sentNext]] دباتے ہیں۔',
     },
     steps: [
       {
         text: {
           en: "Use the school's WhatsApp number on the phone you send from (WhatsApp Business is fine).",
-          ur: 'جس فون سے بھیجنا ہے اس پر اسکول کا واٹس ایپ نمبر ہو (WhatsApp Business بھی ٹھیک ہے)۔',
+          ur: 'جس فون سے بھیجنا ہے اس پر اسکول کا واٹس ایپ نمبر ہو (واٹس ایپ بزنس بھی ٹھیک ہے)۔',
         },
       },
       {
@@ -1014,7 +1014,7 @@ export const TASKS_B: readonly GuideTask[] = [
       {
         text: {
           en: 'Class WhatsApp groups: [[msg.queue.copyAllGroup]] (absence and notice texts only; fee texts are private).',
-          ur: 'کلاس کے واٹس ایپ گروپ: [[msg.queue.copyAllGroup]] (صرف غیر حاضری اور نوٹس؛ فیس کے پیغام نجی ہیں)۔',
+          ur: 'جماعت کے واٹس ایپ گروپ: [[msg.queue.copyAllGroup]] (صرف غیر حاضری اور نوٹس؛ فیس کے پیغام نجی ہیں)۔',
         },
       },
     ],

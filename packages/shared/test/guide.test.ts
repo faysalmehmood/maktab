@@ -13,10 +13,11 @@ import {
   taskById,
   tasksFor,
 } from '../src/guide';
-import { md, renderOnboardingMarkdown } from '../src/guide/markdown';
+import { BEFORE_YOU_START, md, renderOnboardingMarkdown } from '../src/guide/markdown';
 import { en } from '../src/i18n';
 import { screensEn } from '../src/i18n-screens';
 import { ur } from '../src/i18n-ur';
+import { strayLatin } from '../src/latin';
 
 /** Every { en, ur } pair in the content, with a readable path. */
 function pairs(): [string, L][] {
@@ -37,7 +38,7 @@ function pairs(): [string, L][] {
 const EN = { ...en, screens: screensEn };
 
 /** Bold names that are not Maktab's labels (Chrome's own menu and print window). */
-const NOT_OURS = new Set(['Add to Home screen', 'Install app', 'Save as PDF']);
+const NOT_OURS = new Set(['Add to Home screen', 'Install app', 'Save as PDF', 'Default', 'None']);
 
 describe('guide content', () => {
   it('has unique task ids, known sections and roles, and every section has tasks', () => {
@@ -63,7 +64,7 @@ describe('guide content', () => {
       const ph = (s: string) => [...s.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
       expect(ph(l.ur), path).toEqual(ph(l.en));
       // Urdu is Urdu, unless the whole text is quoted labels (resolved from the Urdu dictionary).
-      const own = l.ur.replace(/\[\[[\w.]+\]\]/g, '').replace(/[\s،۔.,:→()]/g, '');
+      const own = l.ur.replace(/\[\[[\w.]+\]\]/g, '').replace(/[\s،۔.,:←()]/g, '');
       if (own) expect(/[\u0600-\u06FF]/.test(own), `${path}: ${l.ur}`).toBe(true);
     }
   });
@@ -98,6 +99,8 @@ describe('guide content', () => {
     expect(ids('owner')).toContain('backups');
     expect(ids('owner')).toContain('first-week');
     expect(ids('admin')).not.toContain('backups');
+    // Only an owner can run setup or invite staff.
+    expect(ids('admin')).not.toContain('first-week');
     expect(ids('teacher')).toEqual(
       expect.arrayContaining(['take-attendance', 'send-messages', 'my-payslips', 'offline']),
     );
@@ -120,6 +123,29 @@ describe('guide content', () => {
         if (s.path) expect(s.path, t.id).toMatch(/^\/[a-zA-Z0-9/:-]*$/);
       }
     expect(steps).toBeGreaterThanOrEqual(40);
+  });
+
+  it("writes Urdu in Urdu: the app's own words, right-to-left arrows, no stray English", () => {
+    const all: [string, L][] = [
+      ...pairs(),
+      ...BEFORE_YOU_START.map((l, i): [string, L] => [`before.${i}`, l]),
+    ];
+    // Labels resolve from the Urdu dictionary; **…** is Chrome's own menu; `…` is code.
+    const own = (s: string) =>
+      s
+        .replace(/\[\[[\w.]+\]\]/g, ' ')
+        .replace(/\*\*[^*]+\*\*/g, ' ')
+        .replace(/`[^`]+`/g, ' ');
+    for (const [path, l] of all) {
+      expect(strayLatin(own(l.ur)), `${path}: ${l.ur}`).toEqual([]);
+      expect(l.ur, `${path}: Urdu paths read right to left`).not.toContain('→');
+      // One vocabulary: the words the Urdu screens use (منتظم, جماعت, نرخ, سابقہ, تاخیر).
+      expect(l.ur, path).not.toMatch(/ایڈمن|ریٹ|پری فکس|لیٹ|کلاس(?! ٹیچر)|چھٹی/);
+      // English names a button by its label, never by a bare word the screen does not show.
+      expect(own(l.en), path).not.toMatch(
+        /\b(?:tap|press|then) (?:Sent|Print)\b|\bsays? (?:OK|Saved)\b/,
+      );
+    }
   });
 
   it('fills placeholders and splits bold runs', () => {

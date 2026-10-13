@@ -5,7 +5,7 @@ import type { GuideRole } from './types';
  * show (the task text itself loads only when the button is pressed).
  */
 export const TASK_ROLES = {
-  'first-week': ['owner', 'admin'],
+  'first-week': ['owner'],
   'take-attendance': ['owner', 'admin', 'teacher'],
   'send-messages': ['owner', 'admin', 'accountant', 'teacher'],
   'admit-student': ['owner', 'admin', 'accountant'],

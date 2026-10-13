@@ -8,7 +8,13 @@ import { Button } from '@/components/ui/button';
  * Skip. The dim never takes clicks (the page, its sticky bars included, stays usable) and the card
  * is placed between the sticky top bar and the bottom bars. Steps may change the route (a path to
  * navigate to, or a target that Next clicks); a target that never appears is skipped with a note,
- * unless the step waits for the user to do something first.
+ * unless the step waits for the user to do something first (the card says so at once). A tour may
+ * declare an empty-state card, shown instead of skipping when the screen has nothing to point at.
+ * The tour closes when the app leaves every screen its remaining steps are on.
+ *
+ * Focus and keys: the card takes focus when it points at something, never while the user is typing
+ * in a field and never while it waits for the user. ←/→/Esc are left alone where they already mean
+ * something: fields, tabs, radio groups, listboxes and other dialogs.
  */
 
 export type EngineStep = {
@@ -20,12 +26,15 @@ export type EngineStep = {
   body: ReactNode;
 };
 
+/** The card for a screen with nothing to show (e.g. an empty send queue). */
+export type EngineEmpty = { target: string; title: ReactNode; body: ReactNode };
+
 export type EngineLabels = {
   next: string;
   back: string;
   skip: string;
   finish: string;
-  counter: (i: number, n: number) => string;
+  counter: (i: number, n: number) => ReactNode;
   skipped: string;
   waiting: string;
   label: string;
@@ -118,31 +127,49 @@ const rectOf = (el: HTMLElement): Rect => {
   return { top: r.top, left: r.left, width: r.width, height: r.height };
 };
 
-const editable = (t: EventTarget | null) =>
+const editable = (t: unknown) =>
   t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+
+/**
+ * Keys the tour must not take: typing in a field, arrows in a tab list / radio group / listbox,
+ * and anything inside another dialog (its Esc closes it, not the tour).
+ */
+export function keysBelongElsewhere(t: EventTarget | null): boolean {
+  if (!(t instanceof Element)) return false;
+  if (editable(t) || t.closest('[role=tab],[role=radio],[role=option]')) return true;
+  const dialog = t.closest('[role=dialog],[role=alertdialog]');
+  return !!dialog && !dialog.hasAttribute('data-tour-card');
+}
+
+/** Does any of these steps belong on this path (a step without a path is on every screen)? */
+const onAnyStep = (steps: readonly EngineStep[], pathname: string) =>
+  steps.some((s) => !s.path || matchPath(s.path, pathname));
 
 type Pos = { i: number; dir: 1 | -1; by: 'user' | 'skip'; skipped: boolean };
 
 export function TourEngine({
   steps,
+  empty,
   labels,
   pathname,
   navigate,
   onClose,
   rtl,
-  timeoutMs = 3000,
+  timeoutMs = 800,
 }: {
   steps: readonly EngineStep[];
+  empty?: EngineEmpty;
   labels: EngineLabels;
   pathname: string;
   navigate: (to: string) => void;
   /** `true` when the last step was finished with Next. */
   onClose: (completed: boolean) => void;
   rtl: boolean;
+  /** How long a missing target is looked for (once on its screen) before the step is skipped. */
   timeoutMs?: number;
 }) {
   const [pos, setPos] = useState<Pos>({ i: 0, dir: 1, by: 'user', skipped: false });
-  const [phase, setPhase] = useState<'seek' | 'shown' | 'waiting' | 'missing'>('seek');
+  const [phase, setPhase] = useState<'seek' | 'shown' | 'waiting' | 'missing' | 'empty'>('seek');
   const [rect, setRect] = useState<Rect | null>(null);
   const [cardH, setCardH] = useState(180);
   const [view, setView] = useState({ w: innerWidth, h: innerHeight });
@@ -151,6 +178,8 @@ export function TourEngine({
   const el = useRef<HTMLElement | null>(null);
   const path = useRef(pathname);
   path.current = pathname;
+  const at = useRef(pos.i);
+  at.current = pos.i;
   const step = steps[pos.i];
   const last = pos.i === steps.length - 1;
 
@@ -160,7 +189,9 @@ export function TourEngine({
     if (pos.by === 'user' && p && !p.includes(':') && !matchPath(p, path.current)) navigate(p);
   }, [pos, steps, navigate]);
 
-  // Find the target: poll (routes and lazy screens take a moment), then skip or wait.
+  // Find the target: poll (routes and lazy screens take a moment), then skip, wait or show the
+  // empty card. The skip clock starts once the app is on the step's screen; a step that waits for
+  // the user says so at once.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reseek restarts the search on purpose
   useEffect(() => {
     if (!step) return;
@@ -168,24 +199,31 @@ export function TourEngine({
     setRect(null);
     el.current = null;
     const started = Date.now();
+    let here: number | null = null;
     let timer: ReturnType<typeof setInterval> | undefined;
+    const anchor = (found: HTMLElement, as: 'shown' | 'empty') => {
+      clearInterval(timer);
+      el.current = found;
+      const reduce = matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      found.scrollIntoView?.({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+      setRect(rectOf(found));
+      setPhase(as);
+      return true;
+    };
     const tick = () => {
-      const found =
-        !step.path || matchPath(step.path, path.current) ? findTarget(step.target) : null;
-      if (found) {
-        clearInterval(timer);
-        el.current = found;
-        const reduce = matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        found.scrollIntoView?.({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
-        setRect(rectOf(found));
-        setPhase('shown');
-        return true;
-      }
-      if (Date.now() - started < timeoutMs) return false;
+      const onScreen = !step.path || matchPath(step.path, path.current);
+      const found = onScreen ? findTarget(step.target) : null;
+      if (found) return anchor(found, 'shown');
+      const blank = onScreen && empty ? findTarget(empty.target) : null;
+      if (blank) return anchor(blank, 'empty');
       if (step.wait) {
         setPhase('waiting');
         return false;
       }
+      if (onScreen) here ??= Date.now();
+      // Not there yet (navigating, a lazy screen): wait, but not for ever.
+      const since = here ?? started + 4000;
+      if (Date.now() - since < timeoutMs) return false;
       clearInterval(timer);
       const next = pos.i + pos.dir;
       if (next >= 0 && next < steps.length)
@@ -195,11 +233,19 @@ export function TourEngine({
     };
     if (!tick()) timer = setInterval(tick, 100);
     return () => clearInterval(timer);
-  }, [pos, step, steps.length, timeoutMs, reseek]);
+  }, [pos, step, steps.length, timeoutMs, reseek, empty]);
+
+  // The app left every screen the rest of the tour is on (the user went elsewhere): close.
+  const seenPath = useRef(pathname);
+  useEffect(() => {
+    if (pathname === seenPath.current) return;
+    seenPath.current = pathname;
+    if (!onAnyStep(steps.slice(at.current), pathname)) keys.current.onClose(false);
+  }, [pathname, steps]);
 
   // Follow the target while it is shown (scroll, resize, layout); look again if it goes away.
   useEffect(() => {
-    if (phase !== 'shown') return;
+    if (phase !== 'shown' && phase !== 'empty') return;
     const follow = () => {
       setView({ w: innerWidth, h: innerHeight });
       if (el.current?.isConnected && el.current.getClientRects().length > 0)
@@ -221,9 +267,11 @@ export function TourEngine({
     if (h && h !== cardH) setCardH(h);
   });
 
-  // The card takes focus at each shown step (Tab reaches its buttons; screen readers read it).
+  // The card takes focus when it points at something (Tab reaches its buttons; screen readers read
+  // it), but never out of a field the user is typing in, and not while it waits for the user.
   useEffect(() => {
-    if (phase !== 'seek') card.current?.focus({ preventScroll: true });
+    if (phase === 'seek' || phase === 'waiting' || editable(document.activeElement)) return;
+    card.current?.focus({ preventScroll: true });
   }, [phase]);
 
   const next = () => {
@@ -235,7 +283,8 @@ export function TourEngine({
         : (t.querySelector<HTMLElement>('a,button,[role=tab]') ?? t);
       press.click();
     }
-    if (last) onClose(phase !== 'missing');
+    if (phase === 'empty') onClose(false);
+    else if (last) onClose(phase !== 'missing');
     else setPos({ i: pos.i + 1, dir: 1, by: 'user', skipped: false });
   };
   const back = () => {
@@ -246,13 +295,13 @@ export function TourEngine({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' && e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      if (e.altKey || e.ctrlKey || e.metaKey || keysBelongElsewhere(e.target)) return;
+      e.preventDefault();
       if (e.key === 'Escape') {
-        e.preventDefault();
         keys.current.onClose(false);
         return;
       }
-      if (editable(e.target) || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
-      e.preventDefault();
       // Arrows follow the reading direction: in Urdu, ← is forward.
       if ((e.key === 'ArrowRight') !== rtl) keys.current.next();
       else keys.current.back();
@@ -262,7 +311,8 @@ export function TourEngine({
   }, [rtl]);
 
   if (!step) return null;
-  const shown = phase === 'shown' && rect;
+  const blank = phase === 'empty' && empty;
+  const shown = (phase === 'shown' || phase === 'empty') && rect;
   const pl = place(shown ? rect : null, cardH, view, safeArea(view.h), rtl);
   const PAD = 6;
 
@@ -295,14 +345,14 @@ export function TourEngine({
         style={{ top: pl.top, left: pl.left, width: pl.width }}
         className={`pointer-events-auto absolute flex flex-col gap-2.5 rounded-xl border border-s-4 border-s-brand bg-popover p-4 text-popover-foreground shadow-2xl outline-none ${phase === 'seek' ? 'invisible' : ''}`}
       >
-        <p className="num text-meta font-semibold text-brand">
+        <p data-tour-counter className="num text-meta font-semibold text-brand">
           {labels.counter(pos.i + 1, steps.length)}
         </p>
         <h2 id="tour-title" className="text-section font-semibold">
-          {step.title}
+          {blank ? empty.title : step.title}
         </h2>
         <div id="tour-body" className="text-sm leading-relaxed">
-          {step.body}
+          {blank ? empty.body : step.body}
         </div>
         {(pos.skipped || phase === 'missing') && (
           <p role="status" className="rounded-md bg-warn-soft px-2.5 py-1.5 text-meta text-warn">
@@ -325,7 +375,7 @@ export function TourEngine({
             </Button>
           )}
           <Button onClick={next} data-tour-next>
-            {last ? labels.finish : labels.next}
+            {last || blank ? labels.finish : labels.next}
           </Button>
         </div>
       </div>

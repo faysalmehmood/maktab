@@ -33,15 +33,18 @@ import { accounts, cashSession, fam, familyStatement, feeSettings } from './fee-
  */
 
 const ME = meAs(['owner']).user.id;
+type Role = 'owner' | 'accountant' | 'teacher';
 const RS = (n: number) => n * 100;
 
 type Scenario = {
   name: string;
+  /** Who it is mounted as (default: owner). Each role's tours are checked on its own mounts. */
+  roles?: Role[];
   /** The route pattern the screen lives at (compared with each step's `path`). */
   route: string;
-  mount: () => void;
+  mount: (role: Role) => void;
   /** Interactions that reveal more targets (open a tab, look a family up). */
-  reveal?: (snap: () => void) => Promise<void>;
+  reveal?: (snap: () => void, role: Role) => Promise<void>;
   /** Wait until the screen has loaded. */
   ready: string;
 };
@@ -139,7 +142,7 @@ const SCENARIOS: Scenario[] = [
   {
     name: 'home (first week)',
     route: '/',
-    mount: () => {
+    mount: (role) => {
       mockApi({
         'GET /api/home/first-week': {
           setup: true,
@@ -150,14 +153,15 @@ const SCENARIOS: Scenario[] = [
         },
         'GET /api/school': { school },
       });
-      renderAt('/', '/', <Dashboard />, ['owner']);
+      renderAt('/', '/', <Dashboard />, [role]);
     },
     ready: '[data-tour="home-first-week"]',
   },
   {
     name: 'app shell',
+    roles: ['owner', 'accountant', 'teacher'],
     route: '*',
-    mount: () => {
+    mount: (role) => {
       mockApi({ 'GET /api/school': { school } });
       renderAt(
         '/',
@@ -167,7 +171,7 @@ const SCENARIOS: Scenario[] = [
             <Route index element={<p>home</p>} />
           </Route>
         </Routes>,
-        ['owner'],
+        [role],
       );
     },
     ready: '#sync-state',
@@ -175,16 +179,16 @@ const SCENARIOS: Scenario[] = [
   {
     name: 'settings → staff',
     route: '/settings',
-    mount: () => {
+    mount: (role) => {
       mockApi({ 'GET /api/staff': { items: [] }, 'GET /api/school': { school } });
-      renderAt('/settings?section=staff', '/settings', <SettingsPage />, ['owner']);
+      renderAt('/settings?section=staff', '/settings', <SettingsPage />, [role]);
     },
     ready: '[data-tour="settings-tab-programmes"]',
   },
   {
     name: 'settings → backup',
     route: '/settings',
-    mount: () => {
+    mount: (role) => {
       mockApi({
         'GET /api/backup/status': {
           last_nightly: null,
@@ -198,26 +202,28 @@ const SCENARIOS: Scenario[] = [
         'GET /api/alarms': { at: '2026-10-13T05:00:00.000Z', total: 0, alarms: [] },
         'GET /api/school': { school },
       });
-      renderAt('/settings?section=backup', '/settings', <SettingsPage />, ['owner']);
+      renderAt('/settings?section=backup', '/settings', <SettingsPage />, [role]);
     },
     ready: '[data-tour="backup-status"]',
   },
   {
     name: 'students',
+    roles: ['owner', 'accountant'],
     route: '/students',
-    mount: () => {
+    mount: (role) => {
       mockApi({
         'GET /api/students': { items: [], total: 0, page: 1, page_size: 50 },
         'GET /api/groups': { items: [group] },
       });
-      renderAt('/students', '/students', <StudentsList />, ['owner']);
+      renderAt('/students', '/students', <StudentsList />, [role]);
     },
     ready: '[data-tour="students-admit"]',
   },
   {
     name: 'admission (+ a known family)',
+    roles: ['owner', 'accountant'],
     route: '/students/new',
-    mount: () => {
+    mount: (role) => {
       mockApi({
         'GET /api/groups': { items: [group] },
         'GET /api/sessions': { items: [session] },
@@ -235,7 +241,7 @@ const SCENARIOS: Scenario[] = [
           ],
         },
       });
-      renderAt('/students/new', '/students/new', <AdmissionPage />, ['owner']);
+      renderAt('/students/new', '/students/new', <AdmissionPage />, [role]);
     },
     reveal: async () => {
       const phone = document.getElementById('lookup-phone') as HTMLInputElement;
@@ -249,8 +255,9 @@ const SCENARIOS: Scenario[] = [
   },
   {
     name: 'student profile',
+    roles: ['owner', 'accountant'],
     route: '/students/:id',
-    mount: () => {
+    mount: (role) => {
       mockApi({
         [`GET /api/students/${ids.student}`]: studentDetail,
         [`GET /api/families/${ids.family}`]: {
@@ -278,12 +285,14 @@ const SCENARIOS: Scenario[] = [
           family_name: 'Raza',
         },
       });
-      renderAt(`/students/${ids.student}`, '/students/:id', <StudentDetail />, ['owner']);
+      renderAt(`/students/${ids.student}`, '/students/:id', <StudentDetail />, [role]);
     },
-    reveal: async (snap) => {
+    reveal: async (snap, role) => {
       fireEvent.click(document.querySelector('[data-tour="profile-tab-guardians"]') as HTMLElement);
       await wait('[data-tour="parent-link"]');
       snap();
+      // Reduce fee is the owner's and admin's (an accountant's fees tab has no such button).
+      if (role === 'accountant') return;
       fireEvent.click(document.querySelector('[data-tour="profile-tab-fees"]') as HTMLElement);
       await waitFor(() => {
         if (!document.querySelector('[data-tour="student-reduce-fee"]')) throw new Error('fees');
@@ -293,8 +302,9 @@ const SCENARIOS: Scenario[] = [
   },
   {
     name: 'attendance today',
+    roles: ['owner', 'teacher'],
     route: '/attendance',
-    mount: () => {
+    mount: (role) => {
       mockApi({
         'GET /api/attendance/today': {
           date: '2026-10-13',
@@ -318,14 +328,15 @@ const SCENARIOS: Scenario[] = [
           ],
         },
       });
-      renderAt('/attendance', '/attendance', <TodayPage />, ['owner']);
+      renderAt('/attendance', '/attendance', <TodayPage />, [role]);
     },
     ready: '[data-tour="att-group"]',
   },
   {
     name: 'register',
+    roles: ['owner', 'teacher'],
     route: '/attendance/register/:grpId',
-    mount: () => {
+    mount: (role) => {
       mockApi({
         'GET /api/attendance/register': {
           grp_id: ids.group,
@@ -353,15 +364,16 @@ const SCENARIOS: Scenario[] = [
         `/attendance/register/${ids.group}?date=2026-10-13`,
         '/attendance/register/:grpId',
         <RegisterPage />,
-        ['teacher'],
+        [role],
       );
     },
     ready: '[data-tour="att-save"]',
   },
   {
     name: 'messages',
+    roles: ['owner', 'accountant', 'teacher'],
     route: '/messages',
-    mount: () => {
+    mount: (role) => {
       const counts = { queued: 1, sent_today: 0, skipped_today: 0, by_template: { absence: 1 } };
       mockApi({
         'GET /api/messages': { items: [queueRow], total: 1, counts },
@@ -369,68 +381,90 @@ const SCENARIOS: Scenario[] = [
         'GET /api/groups': { items: [group] },
         'GET /api/sessions': { items: [session] },
       });
-      renderAt('/messages', '/messages', <MessagesPage />, ['owner']);
+      renderAt('/messages', '/messages', <MessagesPage />, [role]);
     },
     ready: '[data-tour="msg-open-wa"]',
   },
   {
+    name: 'messages (empty queue)',
+    roles: ['owner', 'accountant', 'teacher'],
+    route: '/messages',
+    mount: (role) => {
+      const counts = { queued: 0, sent_today: 3, skipped_today: 0, by_template: {} };
+      mockApi({
+        'GET /api/messages': { items: [], total: 0, counts },
+        'GET /api/messages/counts': counts,
+        'GET /api/groups': { items: [group] },
+        'GET /api/sessions': { items: [session] },
+      });
+      renderAt('/messages', '/messages', <MessagesPage />, [role]);
+    },
+    ready: '[data-tour="msg-empty"]',
+  },
+  {
     name: 'counter (search)',
+    roles: ['owner', 'accountant'],
     route: '/fees/counter',
-    mount: () => {
+    mount: (role) => {
       mockApi(FEES_API);
-      renderAt('/fees/counter', '/fees/counter', <CounterPage />, ['owner']);
+      renderAt('/fees/counter', '/fees/counter', <CounterPage />, [role]);
     },
     ready: '[data-tour="counter-search"]',
   },
   {
     name: 'counter (a family open)',
+    roles: ['owner', 'accountant'],
     route: '/fees/counter',
-    mount: () => {
+    mount: (role) => {
       mockApi(FEES_API);
-      renderAt(`/fees/counter?family=${fam}`, '/fees/counter', <CounterPage />, ['owner']);
+      renderAt(`/fees/counter?family=${fam}`, '/fees/counter', <CounterPage />, [role]);
     },
     ready: '[data-tour="counter-confirm"]',
   },
   {
     name: 'cash',
+    roles: ['owner', 'accountant'],
     route: '/cash',
-    mount: () => {
+    mount: (role) => {
       mockApi(FEES_API);
-      renderAt('/cash', '/cash', <CashPage />, ['owner']);
+      renderAt('/cash', '/cash', <CashPage />, [role]);
     },
     ready: '[data-tour="cash-close"]',
   },
   {
     name: 'billing',
     route: '/fees/billing',
-    mount: () => {
+    mount: (role) => {
       mockApi(FEES_API);
-      renderAt('/fees/billing', '/fees/billing', <BillingPage />, ['owner']);
+      renderAt('/fees/billing', '/fees/billing', <BillingPage />, [role]);
     },
     ready: '[data-tour="fines-preview"]',
   },
   {
     name: 'defaulters',
+    roles: ['owner', 'accountant'],
     route: '/fees/defaulters',
-    mount: () => {
+    mount: (role) => {
       mockApi(FEES_API);
-      renderAt('/fees/defaulters', '/fees/defaulters', <DefaultersPage />, ['owner']);
+      renderAt('/fees/defaulters', '/fees/defaulters', <DefaultersPage />, [role]);
     },
     ready: '[data-tour="def-remind"]',
   },
   {
     name: 'reports',
+    roles: ['owner', 'accountant'],
     route: '/reports',
-    mount: () => {
+    mount: (role) => {
       mockApi({});
-      renderAt('/reports', '/reports', <ReportsHub />, ['owner']);
+      renderAt('/reports', '/reports', <ReportsHub />, [role]);
     },
     ready: '[data-tour="reports-income-expense"]',
   },
   {
     name: 'income vs expense',
+    roles: ['owner', 'accountant'],
     route: '/reports/income-expense',
-    mount: () => {
+    mount: (role) => {
       mockApi({
         'GET /api/reports/income-expense': {
           from: '2026-10',
@@ -451,25 +485,24 @@ const SCENARIOS: Scenario[] = [
           },
         },
       });
-      renderAt('/reports/income-expense', '/reports/income-expense', <IncomeExpensePage />, [
-        'owner',
-      ]);
+      renderAt('/reports/income-expense', '/reports/income-expense', <IncomeExpensePage />, [role]);
     },
     ready: '[data-tour="ie-totals"]',
   },
   {
     name: 'payroll',
+    roles: ['owner', 'accountant'],
     route: '/salary',
-    mount: () => {
+    mount: (role) => {
       mockApi({ 'GET /api/payslips': { items: [] }, 'GET /api/accounts': accounts });
-      renderAt('/salary', '/salary', <SalaryPage />, ['owner']);
+      renderAt('/salary', '/salary', <SalaryPage />, [role]);
     },
     ready: '[data-tour="salary-prepare"]',
   },
 ];
 
-/** What each scenario rendered: its route and the data-tour names on screen. */
-const found: { name: string; route: string; targets: Set<string> }[] = [];
+/** What each scenario rendered: as whom, its route and the data-tour names on screen. */
+const found: { name: string; role: Role; route: string; targets: Set<string> }[] = [];
 
 let n = 0;
 const stubResizeObserver = () =>
@@ -494,6 +527,10 @@ beforeEach(async () => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+/** Is a screen mounted at `route` on a step's path (the app shell is on every path)? */
+const at = (path: string | undefined, route: string) =>
+  !path || route === '*' || matchPath(path, route.replace(/:\w+/g, 'x'));
+
 const wait = (sel: string) =>
   waitFor(
     () => {
@@ -504,22 +541,24 @@ const wait = (sel: string) =>
 
 describe('tour targets exist on the real screens', () => {
   for (const s of SCENARIOS)
-    it(`mounts ${s.name}`, async () => {
-      s.mount();
-      await wait(s.ready);
-      const snap = () =>
-        found.push({
-          name: s.name,
-          route: s.route,
-          targets: new Set(
-            [...document.querySelectorAll<HTMLElement>('[data-tour]')].map(
-              (el) => el.dataset.tour ?? '',
+    for (const role of s.roles ?? ['owner'])
+      it(`mounts ${s.name} as ${role}`, async () => {
+        s.mount(role);
+        await wait(s.ready);
+        const snap = () =>
+          found.push({
+            name: s.name,
+            role,
+            route: s.route,
+            targets: new Set(
+              [...document.querySelectorAll<HTMLElement>('[data-tour]')].map(
+                (el) => el.dataset.tour ?? '',
+              ),
             ),
-          ),
-        });
-      if (s.reveal) await s.reveal(snap);
-      snap();
-    });
+          });
+        if (s.reveal) await s.reveal(snap, role);
+        snap();
+      });
 
   it('every step of every tour has its target on a screen at the step’s path', () => {
     const missing: string[] = [];
@@ -527,17 +566,40 @@ describe('tour targets exist on the real screens', () => {
     for (const t of GUIDE_TASKS)
       for (const st of t.tour ?? []) {
         steps++;
-        const ok = found.some(
-          (f) =>
-            f.targets.has(st.target) &&
-            (!st.path || f.route === '*' || matchPath(st.path, f.route.replace(/:\w+/g, 'x'))),
-        );
-        if (!ok) missing.push(`${t.id}: ${st.target} (${st.path ?? 'any screen'})`);
+        if (!found.some((f) => f.targets.has(st.target) && at(st.path, f.route)))
+          missing.push(`${t.id}: ${st.target} (${st.path ?? 'any screen'})`);
       }
+    // A tour's empty-state card points at an element on one of the tour's screens.
+    for (const t of GUIDE_TASKS) {
+      const e = t.tourEmpty;
+      if (!e) continue;
+      const ok = found.some(
+        (f) => f.targets.has(e.target) && (t.tour ?? []).some((st) => at(st.path, f.route)),
+      );
+      if (!ok) missing.push(`${t.id}: empty state ${e.target}`);
+    }
     expect(new Set(found.map((f) => f.name)).size).toBe(SCENARIOS.length);
     expect(missing).toEqual([]);
     expect(steps).toBeGreaterThanOrEqual(40);
   });
+
+  // A teacher's or an accountant's screens differ from the owner's (buttons by role): their own
+  // tours must find every target on screens mounted as them.
+  for (const role of ['owner', 'accountant', 'teacher'] as const)
+    it(`${role}: every step of the role's tours is on a screen mounted as ${role}`, () => {
+      const missing: string[] = [];
+      let steps = 0;
+      for (const t of GUIDE_TASKS.filter((x) => (x.roles as readonly string[]).includes(role)))
+        for (const st of t.tour ?? []) {
+          steps++;
+          const ok = found.some(
+            (f) => f.role === role && f.targets.has(st.target) && at(st.path, f.route),
+          );
+          if (!ok) missing.push(`${t.id}: ${st.target} (${st.path ?? 'any screen'})`);
+        }
+      expect(missing).toEqual([]);
+      expect(steps).toBeGreaterThan(role === 'teacher' ? 8 : 20);
+    });
 });
 
 /** Contextual help: the "?" of a screen opens that screen's task (and only for its roles). */

@@ -734,7 +734,7 @@ export function MessagesPage() {
       )}
       <ErrorNote error={list.error} />
       {list.data && items.length === 0 && (
-        <Panel>
+        <Panel tour="msg-empty">
           <EmptyState
             icon={MessageSquareText}
             title={t('msg.queue.empty')}

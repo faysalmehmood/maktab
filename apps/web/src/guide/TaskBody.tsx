@@ -18,7 +18,8 @@ export const useGuideLang = (): GuideLang => {
 /** The "Show me" band: starts the task's tour on the real screens. */
 export function ShowMe({ task, before }: { task: GuideTask; before?: () => void }) {
   const lang = useGuideLang();
-  const done = useCompletedTours(useMe().data?.user.id).includes(task.id);
+  const userId = useMe().data?.user.id;
+  const done = useCompletedTours(userId).includes(task.id);
   if (!task.tour?.length) return null;
   return (
     <div
@@ -38,7 +39,7 @@ export function ShowMe({ task, before }: { task: GuideTask; before?: () => void 
         data-show-me={task.id}
         onClick={() => {
           before?.();
-          startTour(task.id);
+          startTour(task.id, userId);
         }}
       >
         <Play aria-hidden className="rtl:-scale-x-100" />

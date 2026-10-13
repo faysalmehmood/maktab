@@ -1,14 +1,22 @@
 import type { StaffRole } from '@maktab/shared';
-import { GUIDE_TASKS, tasksFor } from '@maktab/shared/guide';
+import { GUIDE_TASKS, GUIDE_UI, tasksFor } from '@maktab/shared/guide';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type EngineLabels, type EngineStep, matchPath, place, TourEngine } from '@/guide/engine';
-import TourRunner from '@/guide/TourRunner';
+import {
+  type EngineEmpty,
+  type EngineLabels,
+  type EngineStep,
+  keysBelongElsewhere,
+  matchPath,
+  place,
+  TourEngine,
+} from '@/guide/engine';
+import TourRunner, { isolateNumbers } from '@/guide/TourRunner';
 import { initI18n, setLanguage } from '@/i18n';
-import { startTour, stopTour, useActiveTour } from '@/lib/tour';
+import { startTour, stopTour, tourFor, useActiveTour } from '@/lib/tour';
 import { completedTours, markTourDone, TOURS_KEY } from '@/lib/tour-done';
 import { GuideHome, GuideTaskPage } from '@/pages/guide/Guide';
 import { meAs, mockApi } from './api-mock';
@@ -63,19 +71,19 @@ const routesClient = () => new QueryClient({ defaultOptions: { queries: { retry:
 
 /** A tiny app: two "screens" with targets, the engine on top, and the current path shown. */
 function TourApp({
-  steps,
-  onClose,
   start = '/a',
-  extra,
+  ...props
 }: {
   steps: EngineStep[];
   onClose: (done: boolean) => void;
   start?: string;
   extra?: React.ReactNode;
+  empty?: EngineEmpty;
+  timeoutMs?: number;
 }) {
   return (
     <MemoryRouter initialEntries={[start]}>
-      <Harness steps={steps} onClose={onClose} extra={extra} />
+      <Harness {...props} />
     </MemoryRouter>
   );
 }
@@ -84,16 +92,23 @@ function Harness({
   steps,
   onClose,
   extra,
+  empty,
+  timeoutMs = 150,
 }: {
   steps: EngineStep[];
   onClose: (d: boolean) => void;
   extra?: React.ReactNode;
+  empty?: EngineEmpty;
+  timeoutMs?: number;
 }) {
   const location = useLocation();
   const [nav, setNav] = useState<string | null>(null);
   return (
     <>
       <p data-testid="path">{nav ?? location.pathname}</p>
+      <button type="button" onClick={() => setNav('/elsewhere')}>
+        elsewhere
+      </button>
       <Routes>
         <Route
           path="/a"
@@ -113,12 +128,13 @@ function Harness({
       </Routes>
       <TourEngine
         steps={steps}
+        empty={empty}
         labels={labels}
         pathname={nav ?? location.pathname}
         navigate={(to) => setNav(to)}
         onClose={onClose}
         rtl={document.documentElement.dir === 'rtl'}
-        timeoutMs={150}
+        timeoutMs={timeoutMs}
       />
     </>
   );
@@ -250,6 +266,152 @@ describe('tour engine', () => {
     expect(clicked).toHaveBeenCalledOnce();
   });
 
+  it('a waiting step says so at once; a screen with nothing to show ends on the empty card', async () => {
+    layout();
+    const waiting: EngineStep[] = [
+      { path: '/a', target: 'later', wait: true, title: 'Later', body: '' },
+    ];
+    const { unmount } = render(<TourApp steps={waiting} onClose={vi.fn()} timeoutMs={60_000} />);
+    // Long before any timeout: the card is visible and says it waits.
+    await waitFor(() => expect(card().dataset.phase).toBe('waiting'), { timeout: 300 });
+    expect(card().className).not.toContain('invisible');
+    unmount();
+
+    const onClose = vi.fn();
+    const queue: EngineStep[] = [
+      { path: '/a', target: 'one', title: 'Counts', body: '' },
+      { path: '/a', target: 'row', title: 'Open in WhatsApp', body: '' },
+      { path: '/a', target: 'skip', title: 'Skip', body: '' },
+    ];
+    render(
+      <TourApp
+        steps={queue}
+        onClose={onClose}
+        timeoutMs={60_000}
+        empty={{ target: 'blank', title: 'Nothing to send', body: 'Empty queue' }}
+        extra={<p data-tour="blank">Nothing waiting here.</p>}
+      />,
+    );
+    await shownStep(0);
+    fireEvent.click(within(card()).getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(card().dataset.phase).toBe('empty'));
+    expect(within(card()).getByRole('heading', { name: 'Nothing to send' })).toBeTruthy();
+    expect(document.querySelector('[data-tour-spot]')).toBeTruthy();
+    fireEvent.click(within(card()).getByRole('button', { name: 'Finish' }));
+    expect(onClose).toHaveBeenCalledWith(false);
+  });
+
+  it('focus: the card takes it when shown, never from a field being typed in, never while waiting', async () => {
+    layout();
+    const { unmount } = render(<TourApp steps={steps.slice(0, 2)} onClose={vi.fn()} />);
+    await shownStep(0);
+    expect(document.activeElement).toBe(card());
+    unmount();
+
+    // Someone is typing in a field when the step appears: the field keeps focus.
+    const typing: EngineStep[] = [{ path: '/a', target: 'two', title: 'Two', body: '' }];
+    const field = (
+      <input
+        aria-label="name"
+        ref={(el) => {
+          el?.focus();
+        }}
+      />
+    );
+    const second = render(<TourApp steps={typing} onClose={vi.fn()} extra={field} />);
+    await shownStep(0);
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'name' }));
+    second.unmount();
+
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    render(
+      <TourApp
+        steps={[{ path: '/a', target: 'later', wait: true, title: 'Later', body: '' }]}
+        onClose={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(card().dataset.phase).toBe('waiting'));
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+  });
+
+  it('closes when the app leaves every screen the rest of the tour is on', async () => {
+    layout();
+    const onClose = vi.fn();
+    const { unmount } = render(<TourApp steps={steps.slice(0, 2)} onClose={onClose} />);
+    await shownStep(0);
+    fireEvent.click(screen.getByRole('button', { name: 'elsewhere' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledWith(false));
+    unmount();
+
+    // Going on to a later step's screen (/b is step 3) is part of the tour: it stays open.
+    const stay = vi.fn();
+    render(<TourApp steps={steps} onClose={stay} />);
+    await shownStep(0);
+    fireEvent.click(within(card()).getByRole('button', { name: 'Next' }));
+    await shownStep(1);
+    fireEvent.click(within(card()).getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/b'));
+    expect(stay).not.toHaveBeenCalled();
+  });
+
+  it('leaves ←/→/Esc to tabs, radios, listboxes, fields and other dialogs', async () => {
+    layout();
+    const onClose = vi.fn();
+    render(
+      <TourApp
+        steps={steps.slice(0, 2)}
+        onClose={onClose}
+        extra={
+          <>
+            <div role="tablist">
+              <button type="button" role="tab" aria-selected>
+                tab
+              </button>
+            </div>
+            <div role="radiogroup">
+              {/* biome-ignore lint/a11y/useSemanticElements: a custom radio, as Radix renders one */}
+              <span role="radio" aria-checked tabIndex={0}>
+                radio
+              </span>
+            </div>
+            <input aria-label="field" />
+            <div role="dialog" aria-label="other">
+              <button type="button">in dialog</button>
+            </div>
+          </>
+        }
+      />,
+    );
+    await shownStep(0);
+    const tab = screen.getByRole('tab');
+    for (const key of ['ArrowRight', 'ArrowLeft', 'Escape']) {
+      fireEvent.keyDown(tab, { key });
+      fireEvent.keyDown(screen.getByRole('radio'), { key });
+      fireEvent.keyDown(screen.getByRole('textbox', { name: 'field' }), { key });
+      fireEvent.keyDown(screen.getByRole('button', { name: 'in dialog' }), { key });
+    }
+    await new Promise((r) => setTimeout(r, 50));
+    expect(card().dataset.step).toBe('0');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(keysBelongElsewhere(card())).toBe(false);
+    // From the card itself (or the page), the keys drive the tour.
+    fireEvent.keyDown(card(), { key: 'ArrowRight' });
+    await shownStep(1);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledWith(false);
+  });
+
+  it('Urdu counter: only the numbers are isolated', () => {
+    render(<p data-testid="counter">{isolateNumbers(GUIDE_UI.counter, 'ur', { i: 2, n: 5 })}</p>);
+    const p = screen.getByTestId('counter');
+    expect(p.textContent).toBe('قدم 2 از 5');
+    expect([...p.querySelectorAll('bdi')].map((b) => b.textContent)).toEqual(['2', '5']);
+    expect(p.firstChild?.nodeType).toBe(Node.TEXT_NODE);
+  });
+
   it('places the card: under the target, its start edge (right in Urdu), above when no room, sheets on a phone', () => {
     const t = { top: 100, left: 600, width: 200, height: 40 };
     const view = { w: 1280, h: 800 };
@@ -323,14 +485,59 @@ describe('tours remembered per user (maktab.tours)', () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    act(() => startTour('apply-fines'));
+    act(() => startTour('apply-fines', me.user.id));
     await shownStep(0);
-    expect(within(card()).getByText('Step 1 of 2')).toBeTruthy();
+    expect(card().querySelector('[data-tour-counter]')?.textContent).toBe('Step 1 of 2');
     fireEvent.click(within(card()).getByRole('button', { name: 'Next' }));
     await shownStep(1);
     fireEvent.click(within(card()).getByRole('button', { name: 'Finish' }));
     await waitFor(() => expect(document.querySelector('[data-tour-card]')).toBeNull());
     expect(completedTours(me.user.id)).toEqual(['apply-fines']);
+  });
+});
+
+describe('the running tour belongs to one user', () => {
+  it('another account never sees it; stopTour clears it', () => {
+    startTour('collect-fee', 'U1');
+    let seen: ReturnType<typeof useActiveTour> = null;
+    function Spy() {
+      seen = useActiveTour();
+      return null;
+    }
+    render(<Spy />);
+    expect(tourFor(seen, 'U1')?.task).toBe('collect-fee');
+    expect(tourFor(seen, 'U2')).toBeNull();
+    expect(tourFor(seen, undefined)).toBeNull();
+    act(() => stopTour());
+    expect(seen).toBeNull();
+  });
+
+  it('closing a tour gives focus back to its Show me button', async () => {
+    layout();
+    const me = meAs(['owner']);
+    const client = routesClient();
+    client.setQueryData(['me'], me);
+    function Host() {
+      const active = useActiveTour();
+      return active ? <TourRunner key={active.key} task={active.task} /> : null;
+    }
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/fees/billing']}>
+          <button type="button" data-show-me="apply-fines">
+            Show me
+          </button>
+          <div data-tour="billing-fines">fines</div>
+          <Host />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    act(() => startTour('apply-fines', me.user.id));
+    await shownStep(0);
+    expect(document.activeElement).toBe(card());
+    fireEvent.click(within(card()).getByRole('button', { name: 'Skip tour' }));
+    await waitFor(() => expect(document.querySelector('[data-tour-card]')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Show me' }));
   });
 });
 
@@ -361,7 +568,8 @@ describe('/guide routes per role', () => {
       await screen.findByRole('heading', { level: 1, name: 'Help & guide' });
       const want = tasksFor([role]).map((t) => `/guide/${t.id}`);
       expect(new Set(taskLinks())).toEqual(new Set(want));
-      expect(!!document.getElementById('guide-start')).toBe(role === 'owner' || role === 'admin');
+      // Only an owner runs setup and invites staff: the first week is the owner's.
+      expect(!!document.getElementById('guide-start')).toBe(role === 'owner');
     });
 
   it('a task page: numbered steps, mistakes, Show me (when it has a tour), screen links', async () => {

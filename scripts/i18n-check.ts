@@ -9,7 +9,7 @@
 // (unless allowed below), an Urdu key with no English twin, placeholder sets that differ
 // ({{x}} and {x}), Arabic-Indic or Extended Arabic-Indic digits in Urdu (we print 0-9 only), and an
 // Urdu string with Latin words but no Arabic-script letter at all (English left in by mistake, even
-// when it differs from the English twin), unless its words are all technical tokens (LATIN_OK) or
+// when it differs from the English twin), unless its words are all technical tokens (LATIN_OK in packages/shared/src/latin.ts) or
 // the key is in ALLOW.
 
 import { RECEIPT_LABELS } from '../packages/shared/src/fees';
@@ -17,6 +17,7 @@ import { GUIDE_SECTIONS, GUIDE_TASKS, GUIDE_UI } from '../packages/shared/src/gu
 import { en } from '../packages/shared/src/i18n';
 import { screensEn } from '../packages/shared/src/i18n-screens';
 import { ur } from '../packages/shared/src/i18n-ur';
+import { strayLatin } from '../packages/shared/src/latin';
 import { DEFAULT_TEMPLATES, MONTH_NAMES } from '../packages/shared/src/messaging';
 
 type Tree = { readonly [k: string]: unknown };
@@ -32,10 +33,6 @@ const ALLOW = new Set<string>([
   'ui.attendance.letter.L',
   'ui.attendance.letter.E',
 ]);
-
-/** Latin tokens that are fine to leave untranslated (brand, formats, codes, units). */
-const LATIN_OK =
-  /^(?:Maktab|CNIC|PDF|CSV|JSON|ZIP|WhatsApp|SMS|Rs\.?|PKR|KB|MB|GB|mm|cm|JPEG|PNG|WebP|URL|ID|OK|IBAN|JazzCash|EasyPaisa|Google|[A-Z]\d*|\d+[A-Za-z]*|https?:\/\/\S+)$/;
 
 function flatten(tree: unknown, prefix: string, out: Map<string, string>): Map<string, string> {
   if (typeof tree === 'string') {
@@ -67,12 +64,7 @@ function placeholders(s: string): string[] {
 
 /** True when the string needs no translation: nothing Latin left once placeholders and allowed tokens go. */
 function languageNeutral(s: string): boolean {
-  const stripped = s.replace(DOUBLE, ' ').replace(SINGLE, ' ');
-  if (!/[A-Za-z]/.test(stripped)) return true;
-  return stripped
-    .split(/[\s,.;:()/·%+\-–—|]+/)
-    .filter((w) => /[A-Za-z]/.test(w))
-    .every((w) => LATIN_OK.test(w));
+  return strayLatin(s).length === 0;
 }
 
 const NON_LATIN_DIGIT = /[٠-٩۰-۹]/;

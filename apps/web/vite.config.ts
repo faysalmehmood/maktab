@@ -36,6 +36,10 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
   version: string;
 };
 
+/** lucide-react's runtime and the icons on the first load that lazy screens also import. */
+const FIRST_LOAD_ICONS =
+  /[\\/]lucide-react[\\/]dist[\\/]esm[\\/](?:(?!icons[\\/])[^\\/]+|icons[\\/](?:x|search|ellipsis|download|wallet|users|phone|calendar-check|triangle-alert|layers|message-square-text|receipt-text|hand-coins)\.mjs)$/;
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
@@ -88,7 +92,15 @@ export default defineConfig({
       output: {
         // zod is needed only by the office forms that validate on the client (lazy routes); its own
         // chunk keeps it off the first load instead of riding in the shared vendor chunk.
-        advancedChunks: { groups: [{ name: 'zod', test: /[\\/]node_modules[\\/]zod[\\/]/ }] },
+        advancedChunks: {
+          groups: [
+            { name: 'zod', test: /[\\/]node_modules[\\/]zod[\\/]/ },
+            // The icons the shell and Home share with lazy screens each became a ~250-byte chunk
+            // (14 extra preloads). One chunk for lucide's runtime plus exactly those icons; every
+            // other icon stays with the lazy screen that uses it (a catch-all would add 13 KB).
+            { name: 'icons', test: FIRST_LOAD_ICONS },
+          ],
+        },
       },
     },
   },

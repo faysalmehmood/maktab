@@ -23,7 +23,7 @@ export const TASKS_A: readonly GuideTask[] = [
         to: '/setup',
         text: {
           en: 'Day 1, setup: open [[nav.settings]] → [[setup.runAgain]] (it opens by itself on the first sign-in). Enter the school name, Urdu name, phone, logo and receipt prefix (letters before receipt numbers, e.g. `ANS`).',
-          ur: 'پہلا دن، ترتیب: [[nav.settings]] → [[setup.runAgain]] کھولیں (پہلی بار سائن اِن پر یہ خود کھلتا ہے)۔ اسکول کا نام، اردو نام، فون، لوگو اور رسید کا پری فکس (رسید نمبر سے پہلے کے حروف، مثلاً `ANS`) لکھیں۔',
+          ur: 'پہلا دن، ترتیب: [[nav.settings]] ← [[setup.runAgain]] کھولیں (پہلی بار سائن اِن پر یہ خود کھلتا ہے)۔ اسکول کا نام، اردو نام، فون، لوگو اور رسید کا سابقہ (رسید نمبر سے پہلے کے حروف، مثلاً `ANS`) لکھیں۔',
         },
       },
       {
@@ -31,7 +31,7 @@ export const TASKS_A: readonly GuideTask[] = [
         to: '/settings?section=programmes',
         text: {
           en: 'Classes: press [[setup.seedLadder]] to fill Nursery to Class 10, FSc, ICS and FA. Remove what you do not teach. Then add the groups (sections like 5-A, 5-B, or academy batches) with a class teacher.',
-          ur: 'کلاسیں: [[setup.seedLadder]] دبائیں، نرسری سے دسویں، FSc، ICS اور FA خود آ جائیں گی۔ جو آپ نہیں پڑھاتے وہ ہٹا دیں۔ پھر گروپ (سیکشن جیسے 5-A، 5-B، یا اکیڈمی کے بیچ) کلاس ٹیچر کے ساتھ بنائیں۔',
+          ur: 'جماعتیں: [[setup.seedLadder]] دبائیں، نرسری سے دسویں، FSc، ICS اور FA خود آ جائیں گی۔ جو آپ نہیں پڑھاتے وہ ہٹا دیں۔ پھر گروپ (سیکشن جیسے 5-A، 5-B، یا اکیڈمی کے بیچ) کلاس ٹیچر کے ساتھ بنائیں۔',
         },
       },
       {
@@ -39,15 +39,15 @@ export const TASKS_A: readonly GuideTask[] = [
         to: '/settings?section=fees',
         text: {
           en: 'Fees: in [[nav.settings]] → [[settings.sections.fees]] add the fee heads (Admission, Tuition, Exam) and a rate for each class. Do this before the first admission, so the admission fee is charged.',
-          ur: 'فیس: [[nav.settings]] → [[settings.sections.fees]] میں فیس کی مدیں (داخلہ، ٹیوشن، امتحان) اور ہر کلاس کا ریٹ لکھیں۔ یہ پہلے داخلے سے پہلے کریں تاکہ داخلہ فیس لگ جائے۔',
+          ur: 'فیس: [[nav.settings]] ← [[settings.sections.fees]] میں فیس کی مدیں (داخلہ، ٹیوشن، امتحان) اور ہر جماعت کا نرخ لکھیں۔ یہ پہلے داخلے سے پہلے کریں تاکہ داخلہ فیس لگ جائے۔',
         },
       },
       {
         id: 'staff',
         to: '/settings?section=staff',
         text: {
-          en: "Staff: [[nav.settings]] → [[settings.sections.staff]] → [[staff.invite]] with each person's Google email and role. Have two people with [[staff.roles.owner]] or [[staff.roles.admin]].",
-          ur: 'عملہ: [[nav.settings]] → [[settings.sections.staff]] → [[staff.invite]] میں ہر شخص کا گوگل ای میل اور کردار لکھیں۔ کم از کم دو لوگ [[staff.roles.owner]] یا [[staff.roles.admin]] ہوں۔',
+          en: "Staff: [[nav.settings]] → [[settings.sections.staff]] → [[staff.invite]] with each person's Google email and role. Make a second trusted person [[staff.roles.owner]] too: only an owner can invite staff.",
+          ur: 'عملہ: [[nav.settings]] ← [[settings.sections.staff]] ← [[staff.invite]] میں ہر شخص کا گوگل ای میل اور کردار لکھیں۔ کسی دوسرے بھروسے مند شخص کو بھی [[staff.roles.owner]] بنائیں: عملے کو دعوت صرف مالک دے سکتا ہے۔',
         },
       },
       {
@@ -55,7 +55,7 @@ export const TASKS_A: readonly GuideTask[] = [
         to: '/students/new',
         text: {
           en: 'First admissions: [[nav.students]] → [[student.admit]] for one child, or [[student.import]] for the whole school at once.',
-          ur: 'پہلے داخلے: ایک بچے کے لیے [[nav.students]] → [[student.admit]]، یا پورے اسکول کے لیے ایک ساتھ [[student.import]]۔',
+          ur: 'پہلے داخلے: ایک بچے کے لیے [[nav.students]] ← [[student.admit]]، یا پورے اسکول کے لیے ایک ساتھ [[student.import]]۔',
         },
       },
       {
@@ -63,7 +63,7 @@ export const TASKS_A: readonly GuideTask[] = [
         to: '/attendance',
         text: {
           en: 'First register: [[nav.attendance]] → tap a class → change only the absent ones → [[attendance.save]].',
-          ur: 'پہلی حاضری: [[nav.attendance]] → کلاس پر ٹیپ کریں → صرف غیر حاضر بدلیں → [[attendance.save]]۔',
+          ur: 'پہلی حاضری: [[nav.attendance]] ← جماعت پر ٹیپ کریں ← صرف غیر حاضر بدلیں ← [[attendance.save]]۔',
         },
       },
       {
@@ -71,7 +71,7 @@ export const TASKS_A: readonly GuideTask[] = [
         to: '/fees/billing',
         text: {
           en: 'First fee: [[fee.nav.billing]] → [[fee.billing.preview]] → [[fee.billing.generate]] for this month, then take the first payment at the [[fee.nav.counter]].',
-          ur: 'پہلی فیس: [[fee.nav.billing]] → [[fee.billing.preview]] → [[fee.billing.generate]] اس مہینے کے لیے، پھر [[fee.nav.counter]] پر پہلی فیس وصول کریں۔',
+          ur: 'پہلی فیس: [[fee.nav.billing]] ← [[fee.billing.preview]] ← [[fee.billing.generate]] اس مہینے کے لیے، پھر [[fee.nav.counter]] پر پہلی فیس وصول کریں۔',
         },
       },
       {
@@ -86,15 +86,15 @@ export const TASKS_A: readonly GuideTask[] = [
     mistakes: [
       {
         en: 'Admitting students before adding fee rates: their admission fee is not charged. Add rates first.',
-        ur: 'فیس ریٹ سے پہلے داخلے کرنا: داخلہ فیس نہیں لگتی۔ پہلے ریٹ لکھیں۔',
+        ur: 'فیس کے نرخ سے پہلے داخلے کرنا: داخلہ فیس نہیں لگتی۔ پہلے نرخ لکھیں۔',
       },
       {
-        en: 'Only one owner: if that phone is lost, nobody can manage staff. Invite a second [[staff.roles.owner]] or [[staff.roles.admin]].',
-        ur: 'صرف ایک مالک: وہ فون گم ہو جائے تو عملہ کوئی نہیں سنبھال سکتا۔ دوسرا [[staff.roles.owner]] یا [[staff.roles.admin]] بنائیں۔',
+        en: 'Only one owner: if that phone is lost, nobody can invite or remove staff. Make a second trusted person [[staff.roles.owner]].',
+        ur: 'صرف ایک مالک: وہ فون گم ہو جائے تو کوئی نہ عملے کو دعوت دے سکتا ہے نہ ہٹا سکتا ہے۔ کسی دوسرے بھروسے مند شخص کو بھی [[staff.roles.owner]] بنائیں۔',
       },
       {
         en: 'Changing the receipt prefix later: it is locked after the first receipt.',
-        ur: 'رسید کا پری فکس بعد میں بدلنا: پہلی رسید کے بعد یہ بند ہو جاتا ہے۔',
+        ur: 'رسید کا سابقہ بعد میں بدلنا: پہلی رسید کے بعد یہ بند ہو جاتا ہے۔',
       },
     ],
     links: [
@@ -114,10 +114,10 @@ export const TASKS_A: readonly GuideTask[] = [
       {
         path: '/settings',
         target: 'settings-tab-programmes',
-        title: { en: 'Classes', ur: 'کلاسیں' },
+        title: { en: '[[settings.sections.programmes]]', ur: '[[settings.sections.programmes]]' },
         body: {
           en: 'Classes and subjects. [[setup.seedLadder]] fills the usual ladder.',
-          ur: 'کلاسیں اور مضامین۔ [[setup.seedLadder]] عام کلاسیں خود بھر دیتا ہے۔',
+          ur: 'جماعتیں اور مضامین۔ [[setup.seedLadder]] عام جماعتیں خود بھر دیتا ہے۔',
         },
       },
       {
@@ -126,7 +126,7 @@ export const TASKS_A: readonly GuideTask[] = [
         title: { en: 'Fees', ur: 'فیس' },
         body: {
           en: 'Fee heads and a rate for each class. Do it before the first admission.',
-          ur: 'فیس کی مدیں اور ہر کلاس کا ریٹ۔ پہلے داخلے سے پہلے کریں۔',
+          ur: 'فیس کی مدیں اور ہر جماعت کا نرخ۔ پہلے داخلے سے پہلے کریں۔',
         },
       },
       {
@@ -153,7 +153,7 @@ export const TASKS_A: readonly GuideTask[] = [
         title: { en: 'Registers', ur: 'حاضری رجسٹر' },
         body: {
           en: "Today's classes. Teachers do this on their phones every morning.",
-          ur: 'آج کی کلاسیں۔ اساتذہ ہر صبح اپنے فون پر یہ کرتے ہیں۔',
+          ur: 'آج کی جماعتیں۔ اساتذہ ہر صبح اپنے فون پر یہ کرتے ہیں۔',
         },
       },
       {
@@ -184,26 +184,26 @@ export const TASKS_A: readonly GuideTask[] = [
     title: { en: 'Take attendance', ur: 'حاضری لگائیں' },
     summary: {
       en: 'One register per class each morning, on the phone. Works without internet.',
-      ur: 'ہر صبح ہر کلاس کا ایک رجسٹر، فون پر۔ انٹرنیٹ کے بغیر بھی۔',
+      ur: 'ہر صبح ہر جماعت کا ایک رجسٹر، فون پر۔ انٹرنیٹ کے بغیر بھی۔',
     },
     steps: [
       {
         to: '/attendance',
         text: {
           en: 'Open [[nav.attendance]]. Classes under [[screens.att.toTake]] still need a register today.',
-          ur: '[[nav.attendance]] کھولیں۔ [[screens.att.toTake]] کے نیچے والی کلاسوں کی حاضری ابھی باقی ہے۔',
+          ur: '[[nav.attendance]] کھولیں۔ [[screens.att.toTake]] کے نیچے والی جماعتوں کی حاضری ابھی باقی ہے۔',
         },
       },
       {
         text: {
           en: 'Tap the class. Everyone starts [[attendance.status.P]].',
-          ur: 'کلاس پر ٹیپ کریں۔ سب پہلے سے [[attendance.status.P]] ہوتے ہیں۔',
+          ur: 'جماعت پر ٹیپ کریں۔ سب پہلے سے [[attendance.status.P]] ہوتے ہیں۔',
         },
       },
       {
         text: {
-          en: 'Tap a student to change: present → absent → late → leave. The note button adds a note.',
-          ur: 'بچے پر ٹیپ کریں تو بدلتا ہے: حاضر ← غیر حاضر ← دیر ← چھٹی۔ نوٹ کے بٹن سے نوٹ لکھیں۔',
+          en: 'Tap a student to change: [[attendance.status.P]] → [[attendance.status.A]] → [[attendance.status.L]] → [[attendance.status.E]]. The note button adds a note.',
+          ur: 'بچے پر ٹیپ کریں تو بدلتا ہے: [[attendance.status.P]] ← [[attendance.status.A]] ← [[attendance.status.L]] ← [[attendance.status.E]]۔ نوٹ کے بٹن سے نوٹ لکھیں۔',
         },
       },
       {
@@ -229,8 +229,8 @@ export const TASKS_A: readonly GuideTask[] = [
         ur: 'فون کی گھڑی کی غلطی آئے تو: فون کی تاریخ اور وقت خودکار پر کریں، پھر دوبارہ محفوظ کریں۔',
       },
       {
-        en: 'A wrong register cannot be retaken by a teacher. Ask the owner or admin: [[attendance.correct]] with a reason.',
-        ur: 'غلط رجسٹر استاد دوبارہ نہیں لگا سکتا۔ مالک یا ایڈمن سے کہیں: وجہ لکھ کر [[attendance.correct]]۔',
+        en: 'A wrong register cannot be retaken by a teacher. Ask the [[staff.roles.owner]] or [[staff.roles.admin]]: [[attendance.correct]] with a reason.',
+        ur: 'غلط رجسٹر استاد دوبارہ نہیں لگا سکتا۔ [[staff.roles.owner]] یا [[staff.roles.admin]] سے کہیں: وجہ لکھ کر [[attendance.correct]]۔',
       },
     ],
     links: [
@@ -244,20 +244,20 @@ export const TASKS_A: readonly GuideTask[] = [
       {
         path: '/attendance',
         target: 'att-today',
-        title: { en: 'Classes for today', ur: 'آج کی کلاسیں' },
+        title: { en: 'Classes for today', ur: 'آج کی جماعتیں' },
         body: {
           en: '[[screens.att.toTake]] are the classes still without a register.',
-          ur: '[[screens.att.toTake]] وہ کلاسیں ہیں جن کی حاضری ابھی نہیں لگی۔',
+          ur: '[[screens.att.toTake]] وہ جماعتیں ہیں جن کی حاضری ابھی نہیں لگی۔',
         },
       },
       {
         path: '/attendance',
         target: 'att-group',
         click: true,
-        title: { en: 'Open a class', ur: 'کلاس کھولیں' },
+        title: { en: 'Open a class', ur: 'جماعت کھولیں' },
         body: {
           en: 'Tap the class to open its register. Next opens the first one for you.',
-          ur: 'کلاس پر ٹیپ کریں تو رجسٹر کھلتا ہے۔ "آگے" دبانے سے پہلی کلاس کھل جائے گی۔',
+          ur: 'جماعت پر ٹیپ کریں تو رجسٹر کھلتا ہے۔ "آگے" دبانے سے پہلی جماعت کھل جائے گی۔',
         },
       },
       {
@@ -266,8 +266,8 @@ export const TASKS_A: readonly GuideTask[] = [
         wait: true,
         title: { en: 'Tap to change', ur: 'ٹیپ سے بدلیں' },
         body: {
-          en: 'Everyone starts present. Tap a child: absent, late, leave, then back to present.',
-          ur: 'سب حاضر سے شروع ہوتے ہیں۔ بچے پر ٹیپ کریں: غیر حاضر، دیر، چھٹی، پھر واپس حاضر۔',
+          en: 'Everyone starts [[attendance.status.P]]. Tap a child: [[attendance.status.A]], [[attendance.status.L]], [[attendance.status.E]], then back to [[attendance.status.P]].',
+          ur: 'سب [[attendance.status.P]] سے شروع ہوتے ہیں۔ بچے پر ٹیپ کریں: [[attendance.status.A]]، [[attendance.status.L]]، [[attendance.status.E]]، پھر واپس [[attendance.status.P]]۔',
         },
       },
       {
@@ -305,15 +305,15 @@ export const TASKS_A: readonly GuideTask[] = [
     roles: TASK_ROLES['send-messages'],
     title: { en: "Send today's messages", ur: 'آج کے پیغامات بھیجیں' },
     summary: {
-      en: 'Maktab writes each message; you send it from WhatsApp and tap Sent.',
-      ur: 'مکتب پیغام لکھتا ہے؛ آپ واٹس ایپ سے بھیج کر Sent دباتے ہیں۔',
+      en: 'Maktab writes each message; you send it from WhatsApp and tap [[msg.queue.sentNext]].',
+      ur: 'مکتب پیغام لکھتا ہے؛ آپ واٹس ایپ سے بھیج کر [[msg.queue.sentNext]] دباتے ہیں۔',
     },
     steps: [
       {
         to: '/messages',
         text: {
           en: 'Open [[shell.nav.messages]]. Waiting messages are grouped: absent today, fee due, fee overdue, payment received, notice.',
-          ur: '[[shell.nav.messages]] کھولیں۔ انتظار والے پیغام قسم وار ہیں: آج غیر حاضر، فیس واجب، فیس لیٹ، فیس وصول، نوٹس۔',
+          ur: '[[shell.nav.messages]] کھولیں۔ انتظار والے پیغام قسم وار ہیں: آج غیر حاضر، فیس واجب، فیس میں تاخیر، فیس وصول، نوٹس۔',
         },
       },
       {
@@ -347,8 +347,8 @@ export const TASKS_A: readonly GuideTask[] = [
         ur: 'واٹس ایپ میں بھیجے بغیر [[msg.queue.sentNext]] دبانا: والدین کو پیغام ملتا ہی نہیں۔',
       },
       {
-        en: 'Rows that say [[msg.queue.callInstead]] have no WhatsApp consent or only a landline. Phone the parent; fix the number on the student page.',
-        ur: '[[msg.queue.callInstead]] والی قطاروں میں واٹس ایپ کی اجازت نہیں یا صرف لینڈ لائن ہے۔ فون کریں؛ نمبر طالب علم کے صفحے پر ٹھیک کریں۔',
+        en: 'Rows that say [[msg.queue.callInstead]] have no WhatsApp consent or only a landline. Phone the parent, then tap [[msg.queue.called]]; fix the number on the student page.',
+        ur: '[[msg.queue.callInstead]] والی قطاروں میں واٹس ایپ کی اجازت نہیں یا صرف لینڈ لائن ہے۔ والدین کو فون کریں، پھر [[msg.queue.called]] دبائیں؛ نمبر طالب علم کے صفحے پر ٹھیک کریں۔',
       },
     ],
     links: [
@@ -392,6 +392,14 @@ export const TASKS_A: readonly GuideTask[] = [
         },
       },
     ],
+    tourEmpty: {
+      target: 'msg-empty',
+      title: { en: 'Nothing to send', ur: 'بھیجنے کو کچھ نہیں' },
+      body: {
+        en: "No messages waiting now: this is what the queue looks like when it's empty. Come back after the register or the fee run.",
+        ur: 'ابھی کوئی پیغام باقی نہیں: قطار خالی ہو تو ایسی دکھتی ہے۔ حاضری یا مہینے کی فیس کے بعد دوبارہ دیکھیں۔',
+      },
+    },
   },
 
   {
@@ -401,14 +409,14 @@ export const TASKS_A: readonly GuideTask[] = [
     title: { en: 'Admit a student', ur: 'نیا داخلہ' },
     summary: {
       en: "Start with the guardian's phone, then the child, then the class.",
-      ur: 'پہلے سرپرست کا فون، پھر بچہ، پھر کلاس۔',
+      ur: 'پہلے سرپرست کا فون، پھر بچہ، پھر جماعت۔',
     },
     steps: [
       {
         to: '/students/new',
         text: {
           en: '[[nav.students]] → [[student.admit]]. Type the guardian phone and press [[family.search]].',
-          ur: '[[nav.students]] → [[student.admit]]۔ سرپرست کا فون لکھیں اور [[family.search]] دبائیں۔',
+          ur: '[[nav.students]] ← [[student.admit]]۔ سرپرست کا فون لکھیں اور [[family.search]] دبائیں۔',
         },
       },
       {
@@ -431,15 +439,15 @@ export const TASKS_A: readonly GuideTask[] = [
       },
       {
         text: {
-          en: "Choose the class, then [[admission.submit]]. The admission fee and this month's fee are charged from the rates.",
-          ur: 'کلاس چنیں، پھر [[admission.submit]]۔ داخلہ فیس اور اس مہینے کی فیس ریٹ کے مطابق لگ جاتی ہے۔',
+          en: "Choose the [[admission.sections.group]], then [[admission.submit]]. The admission fee and this month's fee are charged from the rates.",
+          ur: '[[admission.sections.group]] چنیں، پھر [[admission.submit]]۔ داخلہ فیس اور اس مہینے کی فیس نرخ کے مطابق لگ جاتی ہے۔',
         },
       },
       {
         to: '/students/import',
         text: {
           en: 'Many at once: [[student.import]] → [[import.template]] → fill one row per student → [[import.check]] → [[import.commit_other]].',
-          ur: 'بہت سے ایک ساتھ: [[student.import]] → [[import.template]] → ہر بچے کی ایک سطر بھریں → [[import.check]] → [[import.commit_other]]۔',
+          ur: 'بہت سے ایک ساتھ: [[student.import]] ← [[import.template]] ← ہر بچے کی ایک سطر بھریں ← [[import.check]] ← [[import.commit_other]]۔',
         },
       },
     ],
@@ -507,7 +515,7 @@ export const TASKS_A: readonly GuideTask[] = [
         to: '/students/new',
         text: {
           en: '[[nav.students]] → [[student.admit]]. Type the phone of a guardian already in Maktab → [[family.search]].',
-          ur: '[[nav.students]] → [[student.admit]]۔ مکتب میں پہلے سے موجود سرپرست کا فون لکھیں → [[family.search]]۔',
+          ur: '[[nav.students]] ← [[student.admit]]۔ مکتب میں پہلے سے موجود سرپرست کا فون لکھیں ← [[family.search]]۔',
         },
       },
       {
@@ -519,7 +527,7 @@ export const TASKS_A: readonly GuideTask[] = [
       {
         text: {
           en: 'Fill in the child and class → [[admission.submit]]. If the school gives a sibling concession, Maktab suggests it.',
-          ur: 'بچے اور کلاس کی تفصیل بھریں → [[admission.submit]]۔ اگر اسکول بہن بھائی کی رعایت دیتا ہے تو مکتب خود تجویز کرے گا۔',
+          ur: 'بچے اور جماعت کی تفصیل بھریں ← [[admission.submit]]۔ اگر اسکول بہن بھائی کی رعایت دیتا ہے تو مکتب خود تجویز کرے گا۔',
         },
       },
       {
@@ -613,8 +621,8 @@ export const TASKS_A: readonly GuideTask[] = [
     ],
     mistakes: [
       {
-        en: 'A wrong receipt is never edited. The owner or admin presses [[fee.receipt.reverse]] with a reason and enters it again.',
-        ur: 'غلط رسید بدلی نہیں جاتی۔ مالک یا ایڈمن وجہ لکھ کر [[fee.receipt.reverse]] کرتا ہے اور دوبارہ درج کرتا ہے۔',
+        en: 'A wrong receipt is never edited. The [[staff.roles.owner]] or [[staff.roles.admin]] presses [[fee.receipt.reverse]] with a reason and enters it again.',
+        ur: 'غلط رسید بدلی نہیں جاتی۔ [[staff.roles.owner]] یا [[staff.roles.admin]] وجہ لکھ کر [[fee.receipt.reverse]] کرتا ہے اور دوبارہ درج کرتا ہے۔',
       },
       {
         en: 'One receipt per family visit: do not make a separate receipt for each child.',
@@ -622,7 +630,11 @@ export const TASKS_A: readonly GuideTask[] = [
       },
       {
         en: 'Non-cash needs the account it went into (bank or wallet); add accounts in [[nav.settings]] → [[settings.sections.fees]].',
-        ur: 'نقد کے علاوہ رقم کے لیے اکاؤنٹ چننا ضروری ہے (بینک یا والٹ)؛ اکاؤنٹ [[nav.settings]] → [[settings.sections.fees]] میں بنائیں۔',
+        ur: 'نقد کے علاوہ رقم کے لیے اکاؤنٹ چننا ضروری ہے (بینک یا والٹ)؛ اکاؤنٹ [[nav.settings]] ← [[settings.sections.fees]] میں بنائیں۔',
+      },
+      {
+        en: "Cash refused because the drawer is closed: you closed today's drawer. Ask the [[staff.roles.owner]] or [[staff.roles.admin]] to press [[fee.cash.reopen]] in [[fee.nav.cash]].",
+        ur: 'نقد فیس نہیں لی جا رہی کیونکہ دراز بند ہے: آپ آج کا دراز بند کر چکے ہیں۔ [[staff.roles.owner]] یا [[staff.roles.admin]] سے کہیں کہ [[fee.nav.cash]] میں [[fee.cash.reopen]] دبائیں۔',
       },
     ],
     links: [
@@ -692,13 +704,13 @@ export const TASKS_A: readonly GuideTask[] = [
         to: '/students',
         text: {
           en: 'Open the student ([[nav.students]] → tap the name) → [[screens.profile.fees]] tab.',
-          ur: 'طالب علم کھولیں ([[nav.students]] → نام پر ٹیپ) → [[screens.profile.fees]] ٹیب۔',
+          ur: 'طالب علم کھولیں ([[nav.students]] ← نام پر ٹیپ) ← [[screens.profile.fees]] ٹیب۔',
         },
       },
       {
         text: {
-          en: 'Press [[fee.family.reduceFee]]. Choose the reason (Sibling, Orphan, Staff child…), [[fee.concession.pct]] or [[fee.concession.fixed]], the fee head and [[fee.concession.from]].',
-          ur: '[[fee.family.reduceFee]] دبائیں۔ وجہ (Sibling، Orphan، Staff child…)، [[fee.concession.pct]] یا [[fee.concession.fixed]]، فیس کی مد اور [[fee.concession.from]] چنیں۔',
+          en: 'Press [[fee.family.reduceFee]]. Choose the reason ([[fee.concession.reasons.sibling]], [[fee.concession.reasons.orphan]], [[fee.concession.reasons.staff_child]]…), [[fee.concession.pct]] or [[fee.concession.fixed]], the fee head and [[fee.concession.from]].',
+          ur: '[[fee.family.reduceFee]] دبائیں۔ وجہ ([[fee.concession.reasons.sibling]]، [[fee.concession.reasons.orphan]]، [[fee.concession.reasons.staff_child]]…)، [[fee.concession.pct]] یا [[fee.concession.fixed]]، فیس کی مد اور [[fee.concession.from]] چنیں۔',
         },
       },
       {
@@ -775,8 +787,8 @@ export const TASKS_A: readonly GuideTask[] = [
       {
         to: '/cash',
         text: {
-          en: "Open [[nav.fees]] → [[fee.nav.cash]]. Today's drawer shows [[fee.cash.expected]]: cash received minus cash paid out.",
-          ur: '[[nav.fees]] → [[fee.nav.cash]] کھولیں۔ آج کے دراز میں [[fee.cash.expected]] لکھا ہے: آئی نقدی منفی دی گئی نقدی۔',
+          en: "Open [[nav.fees]] → [[fee.nav.cash]]. Today's drawer shows [[fee.cash.expected]]: the opening float plus cash received minus cash paid out.",
+          ur: '[[nav.fees]] ← [[fee.nav.cash]] کھولیں۔ آج کے دراز میں [[fee.cash.expected]] لکھا ہے: ابتدائی رقم، جمع آئی نقدی، منفی دی گئی نقدی۔',
         },
       },
       {
@@ -800,8 +812,8 @@ export const TASKS_A: readonly GuideTask[] = [
     ],
     mistakes: [
       {
-        en: 'Closing before counting: only the owner or admin can [[fee.cash.reopen]], with a reason.',
-        ur: 'گنے بغیر بند کرنا: پھر صرف مالک یا ایڈمن وجہ لکھ کر [[fee.cash.reopen]] کر سکتا ہے۔',
+        en: 'Closing early (e.g. at lunch): a parent who comes later cannot pay in cash until the [[staff.roles.owner]] or [[staff.roles.admin]] presses [[fee.cash.reopen]] with a reason. Close only at the end of the day.',
+        ur: 'جلدی بند کرنا (مثلاً دوپہر کے وقفے میں): بعد میں آنے والے والدین نقد فیس نہیں دے سکتے جب تک [[staff.roles.owner]] یا [[staff.roles.admin]] وجہ لکھ کر [[fee.cash.reopen]] نہ دبائے۔ دراز صرف دن کے آخر میں بند کریں۔',
       },
       {
         en: 'Entering cash for yesterday: not possible. Record cash on the day it comes in.',

@@ -56,4 +56,10 @@ export type GuideTask = {
   /** Screens to open from the task page. */
   readonly links: readonly { readonly to: string; readonly label: L }[];
   readonly tour?: readonly TourStep[];
+  /**
+   * What the tour shows when the screen has nothing to point at (an empty list): if a step's target
+   * is missing and `[data-tour="<target>"]` is on the screen, the tour ends on this card instead
+   * of skipping step after step.
+   */
+  readonly tourEmpty?: { readonly target: string; readonly title: L; readonly body: L };
 };

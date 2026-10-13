@@ -26,7 +26,7 @@ export function md(text: string, lang: GuideLang): string {
  * and the repo doc say the same thing. CI runs `npm run docs:guide -- --check`.
  */
 
-const BEFORE_YOU_START: readonly L[] = [
+export const BEFORE_YOU_START: readonly L[] = [
   {
     en: 'Use Chrome. Setup and reports are easier on a laptop; attendance, the fee counter and the send queue are made for a phone.',
     ur: 'Chrome استعمال کریں۔ ترتیب اور رپورٹیں لیپ ٹاپ پر آسان ہیں؛ حاضری، فیس کاؤنٹر اور پیغامات فون کے لیے بنے ہیں۔',
@@ -40,8 +40,8 @@ const BEFORE_YOU_START: readonly L[] = [
     ur: 'پیسوں کا کوئی اندراج مٹتا نہیں۔ غلطی نئے اندراج سے درست ہوتی ہے (واپسی، یا وجہ کے ساتھ منسوخی)۔ ہر تبدیلی آڈٹ لاگ میں رہتی ہے۔',
   },
   {
-    en: 'First sign-in: the owner signs in with Google using the owner email set on the server, and becomes the Owner. Everyone else signs in after the owner invites their Google email.',
-    ur: 'پہلا سائن اِن: مالک سرور پر لکھے گئے ای میل سے گوگل کے ذریعے سائن اِن کرتا ہے اور Owner بن جاتا ہے۔ باقی سب مالک کی دعوت کے بعد اپنے گوگل ای میل سے سائن اِن کرتے ہیں۔',
+    en: 'First sign-in: the owner signs in with Google using the owner email set on the server, and becomes the [[staff.roles.owner]]. Everyone else signs in after the owner invites their Google email.',
+    ur: 'پہلا سائن اِن: مالک سرور پر لکھے گئے ای میل سے گوگل کے ذریعے سائن اِن کرتا ہے اور [[staff.roles.owner]] بن جاتا ہے۔ باقی سب مالک کی دعوت کے بعد اپنے گوگل ای میل سے سائن اِن کرتے ہیں۔',
   },
 ];
 
@@ -120,13 +120,13 @@ export function renderOnboardingMarkdown(): string {
     '## Before you start / شروع کرنے سے پہلے',
     '',
     list(
-      BEFORE_YOU_START.map((l) => l.en),
+      BEFORE_YOU_START.map((l) => md(l.en, 'en')),
       false,
     ),
     '',
     rtl(
       list(
-        BEFORE_YOU_START.map((l) => l.ur),
+        BEFORE_YOU_START.map((l) => md(l.ur, 'ur')),
         false,
       ),
     ),
