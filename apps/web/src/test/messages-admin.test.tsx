@@ -8,9 +8,9 @@ import {
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MessageSettings } from '@/components/messages/MessageSettings';
-import { MessagesTile } from '@/components/messages/MessagesTile';
 import { ParentLinkPanel } from '@/components/messages/ParentLinkPanel';
 import { initI18n, setLanguage } from '@/i18n';
+import { Dashboard } from '@/pages/Dashboard';
 import { visibleSections } from '@/pages/Settings';
 import { mockApi, renderAt } from './api-mock';
 
@@ -209,16 +209,15 @@ describe('settings → messages', () => {
   });
 });
 
-describe('dashboard tile', () => {
-  it('shows the queued count linking to the queue', async () => {
+describe('home: messages to send (M7b, was the dashboard tile)', () => {
+  it('shows the queued count and starts sending from the queue', async () => {
     mockApi({
       'GET /api/messages/counts': { queued: 12, sent_today: 0, skipped_today: 0, by_template: {} },
     });
-    renderAt('/', '/', <MessagesTile />);
-    const link = (await screen.findByRole('link', {
-      name: /Messages waiting/,
-    })) as HTMLAnchorElement;
+    renderAt('/', '/', <Dashboard />, ['accountant']);
+    expect(await screen.findByText('12 waiting')).toBeTruthy();
+    const link = screen.getByRole('link', { name: /Start sending/ }) as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('/messages');
-    expect(link.textContent).toContain('12');
+    expect(document.getElementById('dash-messages')?.textContent).toContain('12');
   });
 });

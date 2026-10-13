@@ -1,19 +1,26 @@
 import { type ExpenseDto, type ExpenseListDto, newId } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Camera, ImageIcon, Plus } from 'lucide-react';
+import { Ban, Camera, ImageIcon, Plus, ReceiptText } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AmountInput, Money, ReasonDialog } from '@/components/fees/common';
-import { Field, PageTitle } from '@/components/form';
+import { AmountInput, ReasonDialog } from '@/components/fees/common';
+import { Field } from '@/components/form';
 import {
   AccountSelect,
   MoneyErrorNote,
   payOutAccounts,
   ReportActions,
 } from '@/components/money/common';
-import { Badge } from '@/components/ui/badge';
+import {
+  EmptyState,
+  ListSkeleton,
+  Mny,
+  Page,
+  PageHeader,
+  Panel,
+  StatusBadge,
+} from '@/components/page';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -285,41 +292,48 @@ function ExpenseRow({
   canAddPhoto?: boolean;
 }) {
   const { t, i18n } = useTranslation();
+  const actions =
+    e.has_photo || (!e.has_photo && !e.voided && canAddPhoto) || (onVoid && !e.voided);
   return (
-    <Card className="gap-1 py-3" data-expense={e.id}>
-      <CardContent className="flex flex-col gap-1 px-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <bdi className="num text-sm text-muted-foreground">{e.expense_no}</bdi>
-          <bdi className="num text-sm text-muted-foreground">{e.date}</bdi>
-          {e.voided && <Badge variant="destructive">{t('money.common.voided')}</Badge>}
-          <span className={e.voided ? 'ms-auto line-through' : 'ms-auto font-semibold'}>
-            <Money paisa={e.amount} />
+    <li className="flex flex-col gap-1.5 px-4 py-3" data-expense={e.id}>
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="font-medium">
+            <bdi>
+              {nameIn({ name: e.category_name, name_ur: e.category_name_ur }, i18n.language)}
+            </bdi>
+            {e.vendor && (
+              <span className="text-muted-foreground">
+                {' · '}
+                <bdi>{e.vendor}</bdi>
+              </span>
+            )}
+          </span>
+          <span className="flex flex-wrap items-center gap-x-2 text-meta text-muted-foreground">
+            <bdi className="num">{e.expense_no}</bdi>
+            <bdi className="num">{e.date}</bdi>
+            <bdi>{e.account_name}</bdi>
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <bdi className="font-medium">
-            {nameIn({ name: e.category_name, name_ur: e.category_name_ur }, i18n.language)}
-          </bdi>
-          {e.vendor && (
-            <>
-              · <bdi>{e.vendor}</bdi>
-            </>
-          )}
-          · <bdi>{e.account_name}</bdi>
-        </div>
-        {e.note && (
-          <p className="text-sm text-muted-foreground">
-            <bdi>{e.note}</bdi>
-          </p>
-        )}
-        {e.voided && e.void_reason && (
-          <p className="text-sm text-destructive">
-            {t('money.common.reason')}: <bdi>{e.void_reason}</bdi>
-          </p>
-        )}
+        <span className="flex flex-col items-end gap-1">
+          <Mny paisa={e.amount} className={e.voided ? 'line-through opacity-70' : undefined} />
+          {e.voided && <StatusBadge tone="bad">{t('money.common.voided')}</StatusBadge>}
+        </span>
+      </div>
+      {e.note && (
+        <p className="text-sm text-muted-foreground">
+          <bdi>{e.note}</bdi>
+        </p>
+      )}
+      {e.voided && e.void_reason && (
+        <p className="text-sm text-bad">
+          {t('money.common.reason')}: <bdi>{e.void_reason}</bdi>
+        </p>
+      )}
+      {actions && (
         <div className="flex flex-wrap gap-2 print:hidden">
           {e.has_photo && (
-            <Button asChild variant="outline" size="sm" className="min-h-11">
+            <Button asChild variant="outline" size="sm">
               <a href={`/api/expenses/${e.id}/photo`} target="_blank" rel="noreferrer">
                 <ImageIcon aria-hidden />
                 {t('money.expense.viewPhoto')}
@@ -331,7 +345,7 @@ function ExpenseRow({
             <Button
               variant="ghost"
               size="sm"
-              className="ms-auto min-h-11 text-destructive"
+              className="ms-auto text-muted-foreground hover:text-bad"
               id={`expense-void-${e.id}`}
               onClick={() => onVoid(e)}
             >
@@ -340,8 +354,8 @@ function ExpenseRow({
             </Button>
           )}
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </li>
   );
 }
 
@@ -382,7 +396,7 @@ export function ExpenseFilters({ f }: { f: ReturnType<typeof useExpenseFilters> 
   const cats = useExpenseCategories().data?.categories ?? [];
   const accounts = useAccounts().data?.accounts ?? [];
   return (
-    <div className="grid gap-2 sm:grid-cols-3 print:hidden">
+    <div className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-3 print:hidden">
       <Field id="exp-from" label="money.common.from">
         <Input
           id="exp-from"
@@ -462,36 +476,42 @@ export function ExpensesPage() {
     },
   });
   return (
-    <section className="flex max-w-4xl flex-col gap-4">
-      <PageTitle
+    <Page>
+      <PageHeader
+        title={t('money.expense.title')}
         actions={
           <>
+            <ReportActions id="expenses" csv={`/api/expenses?${f.qs}&format=csv`} />
             {canCreateExpense(roles) && (
               <Button id="expense-add" onClick={() => setAdding(true)} className="print:hidden">
                 <Plus aria-hidden />
                 {t('money.expense.add')}
               </Button>
             )}
-            <ReportActions id="expenses" csv={`/api/expenses?${f.qs}&format=csv`} />
           </>
         }
-      >
-        {t('money.expense.title')}
-      </PageTitle>
+      />
       <ExpenseFilters f={f} />
       <MoneyErrorNote error={q.error} />
+      {q.isPending && f.valid && (
+        <Panel>
+          <ListSkeleton rows={4} />
+        </Panel>
+      )}
       {q.data && q.data.expenses.length === 0 && (
-        <p className="text-muted-foreground">{t('money.expense.empty')}</p>
+        <Panel>
+          <EmptyState icon={ReceiptText} title={t('money.expense.empty')} />
+        </Panel>
       )}
       {q.data && q.data.expenses.length > 0 && (
-        <>
-          <p className="flex flex-wrap gap-2 font-medium" id="expense-total">
-            {t('money.expense.totalLine')}
-            <span className="ms-auto">
-              <Money paisa={q.data.total} />
+        <Panel
+          title={
+            <span id="expense-total" className="flex flex-wrap gap-2">
+              {t('money.expense.totalLine')} <Mny paisa={q.data.total} />
             </span>
-          </p>
-          <div className="flex flex-col gap-2">
+          }
+        >
+          <ul className="flex flex-col divide-y">
             {q.data.expenses.map((e) => (
               <ExpenseRow
                 key={e.id}
@@ -500,8 +520,8 @@ export function ExpensesPage() {
                 canAddPhoto={canCreateExpense(roles)}
               />
             ))}
-          </div>
-        </>
+          </ul>
+        </Panel>
       )}
       <AddExpenseDialog open={adding} onOpenChange={setAdding} />
       {voiding && (
@@ -517,6 +537,6 @@ export function ExpensesPage() {
           onConfirm={(reason) => voidIt.mutate({ id: voiding.id, reason })}
         />
       )}
-    </section>
+    </Page>
   );
 }

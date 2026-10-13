@@ -4,9 +4,9 @@ import { ChevronLeft, ChevronRight, Plus, Search, Upload, UserRound } from 'luci
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
-import { Num, PageTitle } from '@/components/form';
+import { Num } from '@/components/form';
+import { EmptyState, ListSkeleton, Page, PageHeader, Panel, StatusBadge } from '@/components/page';
 import { isolate } from '@/components/students/fields';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -56,18 +56,20 @@ export function StudentsList() {
   const filtered = !!(q || group || statusParam !== 'active');
 
   return (
-    <section className="flex flex-col gap-4">
-      <PageTitle
+    <Page width="full" className="max-w-[1240px]">
+      <PageHeader
+        title={t('student.title')}
+        subtitle={data ? <Num>{t('common.total', { n: data.total })}</Num> : undefined}
         actions={
           canWriteStudents(roles) && (
             <>
-              <Button asChild variant="outline" size="sm">
+              <Button asChild variant="outline">
                 <Link to="/students/import">
                   <Upload aria-hidden />
                   {t('student.import')}
                 </Link>
               </Button>
-              <Button asChild size="sm">
+              <Button asChild>
                 <Link to="/students/new">
                   <Plus aria-hidden />
                   {t('student.admit')}
@@ -76,112 +78,147 @@ export function StudentsList() {
             </>
           )
         }
-      >
-        {t('student.title')}
-      </PageTitle>
+      />
 
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          update({ q: text.trim() });
-        }}
-      >
-        <Input
-          type="search"
-          aria-label={t('common.search')}
-          placeholder={t('student.searchPlaceholder')}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-        <Button type="submit" size="icon" aria-label={t('common.search')}>
-          <Search aria-hidden />
-        </Button>
-      </form>
-      <div className="grid grid-cols-2 gap-2">
-        <Select
-          aria-label={t('student.group')}
-          value={group}
-          onChange={(e) => update({ group: e.target.value })}
+      <div className="flex flex-col gap-2 md:flex-row">
+        <form
+          className="flex flex-1 gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            update({ q: text.trim() });
+          }}
         >
-          <option value="">{t('student.allGroups')}</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {isolate(g.programme_name)} · {isolate(g.name)}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label={t('student.status')}
-          value={statusParam}
-          onChange={(e) => update({ status: e.target.value })}
-        >
-          <option value="all">{t('student.allStatuses')}</option>
-          {STUDENT_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {t(`student.statuses.${s}`)}
-            </option>
-          ))}
-        </Select>
+          <Input
+            type="search"
+            aria-label={t('common.search')}
+            placeholder={t('student.searchPlaceholder')}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <Button type="submit" size="icon" aria-label={t('common.search')}>
+            <Search aria-hidden />
+          </Button>
+        </form>
+        <div className="grid grid-cols-2 gap-2 md:w-[26rem]">
+          <Select
+            aria-label={t('student.group')}
+            value={group}
+            onChange={(e) => update({ group: e.target.value })}
+          >
+            <option value="">{t('student.allGroups')}</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {isolate(g.programme_name)} · {isolate(g.name)}
+              </option>
+            ))}
+          </Select>
+          <Select
+            aria-label={t('student.status')}
+            value={statusParam}
+            onChange={(e) => update({ status: e.target.value })}
+          >
+            <option value="all">{t('student.allStatuses')}</option>
+            {STUDENT_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {t(`student.statuses.${s}`)}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
 
-      {list.isPending ? (
-        <p className="text-muted-foreground">{t('common.loading')}</p>
-      ) : list.isError ? (
-        <p role="alert">{t('common.error')}</p>
-      ) : data && data.items.length === 0 ? (
-        <p className="text-muted-foreground">
-          {filtered ? t('student.emptyFilter') : t('student.empty')}
-        </p>
-      ) : (
-        <ul className="flex flex-col divide-y rounded-md border">
-          {data?.items.map((s) => (
-            <li key={s.id}>
-              <Link
-                to={`/students/${s.id}`}
-                className="flex min-h-14 items-center gap-3 px-3 py-2 hover:bg-accent"
-              >
-                {s.has_photo ? (
-                  <img
-                    src={`/api/students/${s.id}/photo`}
-                    alt=""
-                    loading="lazy"
-                    className="size-10 shrink-0 rounded-full object-cover"
-                  />
-                ) : (
-                  <UserRound className="size-10 shrink-0 rounded-full bg-muted p-2" aria-hidden />
-                )}
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-medium">
-                    <bdi>{s.name}</bdi>
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {s.father_name && (
-                      <>
-                        <bdi>{s.father_name}</bdi>
-                        {' · '}
-                      </>
+      <Panel bodyClassName="flex flex-col">
+        {/* Column heads (desktop): one row markup serves both the table and the phone list. */}
+        <div
+          aria-hidden
+          className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)_7rem] gap-4 border-b px-4 py-2 text-meta font-semibold text-muted-foreground md:grid"
+        >
+          <span>{t('student.title')}</span>
+          <span>{t('student.group')}</span>
+          <span>{t('student.fatherName')}</span>
+          <span>{t('guardian.phone')}</span>
+          <span className="text-end">{t('student.admissionNo')}</span>
+        </div>
+        {list.isPending ? (
+          <ListSkeleton rows={8} />
+        ) : list.isError ? (
+          <p role="alert" className="p-4">
+            {t('common.error')}
+          </p>
+        ) : data && data.items.length === 0 ? (
+          <EmptyState
+            icon={UserRound}
+            title={filtered ? t('student.emptyFilter') : t('student.empty')}
+            action={
+              !filtered &&
+              canWriteStudents(roles) && (
+                <Button asChild variant="outline">
+                  <Link to="/students/new">{t('student.admit')}</Link>
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <ul className="flex flex-col divide-y">
+            {data?.items.map((s) => (
+              <li key={s.id}>
+                <Link
+                  to={`/students/${s.id}`}
+                  className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-2 hover:bg-accent md:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)_7rem]"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    {s.has_photo ? (
+                      <img
+                        src={`/api/students/${s.id}/photo`}
+                        alt=""
+                        loading="lazy"
+                        className="size-9 shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span
+                        aria-hidden
+                        className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-brand"
+                      >
+                        {initials(s.name)}
+                      </span>
                     )}
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-medium">
+                        <bdi>{s.name}</bdi>
+                      </span>
+                      {/* Phone: the class and guardian under the name. */}
+                      <span className="truncate text-meta text-muted-foreground md:hidden">
+                        {s.group_name ? <bdi>{s.group_name}</bdi> : '—'}
+                        {s.father_name && (
+                          <>
+                            {' · '}
+                            <bdi>{s.father_name}</bdi>
+                          </>
+                        )}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="hidden truncate text-sm md:block">
                     {s.group_name ? <bdi>{s.group_name}</bdi> : '—'}
-                    {s.guardian_phone && (
-                      <>
-                        {' · '}
-                        <Num>{formatPkPhone(s.guardian_phone)}</Num>
-                      </>
+                  </span>
+                  <span className="hidden truncate text-sm md:block">
+                    {s.father_name ? <bdi>{s.father_name}</bdi> : '—'}
+                  </span>
+                  <span className="hidden truncate text-sm text-muted-foreground md:block">
+                    {s.guardian_phone ? <Num>{formatPkPhone(s.guardian_phone)}</Num> : '—'}
+                  </span>
+                  <span className="flex flex-col items-end gap-1 text-sm">
+                    <Num>{s.admission_no}</Num>
+                    {s.status !== 'active' && (
+                      <StatusBadge tone="neutral">{t(`student.statuses.${s.status}`)}</StatusBadge>
                     )}
                   </span>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <Num>{s.admission_no}</Num>
-                  {s.status !== 'active' && (
-                    <Badge variant="outline">{t(`student.statuses.${s.status}`)}</Badge>
-                  )}
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
 
       {data && data.total > data.page_size && (
         <nav className="flex items-center gap-2">
@@ -208,9 +245,14 @@ export function StudentsList() {
           </Button>
         </nav>
       )}
-      {data && (
-        <p className="text-xs text-muted-foreground">{t('common.total', { n: data.total })}</p>
-      )}
-    </section>
+    </Page>
   );
 }
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter((w) => /^\p{L}/u.test(w))
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');

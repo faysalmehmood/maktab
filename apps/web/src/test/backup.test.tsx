@@ -8,12 +8,12 @@ import type {
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { unzipSync } from 'fflate';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { AlarmBanner } from '@/components/backup/AlarmBanner';
 import { BackupPanel } from '@/components/backup/BackupPanel';
 import { AboutPanel, RecycleBin } from '@/components/backup/DataPanel';
 import { initI18n, setLanguage } from '@/i18n';
 import { ApiError } from '@/lib/api';
 import { buildExport, withRetry } from '@/lib/backup';
+import { Dashboard } from '@/pages/Dashboard';
 import { visibleSections } from '@/pages/Settings';
 import { mockApi, renderAt } from './api-mock';
 
@@ -252,7 +252,7 @@ describe('backup_stale alarm', () => {
     ).toBeTruthy();
   });
 
-  it('the dashboard banner carries the same explanation', async () => {
+  it('the home "Needs attention" row carries the same explanation', async () => {
     mockApi({
       'GET /api/alarms/latest': {
         event: {
@@ -264,10 +264,11 @@ describe('backup_stale alarm', () => {
         },
       },
     });
-    renderAt('/', '/', <AlarmBanner />);
-    expect(await screen.findByText('1 alarm(s) need attention')).toBeTruthy();
-    expect(document.getElementById('alarm-backup-stale')?.textContent).toContain(
-      'Backups have not run since 10/10/2026',
+    renderAt('/', '/', <Dashboard />);
+    await waitFor(() =>
+      expect(document.getElementById('attn-alarm-backup_stale')?.textContent).toContain(
+        'Backups have not run since 10/10/2026',
+      ),
     );
   });
 });
@@ -292,7 +293,7 @@ describe('recycle bin, banner, about', () => {
     );
   });
 
-  it('the owner dashboard banner shows the latest pass until dismissed', async () => {
+  it('the owner home lists the latest pass under "Needs attention" until dismissed', async () => {
     const { calls } = mockApi({
       'GET /api/alarms/latest': {
         event: {
@@ -305,22 +306,26 @@ describe('recycle bin, banner, about', () => {
       },
       'POST /api/alarms/2026-10-13/ack': { ok: true },
     });
-    renderAt('/', '/', <AlarmBanner />);
-    expect(await screen.findByText('2 alarm(s) need attention')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Open alarms' }).getAttribute('href')).toBe(
-      '/settings?section=backup',
-    );
+    renderAt('/', '/', <Dashboard />);
+    const rows = await waitFor(() => {
+      const r = document.querySelectorAll('[id^="attn-alarm-"]');
+      if (!r.length) throw new Error('no alarm rows');
+      return [...r];
+    });
+    expect(rows).toHaveLength(alarms.alarms.filter((a) => a.count > 0).length);
+    for (const r of rows)
+      expect(r.querySelector('a')?.getAttribute('href')).toBe('/settings?section=backup');
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     await waitFor(() =>
       expect(calls.some((c) => c.path === '/api/alarms/2026-10-13/ack')).toBe(true),
     );
   });
 
-  it('no banner for an admin (no request either)', async () => {
+  it('no alarm rows for an admin (no request either)', async () => {
     const { calls } = mockApi({});
-    renderAt('/', '/', <AlarmBanner />, ['admin']);
+    renderAt('/', '/', <Dashboard />, ['admin']);
     await new Promise((r) => setTimeout(r, 20));
-    expect(document.getElementById('alarm-banner')).toBeNull();
+    expect(document.querySelector('[id^="attn-alarm-"]')).toBeNull();
     expect(calls.filter((c) => c.path.startsWith('/api/alarms'))).toEqual([]);
   });
 

@@ -1,9 +1,9 @@
 import type { GenerateResultDto } from '@maktab/shared';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { BillingAlertBanner, FeeTiles } from '@/components/fees/DashboardTiles';
 import { FeeSetup, rateHistory, validateFineRule } from '@/components/fees/setup';
 import { initI18n, setLanguage } from '@/i18n';
+import { Dashboard } from '@/pages/Dashboard';
 import { BillingPage, karachiTime, runGenerate } from '@/pages/fees/Billing';
 import { DefaultersPage } from '@/pages/fees/Defaulters';
 import { group, mockApi, renderAt } from './api-mock';
@@ -250,32 +250,37 @@ describe('billing', () => {
     expect(karachiTime('2026-10-10 04:00:00')).toBe('2026-10-10 09:00');
   });
 
-  it('dashboard: the billing banner appears only with alerts and links to billing', async () => {
-    mockApi({
-      'GET /api/dashboard/fees': {
-        date: '2026-10-10',
-        collected: [{ method: 'cash', amount: RS(7000), count: 2 }],
-        collected_total: RS(7000),
-        dues_outstanding: RS(50000),
-        defaulters: 4,
-        billing_alerts: 2,
-        queued_fee_messages: 3,
-      },
-    });
-    renderAt('/', '/', <FeeTiles />);
-    const banner = await waitFor(() => {
-      const el = document.getElementById('billing-alert-banner');
-      if (!el) throw new Error('no banner');
-      return el;
-    });
-    expect(banner.querySelector('a')?.getAttribute('href')).toBe('/fees/billing');
-    expect(document.getElementById('tile-collected')?.textContent).toContain('PKR 7,000');
-    expect(document.getElementById('tile-defaulters')?.textContent).toContain('4');
+  // M7b: the dashboard banner and tiles became Home's "Needs attention" rows and today cards.
+  const feeDash = (billing_alerts: number) => ({
+    date: '2026-10-10',
+    collected: [{ method: 'cash', amount: RS(7000), count: 2 }],
+    collected_total: RS(7000),
+    dues_outstanding: RS(50000),
+    defaulters: 4,
+    billing_alerts,
+    queued_fee_messages: 3,
   });
 
-  it('no banner without alerts', () => {
-    renderAt('/', '/', <BillingAlertBanner count={0} />);
-    expect(document.getElementById('billing-alert-banner')).toBeNull();
+  it('home: billing failures show as a row linking to billing; collected and defaulters', async () => {
+    mockApi({ 'GET /api/dashboard/fees': feeDash(2) });
+    // Billing is fee.generate (owner / admin): the row links where they can fix it.
+    renderAt('/', '/', <Dashboard />, ['admin']);
+    const row = await waitFor(() => {
+      const el = document.getElementById('attn-billing');
+      if (!el) throw new Error('no billing row');
+      return el;
+    });
+    expect(row.querySelector('a')?.getAttribute('href')).toBe('/fees/billing');
+    expect(row.textContent).toContain('2');
+    expect(document.getElementById('home-collected')?.textContent).toContain('PKR 7,000');
+    expect(document.getElementById('attn-defaulters')?.textContent).toContain('4');
+  });
+
+  it('home: no billing row without alerts', async () => {
+    mockApi({ 'GET /api/dashboard/fees': feeDash(0) });
+    renderAt('/', '/', <Dashboard />, ['accountant']);
+    await waitFor(() => expect(document.getElementById('attn-defaulters')).toBeTruthy());
+    expect(document.getElementById('attn-billing')).toBeNull();
   });
 });
 
