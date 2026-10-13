@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
+import { useLanguageResources } from '@/i18n';
 import { getJson, sendJson } from '@/lib/api';
 import { copyText, formatDateTime } from '@/lib/messages';
 import { cn } from '@/lib/utils';
@@ -79,9 +80,10 @@ export function ParentLinkPanel({
   const number =
     normalizePkMobile(guardian.whatsapp ?? '') ?? normalizePkMobile(guardian.phone ?? '');
   // The text goes in the guardian's own language; the URL alone on the last line (exp4).
-  const waText = created
-    ? `${i18n.getFixedT(guardian.lang === 'ur' ? 'ur' : 'en')('msg.link.waText')}\n${created}`
-    : '';
+  const waLang = guardian.lang === 'ur' ? 'ur' : 'en';
+  const waReady = useLanguageResources(waLang);
+  const waText =
+    created && waReady ? `${i18n.getFixedT(waLang)('msg.link.waText')}\n${created}` : '';
   const pinOk = gate !== 'pin' || /^\d{4,6}$/.test(pin);
 
   return (

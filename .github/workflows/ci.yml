@@ -21,5 +21,7 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - name: First-load bundle budget (entry < 150 KB gzip, no zod / Urdu up front)
+        run: npm run budget -w @maktab/web
       - name: Custom SQL migration is in sync with packages/db/sql
         run: npx tsx packages/db/scripts/sync-custom-sql.ts --check

@@ -1,15 +1,13 @@
-import { z } from 'zod';
+// No zod here: the web shell needs these constants on first load, and a schema next to them would
+// pull zod into the first chunk (M7 bundle work). The schemas live in user.ts.
 
 /** Roles a signed-in staff user can hold (rows in the `role` table). */
 export const STAFF_ROLES = ['owner', 'admin', 'accountant', 'teacher'] as const;
-export const staffRoleSchema = z.enum(STAFF_ROLES);
-export type StaffRole = z.infer<typeof staffRoleSchema>;
+export type StaffRole = (typeof STAFF_ROLES)[number];
 
 /** Every principal the permission matrix knows; parents arrive via magic link, never a session. */
 export const PRINCIPAL_ROLES = [...STAFF_ROLES, 'parent'] as const;
-export const principalRoleSchema = z.enum(PRINCIPAL_ROLES);
-export type PrincipalRole = z.infer<typeof principalRoleSchema>;
+export type PrincipalRole = (typeof PRINCIPAL_ROLES)[number];
 
 export const USER_STATUSES = ['invited', 'active', 'disabled'] as const;
-export const userStatusSchema = z.enum(USER_STATUSES);
-export type UserStatus = z.infer<typeof userStatusSchema>;
+export type UserStatus = (typeof USER_STATUSES)[number];

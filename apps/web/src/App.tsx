@@ -6,11 +6,12 @@ import { RequireAuth } from '@/components/RequireAuth';
 import { RequireGrant } from '@/components/RequireGrant';
 import { SetupGate } from '@/components/SetupGate';
 import type { GrantRef } from '@/lib/roles';
-import { Dashboard } from '@/pages/Dashboard';
 import { Login } from '@/pages/Login';
 import { Placeholder } from '@/pages/Placeholder';
 
-// Office screens are split out so the teacher's phone does not download them up front.
+// Office screens are split out so the teacher's phone does not download them up front; the dashboard
+// too (M7: it pulls the fee and attendance widgets, which the login screen never needs).
+const Dashboard = lazy(() => import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })));
 const SetupWizard = lazy(() => import('@/pages/Setup').then((m) => ({ default: m.SetupWizard })));
 const SettingsPage = lazy(() =>
   import('@/pages/Settings').then((m) => ({ default: m.SettingsPage })),
@@ -172,7 +173,14 @@ export function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route
+          index
+          element={
+            <Loading>
+              <Dashboard />
+            </Loading>
+          }
+        />
         <Route
           path="students"
           element={

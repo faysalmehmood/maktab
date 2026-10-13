@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { type ManifestOptions, VitePWA } from 'vite-plugin-pwa';
+import { markSchemasPure } from './pure-schemas';
 import { API_CACHE, isOfflineApi } from './src/offline/api-cache';
 
 // `translations` is the W3C manifest-localization proposal; browsers without it ignore the key.
@@ -30,6 +31,20 @@ const manifest: Partial<ManifestOptions> & {
   ],
 };
 
+/** Build-only: tests and the API read the shared files untouched (see pure-schemas.ts). */
+function pureZodSchemas(): Plugin {
+  const shared = fileURLToPath(new URL('../../packages/shared/src/', import.meta.url));
+  return {
+    name: 'maktab:pure-zod-schemas',
+    apply: 'build',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.startsWith(shared) || !code.includes("from 'zod'")) return null;
+      return { code: markSchemasPure(code), map: null };
+    },
+  };
+}
+
 /** Settings → About shows these (src/lib/backup.ts BUILD). No git (a tarball build) → 'unknown'. */
 function gitCommit(): string {
   if (process.env.MAKTAB_COMMIT) return process.env.MAKTAB_COMMIT;
@@ -49,6 +64,7 @@ export default defineConfig({
     __APP_COMMIT__: JSON.stringify(gitCommit()),
   },
   plugins: [
+    pureZodSchemas(),
     react(),
     tailwindcss(),
     VitePWA({
@@ -88,6 +104,15 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rolldownOptions: {
+      output: {
+        // zod is needed only by the office forms that validate on the client (lazy routes); its own
+        // chunk keeps it off the first load instead of riding in the shared vendor chunk.
+        advancedChunks: { groups: [{ name: 'zod', test: /[\\/]node_modules[\\/]zod[\\/]/ }] },
+      },
+    },
+  },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },

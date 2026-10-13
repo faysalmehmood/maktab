@@ -5,7 +5,8 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./i18n-ur": "./src/i18n-ur.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
@@ -14,5 +15,6 @@
   "dependencies": {
     "ulid": "3.0.2",
     "zod": "4.6.5"
-  }
+  },
+  "sideEffects": false
 }

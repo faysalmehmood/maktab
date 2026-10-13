@@ -2,8 +2,7 @@ import { z } from 'zod';
 import { isoDateSchema } from './attendance';
 import { admissionFeesSchema } from './fees';
 import { normalizePkMobile, normalizePkPhone } from './phone';
-import { staffRoleSchema } from './roles';
-import { idSchema } from './user';
+import { idSchema, staffRoleSchema } from './user';
 
 /**
  * Request schemas for milestone 1 (PLAN §5.1, §14.1, §14.2). The API validates every body with

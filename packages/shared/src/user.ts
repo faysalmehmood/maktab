@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { staffRoleSchema, userStatusSchema } from './roles';
+import { PRINCIPAL_ROLES, STAFF_ROLES, USER_STATUSES } from './roles';
+
+export const staffRoleSchema = z.enum(STAFF_ROLES);
+export const principalRoleSchema = z.enum(PRINCIPAL_ROLES);
+export const userStatusSchema = z.enum(USER_STATUSES);
 
 export const idSchema = z.ulid();
 

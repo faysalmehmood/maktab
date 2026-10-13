@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
+import { useLanguageResources } from '@/i18n';
 import { sendJson } from '@/lib/api';
 import { karachiToday, money, paisaToRupeeText, rupeesToPaisa, useAccounts } from '@/lib/fees';
 import { payslipKey } from '@/lib/money';
@@ -514,6 +515,7 @@ const N = ({ children }: { children: string }) => <bdi className="num">{children
  */
 export function PayslipPrint({ slip, lang }: { slip: PayslipDetailDto; lang: 'en' | 'ur' }) {
   const { i18n } = useTranslation();
+  useLanguageResources(lang);
   const t = i18n.getFixedT(lang);
   const school = lang === 'ur' && slip.school.name_ur ? slip.school.name_ur : slip.school.name;
   const row = (label: string, paisa: number, strong = false) => (

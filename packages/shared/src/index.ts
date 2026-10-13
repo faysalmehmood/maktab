@@ -23,3 +23,4 @@ export * from './i18n-backup';
 export * from './i18n-fees';
 export * from './i18n-messages';
 export * from './i18n-money';
+export * from './i18n-ur';
