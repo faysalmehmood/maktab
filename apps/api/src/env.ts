@@ -7,6 +7,13 @@ export type Bindings = {
   /** Student photos and the school logo. Unbound → upload routes answer 501 `no_storage`. */
   FILES?: R2Bucket;
   ASSETS?: Fetcher;
+  /** The nightly encrypted dumps (R2 `maktab-backups`); read-only use: the backup page lists them. */
+  BACKUPS?: R2Bucket;
+  /**
+   * Shared with the GitHub Actions backup workflows (>= 32 chars): POST /api/backup/runs needs it as
+   * a Bearer token. Unset → that route answers 503 and the backup page says reporting is off.
+   */
+  BACKUP_REPORT_TOKEN?: string;
   SESSION_SECRET: string;
   /**
    * Parent links (M5): link tokens, gate tokens, PIN and access-log IP hashes are HMACs under this

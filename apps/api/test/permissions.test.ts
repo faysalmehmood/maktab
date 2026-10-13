@@ -267,20 +267,36 @@ POST   /api/parent-links/rotate-all          D A D D D D
 GET    /api/p                                A A A A A A
 POST   /api/p/gate                           A A A A A A
 GET    /api/p/receipt/:no                    A A A A A A
+POST   /api/backup/export                    D A D D D D
+GET    /api/backup/export/:id/part           D A D D D D
+POST   /api/backup/export/:id/finish         D A D D D D
+GET    /api/backup/status                    D A D D D D
+POST   /api/backup/drills                    D A D D D D
+GET    /api/alarms                           D A D D D D
+GET    /api/alarms/latest                    D A D D D D
+POST   /api/alarms/:day/ack                  D A D D D D
+GET    /api/recycle-bin                      D A A D D D
+POST   /api/recycle-bin/restore              D A A D D D
+POST   /api/groups/:id/archive               D A A D D D
+GET    /api/settings/retention               D A A D D D
+PUT    /api/settings/retention               D A A D D D
+`;
+// POST /api/backup/runs is a publicRoute (no session) that only BACKUP_REPORT_TOKEN opens: every
+// session is refused (401) over HTTP; the parent column is decided at the matrix level (public).
+const TOKEN_ROUTES = `
+POST   /api/backup/runs                      D D D D D A
 `;
 
 type Who = PrincipalRole | 'anonymous';
 const WHO: Who[] = ['anonymous', 'owner', 'admin', 'accountant', 'teacher', 'parent'];
 const ROUTE_SNAPSHOT: Record<string, Record<Who, 'allow' | 'deny'>> = Object.fromEntries(
-  ROUTE_TABLE.trim()
-    .split('\n')
-    .map((line) => {
-      const [method = '', path = '', ...cells] = line.trim().split(/\s+/);
-      const row = Object.fromEntries(
-        WHO.map((w, i) => [w, cells[i] === 'A' ? 'allow' : 'deny']),
-      ) as Record<Who, 'allow' | 'deny'>;
-      return [`${method} ${path}`, row];
-    }),
+  `${ROUTE_TABLE.trim()}\n${TOKEN_ROUTES.trim()}`.split('\n').map((line) => {
+    const [method = '', path = '', ...cells] = line.trim().split(/\s+/);
+    const row = Object.fromEntries(
+      WHO.map((w, i) => [w, cells[i] === 'A' ? 'allow' : 'deny']),
+    ) as Record<Who, 'allow' | 'deny'>;
+    return [`${method} ${path}`, row];
+  }),
 );
 
 describe('route × role', () => {

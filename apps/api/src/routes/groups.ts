@@ -17,7 +17,7 @@ import {
   groupSubjectsInputSchema,
   newId,
 } from '@maktab/shared';
-import { and, asc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { ApiError } from '../lib/errors';
@@ -131,6 +131,8 @@ export function groupRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     const q = c.req.query();
     const where = and(
       groupFilter(grp.id, scope),
+      // Archived groups (recycle bin, M6) are out of every list unless asked for.
+      q.archived === '1' ? undefined : isNull(grp.archivedAt),
       q.session_id ? eq(grp.sessionId, q.session_id) : undefined,
       q.programme_id ? eq(grp.programmeId, q.programme_id) : undefined,
       q.status === 'open' || q.status === 'running' || q.status === 'closed'

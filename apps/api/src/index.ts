@@ -1,4 +1,4 @@
-import { getDb, runScheduled } from '@maktab/db';
+import { getDb, runDailyOps, runScheduled } from '@maktab/db';
 import { createApp } from './app';
 import type { Bindings } from './env';
 import { configWarning } from './lib/config';
@@ -21,15 +21,27 @@ export default {
   },
   /**
    * Workers cron (wrangler.toml [triggers]): monthly generation and late fines, a few chunks per
-   * invocation, resumable (PLAN §8, §14.5). Locally: `wrangler dev --test-scheduled`, then
+   * invocation, resumable (PLAN §8, §14.5); then the daily alarm/retention pass (M6). Locally: `wrangler dev --test-scheduled`, then
    * GET /__scheduled.
    */
   scheduled(_controller, env, ctx) {
+    const db = getDb({ DB: env.DB });
     ctx.waitUntil(
-      runScheduled(getDb({ DB: env.DB })).then(
-        (report) => console.log(JSON.stringify({ cron: report })),
-        (err: unknown) => console.error('cron failed', err),
-      ),
+      runScheduled(db)
+        .then(
+          (report) => console.log(JSON.stringify({ cron: report })),
+          (err: unknown) => console.error('cron failed', err),
+        )
+        // M6 daily pass (alarms + retention): once per Karachi day from 03:00, after the 02:30
+        // nightly export; one read on every other tick. A failure (e.g. D1 7500 while an export
+        // still holds the database) is retried by the next tick.
+        .then(() => runDailyOps(db))
+        .then(
+          (daily) => {
+            if (!('skipped' in daily)) console.log(JSON.stringify({ daily }));
+          },
+          (err: unknown) => console.error('daily pass failed', err),
+        ),
     );
   },
 } satisfies ExportedHandler<Bindings>;

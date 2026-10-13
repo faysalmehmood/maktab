@@ -12,6 +12,7 @@ export const SECRET = 'test-secret-that-is-at-least-32-characters-long';
 export const PARENT_SECRET = 'test-parent-link-secret-also-32-characters-or-more';
 export const CLIENT_ID = 'test-client.apps.googleusercontent.com';
 export const ORIGIN = 'http://localhost:5173';
+export const REPORT_TOKEN = 'test-backup-report-token-at-least-32-characters';
 
 export const env = {
   SESSION_SECRET: SECRET,
@@ -20,6 +21,7 @@ export const env = {
   GOOGLE_CLIENT_SECRET: 'test-client-secret',
   APP_ORIGIN: ORIGIN,
   OWNER_EMAIL: 'owner@example.com',
+  BACKUP_REPORT_TOKEN: REPORT_TOKEN,
 } as Bindings;
 
 export type TestKey = { kid: string; privateKey: CryptoKey; jwk: JsonWebKey };

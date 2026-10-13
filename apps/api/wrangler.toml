@@ -35,6 +35,12 @@ migrations_dir = "../../packages/db/migrations"
 binding = "FILES"
 bucket_name = "maktab-files"
 
+# Nightly encrypted dumps written by GitHub Actions (.github/workflows/nightly-backup.yml); the
+# Worker only lists them for Settings → Backup (M6). Locally an empty simulated bucket.
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "maktab-backups"
+
 [vars]
 APP_ORIGIN = "http://localhost:5173"
 # The only Google account that may claim an empty installation as owner (case-insensitive).
@@ -53,11 +59,13 @@ crons = ["*/30 * * * *"]
 # Production (pilot): maktab.conceptlix.com. Bindings and vars are NOT inherited from the top
 # level, so each is repeated here. Before the first `npx wrangler deploy --env production`:
 #   1. npx wrangler d1 create maktab            -> paste database_id below
-#   2. npx wrangler r2 bucket create maktab-files
+#   2. npx wrangler r2 bucket create maktab-files ; npx wrangler r2 bucket create maktab-backups
 #   3. npx wrangler secret put SESSION_SECRET --env production   (>= 32 random chars)
 #      npx wrangler secret put PARENT_LINK_SECRET --env production   (>= 32 random chars, its own)
 #      npx wrangler secret put GOOGLE_CLIENT_ID --env production
 #      npx wrangler secret put GOOGLE_CLIENT_SECRET --env production
+#      openssl rand -hex 32 | npx wrangler secret put BACKUP_REPORT_TOKEN --env production
+#        (the same value as the GitHub secret BACKUP_REPORT_TOKEN; docs/backup.md)
 #   4. Google Cloud console: authorised redirect URI
 #      https://maktab.conceptlix.com/api/auth/google/callback ; publish the consent screen.
 #   5. npx wrangler d1 migrations apply DB --remote --env production
@@ -80,9 +88,11 @@ database_name = "maktab"
 database_id = "440d652e-46bc-4389-88cc-b9a9fccffc44"
 migrations_dir = "../../packages/db/migrations"
 
-# R2 is not enabled on the account yet (API error 10042). Once enabled:
-#   npx wrangler r2 bucket create maktab-files   then uncomment and redeploy. Until then photo
-#   upload answers 501.
+# Student photos and the logo (bucket created after R2 was enabled, see docs/deploy-log.md).
 [[env.production.r2_buckets]]
 binding = "FILES"
 bucket_name = "maktab-files"
+
+[[env.production.r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "maktab-backups"

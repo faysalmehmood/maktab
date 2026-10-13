@@ -9,3 +9,6 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 # Your Google address: on an empty database only this account becomes owner on first sign-in.
 OWNER_EMAIL=
+# Backup reports from GitHub Actions (POST /api/backup/runs, Bearer token, >= 32 chars). Optional
+# locally; smoke:m6 sets its own. Production: docs/backup.md.
+BACKUP_REPORT_TOKEN=dev-only-backup-report-token-change-me-32-chars

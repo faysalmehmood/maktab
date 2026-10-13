@@ -9,6 +9,7 @@ import { denyUndeclared, RouteTable } from './perm/routes';
 import { admissionRoutes } from './routes/admissions';
 import { attendanceRoutes } from './routes/attendance';
 import { authRoutes } from './routes/auth';
+import { backupRoutes } from './routes/backup';
 import { cashRoutes } from './routes/cash';
 import { catalogRoutes } from './routes/catalog';
 import { coreRoutes } from './routes/core';
@@ -20,6 +21,7 @@ import { moneyRoutes } from './routes/money';
 import { PARENT_HEADERS, parentRoutes } from './routes/parent';
 import { peopleRoutes } from './routes/people';
 import { receiptRoutes } from './routes/receipts';
+import { settingsRoutes } from './routes/settings';
 import { staffRoutes } from './routes/staff';
 
 export type AppDeps = {
@@ -73,6 +75,8 @@ export function createApp(deps: AppDeps) {
   moneyRoutes(app, routes);
   messageRoutes(app, routes);
   parentRoutes(app, routes);
+  settingsRoutes(app, routes);
+  backupRoutes(app, routes);
 
   // The parent page itself (PLAN §14.10): `/p#<token>`, the SPA's index.html served by the Worker
   // (wrangler.toml run_worker_first "/p", "/p/*") so it always carries noindex / no-referrer /
