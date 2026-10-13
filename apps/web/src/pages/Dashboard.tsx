@@ -74,6 +74,10 @@ function Greeting({ action }: { action?: ReactNode }) {
 }
 
 /** A "today" card: title, one figure, detail, one action at the foot. */
+/** Grid column is minmax(0,1fr) and every item min-w-0, so a truncating child cannot widen it. */
+export const HOME_GRID = 'grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2 xl:grid-cols-3';
+export const HOME_CARD = 'flex min-w-0 flex-col gap-2.5 rounded-xl border bg-card p-4';
+
 function TodayCard({
   id,
   title,
@@ -90,7 +94,7 @@ function TodayCard({
   return (
     <section
       id={id}
-      className="flex flex-col gap-2.5 rounded-xl border bg-card p-4"
+      className={HOME_CARD}
       aria-label={typeof title === 'string' ? title : undefined}
     >
       <h2 className="text-section font-semibold">{title}</h2>
@@ -103,7 +107,7 @@ function TodayCard({
 
 function CardSkeleton() {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-card p-4" aria-hidden data-skeleton>
+    <div className={HOME_CARD} aria-hidden data-skeleton>
       <Skeleton className="h-4 w-1/2" />
       <Skeleton className="h-8 w-2/3" />
       <Skeleton className="h-3 w-full" />
@@ -139,12 +143,7 @@ function CardError({ id, title, query }: { id: string; title: string; query: Que
   const { t } = useTranslation();
   const offline = query.fetchStatus === 'paused';
   return (
-    <section
-      id={id}
-      data-state="error"
-      className="flex flex-col gap-2.5 rounded-xl border bg-card p-4"
-      aria-label={title}
-    >
+    <section id={id} data-state="error" className={HOME_CARD} aria-label={title}>
       <h2 className="text-section font-semibold">{title}</h2>
       <p role="alert" className="flex items-start gap-2 text-sm text-destructive">
         <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
@@ -396,7 +395,7 @@ function NeedsAttention() {
         <>
           <span>{t('home.attention.defaulters', { n: fees.defaulters })}</span>
           {', '}
-          <Mny paisa={fees.dues_outstanding} />
+          <Mny paisa={fees.overdue_total} />
         </>
       ),
       to: '/fees/defaulters',
@@ -669,7 +668,7 @@ function OfficeHome() {
           )
         }
       />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className={HOME_GRID}>
         {attendance && <RegistersCard />}
         {money && <CollectedCard />}
         {messages && <MessagesCard />}
@@ -702,7 +701,7 @@ function AccountantHome() {
           )
         }
       />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className={HOME_GRID}>
         <CollectedCard />
         {canUseCash(roles) &&
           (loadState([drawer]) === 'failed' || loadState([drawer]) === 'offline' ? (

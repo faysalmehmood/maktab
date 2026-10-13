@@ -150,6 +150,7 @@ describe('home: never a false all-clear (item 3)', () => {
     collected_total: 0,
     dues_outstanding: 0,
     defaulters: 0,
+    overdue_total: 0,
     billing_alerts: 0,
     queued_fee_messages: 0,
   };
@@ -650,7 +651,18 @@ describe('shared parts for part 2', () => {
     fireEvent.click(open);
     const sheet = await screen.findByRole('dialog', { name: 'Filters' });
     expect(within(sheet).getByText('Class')).toBeTruthy();
-    expect(within(sheet).getByRole('button', { name: 'Show results' })).toBeTruthy();
+    expect(within(sheet).queryByRole('button', { name: /^Show$/ })).toBeNull();
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Show results' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Filters' })).toBeNull());
+  });
+
+  it('360 px guards: home grid and cards are min-w-0, profile breadcrumb is 44 px wide', async () => {
+    const { HOME_GRID, HOME_CARD } = await import('@/pages/Dashboard');
+    expect(HOME_GRID).toContain('grid-cols-[minmax(0,1fr)]');
+    expect(HOME_CARD.split(' ')).toContain('min-w-0');
+    const fs = await import('node:fs');
+    const detail = fs.readFileSync('src/pages/students/StudentDetail.tsx', 'utf8');
+    expect(detail).toMatch(/to="\/students"\s+className="[^"]*min-w-11[^"]*px-2/);
   });
 
   it('RowMenu: rare actions in a menu, the destructive one last and red', async () => {

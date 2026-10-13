@@ -551,7 +551,7 @@ export function StudentDetail() {
       <header className="flex flex-col gap-3">
         <Link
           to="/students"
-          className="inline-flex min-h-11 items-center gap-1 self-start text-sm font-semibold text-muted-foreground hover:text-foreground"
+          className="inline-flex min-h-11 min-w-11 items-center gap-1 self-start px-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="size-4 rtl:-scale-x-100" aria-hidden />
           {t('nav.students')}

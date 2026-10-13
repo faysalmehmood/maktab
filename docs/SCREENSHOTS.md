@@ -1,6 +1,6 @@
 # Screenshots
 
-Placeholder: no images yet. Planned screens (English and Urdu/RTL, phone and desktop):
+Screens covered (English and Urdu/RTL, phone and desktop):
 
 - Sign-in
 - Dashboard
@@ -12,6 +12,70 @@ Placeholder: no images yet. Planned screens (English and Urdu/RTL, phone and des
 - Money-out: expenses and payslips
 - Reports (collections, dues, attendance)
 - Language toggle (English / اردو)
+
+Files are in `docs/design/m7b-1/` and `docs/design/m7b-2/`, listed below by screen with their
+`<device>-<lang>-<theme>` variants. The onboarding guide still needs its own captures (table at the end).
+
+### `docs/design/m7b-1/`
+
+- `gsa-expenses`: desktop-en-light, phone-en-dark
+- `gsa-home`: desktop-en-dark, desktop-en-light, desktop-ur-light, phone-en-light, phone-ur-dark
+- `gsa-more`: phone-en-light
+- `gsa-receipt-a5`: desktop-en-light
+- `gsa-search`: desktop-en-light
+- `gsa-settings-tabs`: desktop-en-light
+- `gsa-setup-1-school`: desktop-ur-dark
+- `gsa-setup-2-classes`: desktop-ur-dark
+- `gsa-setup-3-fees`: desktop-ur-dark
+- `gsa-setup-4-staff`: desktop-ur-dark
+- `gsa-setup-5-done`: desktop-ur-dark
+- `gsa-setup-5-done-no-groups`: desktop-ur-dark
+- `gsa-setup`: desktop-en-light, phone-ur-light
+- `gsa-signin`: desktop-en-light, phone-ur-dark
+- `gsa-students`: desktop-en-light, phone-ur-light
+- `gsa-teacher-home`: phone-en-light
+- `noor-home`: desktop-ur-light, phone-en-light
+- `noor-setup`: desktop-en-dark
+- `noor-signin`: desktop-en-light, phone-en-dark
+
+### `docs/design/m7b-2/`
+
+- `attendance-register`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `attendance-teacher-today`: phone-en-light, phone-ur-dark
+- `attendance-today`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `audit-log`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `classes-detail`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `classes-list`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `classes-teacher-mygroups`: phone-en-light, phone-ur-dark
+- `fees-billing`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `fees-cash`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `fees-concessions`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `fees-counter-confirm`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `fees-counter`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `fees-defaulters`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `fees-more`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `fees-receipt`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `fees-register-choose`: desktop-ur-dark, phone-en-light
+- `fees-register`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `fees-sponsors`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `home-owner`: desktop-en-light, desktop-ur-dark, phone-en-dark, phone-ur-light
+- `messages-compose`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `messages-focus`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `messages-list`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `money-advances`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `money-expenses`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `money-payslip`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `money-salary`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `parent-page`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `reports-cashbook`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `reports-hub`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `reports-income-expense`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `settings-about`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `settings-backup`: desktop-en-light, phone-ur-dark
+- `settings`: desktop-en-dark, desktop-ur-light, phone-en-light, phone-ur-dark
+- `settings-recycle-bin`: desktop-ur-dark, phone-en-light
+- `student-profile`: desktop-en-dark, desktop-en-light, desktop-ur-dark, desktop-ur-light, phone-en-dark, phone-en-light, phone-ur-dark, phone-ur-light
+- `student-profile-messages`: desktop-ur-dark, phone-en-light
 
 ## M7b part 1 (captured): `docs/design/m7b-1/`
 

@@ -37,7 +37,7 @@ export function Page({
   return (
     <section
       {...rest}
-      className={cn('mx-auto flex w-full flex-col gap-5', WIDTH[width], className)}
+      className={cn('mx-auto flex w-full min-w-0 flex-col gap-5', WIDTH[width], className)}
     >
       {children}
     </section>
@@ -97,7 +97,7 @@ export function Panel({
   return (
     <section
       id={id}
-      className={cn('rounded-xl border bg-card text-card-foreground', className)}
+      className={cn('min-w-0 rounded-xl border bg-card text-card-foreground', className)}
       aria-label={typeof title === 'string' ? title : undefined}
     >
       {(title || action) && (
@@ -245,9 +245,9 @@ export function ListRow({
       )}
     </>
   );
-  const cls = cn('flex min-h-12 items-center gap-3 px-4 py-2', className);
+  const cls = cn('flex min-h-12 min-w-0 items-center gap-3 px-4 py-2', className);
   return (
-    <li>
+    <li className="min-w-0">
       {to ? (
         <Link to={to} className={cn(cls, 'hover:bg-accent focus-visible:bg-accent')}>
           {inner}

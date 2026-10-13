@@ -879,6 +879,11 @@ describe('M3b thin reads', () => {
     const row = d.body.defaulters[0] as DefaulterDto;
     expect(row.guardian_name).toBe('Ali father');
     expect(row.guardian_phone).toMatch(/^92300/);
-    expect((await s.api<FeeDashboardDto>('GET', '/api/dashboard/fees')).body.defaulters).toBe(1);
+    const dash2 = await s.api<FeeDashboardDto>('GET', '/api/dashboard/fees');
+    expect(dash2.body.defaulters).toBe(1);
+    // The home tile's overdue total is what the Defaulters page sums.
+    if (d.body.summary_only) throw new Error('office view expected');
+    expect(d.body.total_overdue).toBeGreaterThan(0);
+    expect(dash2.body.overdue_total).toBe(d.body.total_overdue);
   });
 });

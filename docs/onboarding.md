@@ -136,6 +136,9 @@ period**, **Generate** again. **Late fines**: **Preview fines** → **Apply fine
 
 - Paper: **A5** (normal printer) or **58 mm** (thermal printer); receipt language English or Urdu;
   then **Print**. Each should print on one page.
+- Receipt print URL parameters (for a bookmark or a shared link): `/receipts/<id>?fmt=a5` (default)
+  or `fmt=thermal` (58 mm), and `lang=en` or `lang=ur` for the receipt language. Without `lang`,
+  the language saved on the receipt is used.
 - **Share**: sends a short text (school, receipt no., amount, date) through the phone's share sheet,
   or copies it. For a family payment the last line is the guardian's private parent-page link (made
   for them if they have none, unless the school's default check is a PIN). The link is added even

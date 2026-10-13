@@ -1150,6 +1150,7 @@ export function feeRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         collected_total: collected.reduce((a, r) => a + r.amount, 0),
         dues_outstanding: Number(dues?.n ?? 0),
         defaulters: late.length,
+        overdue_total: late.reduce((a, r) => a + r.overdue, 0),
         billing_alerts: (await failingGroups(db, today.slice(0, 7))).filter(
           (f) => f.attention_required,
         ).length,

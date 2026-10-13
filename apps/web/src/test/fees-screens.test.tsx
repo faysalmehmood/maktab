@@ -257,6 +257,7 @@ describe('billing', () => {
     collected_total: RS(7000),
     dues_outstanding: RS(50000),
     defaulters: 4,
+    overdue_total: 4200000,
     billing_alerts,
     queued_fee_messages: 3,
   });

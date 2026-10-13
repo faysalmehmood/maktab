@@ -713,6 +713,8 @@ export type FeeDashboardDto = {
   dues_outstanding: number;
   /** Students with money past its due date. */
   defaulters: number;
+  /** Σ overdue over those students (the Defaulters page total). */
+  overdue_total: number;
   billing_alerts: number;
   /** fee_due / fee_overdue / payment_received rows waiting in the send queue. */
   queued_fee_messages: number;

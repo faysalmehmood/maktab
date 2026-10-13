@@ -393,6 +393,7 @@ describe('home per role', () => {
     collected_total: 4120000,
     dues_outstanding: 18450000,
     defaulters: 14,
+    overdue_total: 4200000,
     billing_alerts: 2,
     queued_fee_messages: 0,
   };
