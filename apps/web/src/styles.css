@@ -310,6 +310,13 @@ bdi {
   direction: ltr;
   font-family: var(--font-sans);
 }
+/* …except a run that names its direction and language (a whole Urdu message or notice): it keeps
+   right-to-left and the Urdu face, on Urdu and English screens alike (UI plan 4.6.4). */
+bdi[dir="rtl"][lang="ur"] {
+  direction: rtl;
+  font-family: var(--font-urdu);
+  line-height: 2;
+}
 /* On screen, digits line up in columns (receipts keep their own tuned figures). */
 .num:not(.receipt *),
 .mny {

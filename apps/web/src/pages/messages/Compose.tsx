@@ -13,8 +13,9 @@ import { X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { ErrorNote, PageTitle } from '@/components/form';
+import { ErrorNote } from '@/components/form';
 import { TemplateEditor } from '@/components/messages/TemplateEditor';
+import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -193,11 +194,14 @@ export function ComposePage() {
   const pct = progress?.total ? Math.round((progress.done / progress.total) * 100) : 0;
 
   return (
-    <section className="flex max-w-3xl flex-col gap-4">
-      <PageTitle>{t('msg.compose.title')}</PageTitle>
-      <p className="text-sm text-muted-foreground">{t('msg.compose.intro')}</p>
+    <Page width="form">
+      <PageHeader
+        back={{ to: '/messages', label: t('msg.queue.title') }}
+        title={t('msg.compose.title')}
+        subtitle={t('msg.compose.intro')}
+      />
 
-      <fieldset className="flex flex-col gap-2">
+      <fieldset className="flex flex-col gap-2 rounded-xl border bg-card p-4">
         <legend className="mb-1 text-sm font-medium">{t('msg.compose.audience')}</legend>
         <div className="flex flex-wrap gap-2">
           {KINDS.map((k) => (
@@ -208,8 +212,8 @@ export function ComposePage() {
               aria-pressed={kind === k}
               onClick={() => setKind(k)}
               className={cn(
-                'min-h-11 rounded-md border px-3 text-sm',
-                kind === k && 'border-primary bg-primary/10 font-medium',
+                'min-h-11 rounded-md border px-3 text-sm font-medium',
+                kind === k ? 'border-brand bg-brand-soft text-brand' : 'bg-card hover:bg-accent',
               )}
             >
               {t(`msg.compose.${k}`)}
@@ -275,7 +279,7 @@ export function ComposePage() {
             className="h-2 w-full overflow-hidden rounded-full bg-muted"
           >
             <div
-              className="h-full bg-primary transition-all motion-reduce:transition-none"
+              className="h-full bg-brand transition-all motion-reduce:transition-none"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -298,6 +302,6 @@ export function ComposePage() {
       >
         {running ? t('msg.compose.sending') : t('msg.compose.send')}
       </Button>
-    </section>
+    </Page>
   );
 }

@@ -26,6 +26,13 @@ export const screensEn = {
       'This register was already taken. Saving makes a correction: it asks for a reason and keeps the earlier register in history.',
     noteSaved: 'Note',
   },
+  msg: {
+    start: 'Start sending',
+    focusTitle: 'Sending one at a time',
+    progress: '{{n}} of {{total}}',
+    backToList: 'Back to the list',
+    allDone: 'Every message in this list is sent or skipped.',
+  },
   profile: {
     overview: 'Overview',
     fees: 'Fees',

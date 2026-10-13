@@ -1437,6 +1437,13 @@ export const screensUr: Shape<typeof screensEn> = {
       'یہ رجسٹر پہلے ہو چکا ہے۔ محفوظ کرنے پر یہ درستی بنے گی: وجہ پوچھی جائے گی اور پہلا رجسٹر ریکارڈ میں رہے گا۔',
     noteSaved: 'نوٹ',
   },
+  msg: {
+    start: 'بھیجنا شروع کریں',
+    focusTitle: 'ایک ایک کر کے بھیجیں',
+    progress: '{{total}} میں سے {{n}}',
+    backToList: 'فہرست پر واپس',
+    allDone: 'اس فہرست کا ہر پیغام بھیجا جا چکا یا چھوڑ دیا گیا۔',
+  },
   profile: {
     overview: 'خلاصہ',
     fees: 'فیس',

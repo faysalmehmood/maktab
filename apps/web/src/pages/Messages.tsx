@@ -13,15 +13,28 @@ import {
   telUrl,
 } from '@maktab/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ClipboardCopy, MessageCircle, Phone, Send, SkipForward } from 'lucide-react';
+import {
+  Check,
+  CheckCheck,
+  ClipboardCopy,
+  List,
+  MessageCircle,
+  MessageSquareText,
+  Phone,
+  Play,
+  Send,
+  SkipForward,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { ErrorNote, Num, PageTitle, useErrorText } from '@/components/form';
+import { Avatar } from '@/components/avatar';
+import { FilterBar } from '@/components/filter-bar';
+import { ErrorNote, Num, useErrorText } from '@/components/form';
 import { MARK, MessageText, WithValue } from '@/components/messages/common';
-import { Badge } from '@/components/ui/badge';
+import { EmptyState, ListSkeleton, Page, PageHeader, Panel, StatusBadge } from '@/components/page';
+import '@/i18n/screens';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
@@ -30,6 +43,7 @@ import { getJson, sendJson } from '@/lib/api';
 import { canCompose, canSendMessages, copyText, countsKey, useMessageCounts } from '@/lib/messages';
 import { useCurrentSession, useGroups } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
+import { cn } from '@/lib/utils';
 
 type RowState =
   | { kind: 'idle'; error?: unknown }
@@ -62,14 +76,12 @@ function useLabels() {
 
 function Counter({ label, n, id }: { label: string; n: number | undefined; id: string }) {
   return (
-    <Card className="gap-1 py-3">
-      <CardContent className="flex flex-col px-3">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span id={id} className="text-2xl font-semibold">
-          <Num>{n ?? '–'}</Num>
-        </span>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col px-4 py-3">
+      <dt className="text-meta text-muted-foreground">{label}</dt>
+      <dd id={id} className="text-xl font-bold">
+        <Num>{n ?? '–'}</Num>
+      </dd>
+    </div>
   );
 }
 
@@ -126,7 +138,9 @@ function QueueRow({
   onOpen,
   onSent,
   onSkip,
+  large = false,
 }: {
+  large?: boolean;
   m: QueueMessageDto;
   state: RowState;
   canSend: boolean;
@@ -153,29 +167,36 @@ function QueueRow({
   const finalReason = state.kind === 'auto' ? state.reason : m.skipped_reason;
 
   return (
-    <li id={`msg-row-${m.id}`} data-status={finalStatus} className="flex flex-col gap-2 px-3 py-3">
+    <li
+      id={`msg-row-${m.id}`}
+      data-status={finalStatus}
+      className={cn('flex flex-col gap-2 px-4 py-3', large && 'gap-4 py-5')}
+    >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <bdi className="font-medium">{m.guardian_name ?? m.family_name}</bdi>
+        <Avatar name={m.guardian_name ?? m.family_name} size={large ? 'lg' : 'sm'} tone="muted" />
+        <bdi className={cn('font-semibold', large && 'text-lg')}>
+          {m.guardian_name ?? m.family_name}
+        </bdi>
         {m.guardian_phone && (
           <span className="text-sm text-muted-foreground">
             <Num>{formatPkPhone(m.guardian_phone)}</Num>
           </span>
         )}
-        <Badge variant="outline">{t(`msg.langs.${m.lang}`)}</Badge>
+        <StatusBadge tone="neutral">{t(`msg.langs.${m.lang}`)}</StatusBadge>
         {m.grp_name && (
           <span className="text-sm text-muted-foreground">
             <bdi>{m.grp_name}</bdi>
           </span>
         )}
         {finalStatus !== 'queued' && (
-          <Badge
-            variant={finalStatus === 'sent' ? 'default' : 'secondary'}
-            className="ms-auto"
-            data-testid="row-status"
-          >
-            {finalStatus === 'sent' && <Check aria-hidden className="size-3" />}
-            {label.status(finalStatus)}
-          </Badge>
+          <span className="ms-auto" data-testid="row-status">
+            <StatusBadge
+              tone={finalStatus === 'sent' ? 'ok' : finalStatus === 'failed' ? 'bad' : 'neutral'}
+            >
+              {finalStatus === 'sent' && <Check aria-hidden className="size-3" />}
+              {label.status(finalStatus)}
+            </StatusBadge>
+          </span>
         )}
       </div>
 
@@ -183,7 +204,7 @@ function QueueRow({
         id={`msg-text-${m.id}`}
         text={opened?.text ?? m.preview}
         lang={m.lang}
-        className="rounded-md bg-muted/50 p-2 text-sm"
+        className={cn('rounded-lg bg-muted/60 p-3 text-sm', large && 'p-4 text-base sm:text-lg')}
       />
 
       {finalStatus === 'skipped' && finalReason && (
@@ -250,13 +271,23 @@ function QueueRow({
                 </a>
               </Button>
             ) : (
-              <Button id={`msg-primary-${m.id}`} disabled={busy} onClick={() => onOpen(m, true)}>
+              <Button
+                id={`msg-primary-${m.id}`}
+                size={large ? 'lg' : 'default'}
+                disabled={busy}
+                onClick={() => onOpen(m, true)}
+              >
                 <MessageCircle aria-hidden />
                 {t('msg.queue.openWa')}
               </Button>
             )}
             {(isCall || opened) && (
-              <Button id={`msg-sent-${m.id}`} disabled={busy} onClick={() => onSent(m)}>
+              <Button
+                id={`msg-sent-${m.id}`}
+                size={large ? 'lg' : 'default'}
+                disabled={busy}
+                onClick={() => onSent(m)}
+              >
                 <Send aria-hidden className="rtl:-scale-x-100" />
                 {isCall ? t('msg.queue.called') : t('msg.queue.sentNext')}
               </Button>
@@ -368,6 +399,8 @@ export function MessagesPage() {
   const [grp, setGrp] = useState('');
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [focusId, setFocusId] = useState<string | null>(null);
+  // Focus mode (UI plan §5.5): one message at a time, large, with progress.
+  const [focus, setFocus] = useState(false);
 
   const qs = new URLSearchParams();
   if (status) qs.set('status', status);
@@ -501,22 +534,136 @@ export function MessagesPage() {
     return [...map];
   }, [groups.data, items]);
 
-  return (
-    <section className="flex max-w-3xl flex-col gap-4">
-      <PageTitle
-        actions={
-          canCompose(roles) && (
-            <Button asChild variant="outline" size="sm" id="msg-compose">
-              <Link to="/messages/compose">{t('msg.queue.compose')}</Link>
-            </Button>
-          )
-        }
-      >
-        {t('msg.queue.title')}
-      </PageTitle>
-      <p className="text-sm text-muted-foreground">{t('msg.queue.intro')}</p>
+  const queued = ordered.filter((m) => m.status === 'queued');
+  const left = queued.filter((m) => isPending(m, rows[m.id]));
+  const current = left[0];
+  const active = [
+    ...(status !== 'queued'
+      ? [
+          {
+            id: 'status',
+            label: `${t('msg.queue.status')}: ${label.status(status)}`,
+            onClear: () => setStatus('queued'),
+          },
+        ]
+      : []),
+    ...(template
+      ? [
+          {
+            id: 'template',
+            label: `${t('msg.queue.template')}: ${label.template(template)}`,
+            onClear: () => setTemplate(''),
+          },
+        ]
+      : []),
+    ...(grp
+      ? [
+          {
+            id: 'group',
+            label: `${t('msg.queue.group')}: ${groupOptions.find(([id]) => id === grp)?.[1] ?? ''}`,
+            onClear: () => setGrp(''),
+          },
+        ]
+      : []),
+  ];
+  const rowProps = (m: QueueMessageDto) => ({
+    m,
+    state: rows[m.id] ?? IDLE,
+    canSend,
+    onOpen: (x: QueueMessageDto, popup: boolean) => void open(x, popup),
+    onSent: (x: QueueMessageDto) => void markSent(x),
+    onSkip: (x: QueueMessageDto, r: (typeof SKIP_REASONS)[number]) => void skip(x, r),
+  });
 
-      <div className="grid grid-cols-3 gap-2">
+  if (focus) {
+    const done = queued.length - left.length;
+    return (
+      <Page width="form" id="msg-focus">
+        <PageHeader
+          title={t('screens.msg.focusTitle')}
+          subtitle={
+            queued.length > 0 && (
+              <span id="msg-focus-progress">
+                {t('screens.msg.progress', {
+                  n: Math.min(done + 1, queued.length),
+                  total: queued.length,
+                })}
+              </span>
+            )
+          }
+          actions={
+            <Button variant="outline" id="msg-focus-exit" onClick={() => setFocus(false)}>
+              <List aria-hidden />
+              {t('screens.msg.backToList')}
+            </Button>
+          }
+        />
+        <div
+          role="progressbar"
+          aria-label={t('screens.msg.focusTitle')}
+          aria-valuemin={0}
+          aria-valuemax={queued.length}
+          aria-valuenow={done}
+          className="h-2 overflow-hidden rounded-full bg-muted"
+        >
+          <span
+            className="block h-full rounded-full bg-brand transition-[width]"
+            style={{ width: `${queued.length ? (done / queued.length) * 100 : 0}%` }}
+          />
+        </div>
+        <Panel>
+          {current ? (
+            <ul>
+              <QueueRow key={current.id} large {...rowProps(current)} />
+            </ul>
+          ) : (
+            <EmptyState
+              icon={CheckCheck}
+              title={t('screens.msg.allDone')}
+              action={
+                <Button onClick={() => setFocus(false)}>{t('screens.msg.backToList')}</Button>
+              }
+            />
+          )}
+        </Panel>
+        {current && (
+          <p className="text-meta text-muted-foreground">
+            {label.template(current.template_key)}
+            {current.grp_name && (
+              <>
+                {' · '}
+                <bdi>{current.grp_name}</bdi>
+              </>
+            )}
+          </p>
+        )}
+      </Page>
+    );
+  }
+
+  return (
+    <Page>
+      <PageHeader
+        title={t('msg.queue.title')}
+        subtitle={t('msg.queue.intro')}
+        actions={
+          <>
+            {canCompose(roles) && (
+              <Button asChild variant="outline" id="msg-compose">
+                <Link to="/messages/compose">{t('msg.queue.compose')}</Link>
+              </Button>
+            )}
+            {canSend && status === 'queued' && left.length > 0 && (
+              <Button id="msg-focus-start" onClick={() => setFocus(true)}>
+                <Play aria-hidden className="rtl:-scale-x-100" />
+                {t('screens.msg.start')}
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <dl className="grid grid-cols-3 divide-x overflow-hidden rounded-xl border bg-card rtl:divide-x-reverse">
         <Counter id="count-pending" label={t('msg.queue.pending')} n={shownCounts?.queued} />
         <Counter id="count-sent" label={t('msg.queue.sentToday')} n={shownCounts?.sent_today} />
         <Counter
@@ -524,9 +671,17 @@ export function MessagesPage() {
           label={t('msg.queue.skippedToday')}
           n={shownCounts?.skipped_today}
         />
-      </div>
+      </dl>
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <FilterBar
+        id="msg-filters"
+        active={active}
+        onClearAll={() => {
+          setStatus('queued');
+          setTemplate('');
+          setGrp('');
+        }}
+      >
         <div className="flex flex-col gap-1">
           <Label htmlFor="msg-filter-status">{t('msg.queue.status')}</Label>
           <Select id="msg-filter-status" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -564,15 +719,22 @@ export function MessagesPage() {
             ))}
           </Select>
         </div>
-      </div>
+      </FilterBar>
 
-      {list.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+      {list.isPending && (
+        <Panel>
+          <ListSkeleton rows={4} />
+        </Panel>
+      )}
       <ErrorNote error={list.error} />
       {list.data && items.length === 0 && (
-        <div className="rounded-md border p-4">
-          <p className="font-medium">{t('msg.queue.empty')}</p>
-          <p className="text-sm text-muted-foreground">{t('msg.queue.emptyHint')}</p>
-        </div>
+        <Panel>
+          <EmptyState
+            icon={MessageSquareText}
+            title={t('msg.queue.empty')}
+            body={t('msg.queue.emptyHint')}
+          />
+        </Panel>
       )}
       {list.data && list.data.total > items.length && (
         <p className="text-sm text-muted-foreground">
@@ -581,32 +743,26 @@ export function MessagesPage() {
       )}
 
       {sections.map((s) => (
-        <section key={s.key} className="flex flex-col gap-2" aria-labelledby={`sec-${s.key}`}>
-          <h2 id={`sec-${s.key}`} className="flex items-center gap-2 font-semibold">
-            {label.template(s.key)} · <Num>{s.items.length}</Num>
-          </h2>
+        <section key={s.key} className="rounded-xl border bg-card" aria-labelledby={`sec-${s.key}`}>
+          <header className="flex min-h-12 flex-wrap items-center gap-2 border-b px-4 py-2">
+            <h2 id={`sec-${s.key}`} className="text-section flex items-center gap-2 font-semibold">
+              {label.template(s.key)} · <Num>{s.items.length}</Num>
+            </h2>
+          </header>
           {s.key === 'absence' && canSend && status === 'queued' && absenceGroups.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 border-b px-4 py-3">
               {absenceGroups.map(([id, name]) => (
                 <CopyClassTexts key={id} grpId={id} grpName={name} />
               ))}
             </div>
           )}
-          <ul className="flex flex-col divide-y rounded-md border">
+          <ul className="flex flex-col divide-y">
             {s.items.map((m) => (
-              <QueueRow
-                key={m.id}
-                m={m}
-                state={rows[m.id] ?? IDLE}
-                canSend={canSend}
-                onOpen={(x, popup) => void open(x, popup)}
-                onSent={(x) => void markSent(x)}
-                onSkip={(x, r) => void skip(x, r)}
-              />
+              <QueueRow key={m.id} {...rowProps(m)} />
             ))}
           </ul>
         </section>
       ))}
-    </section>
+    </Page>
   );
 }

@@ -179,6 +179,33 @@ describe('send queue', () => {
     await waitFor(() => expect(document.activeElement?.id).toBe('msg-primary-m2'));
   });
 
+  it('focus mode (M7b-2): one family at a time with progress; Sent only after Open; Skip moves on', async () => {
+    const { calls } = mockApi(queueApi());
+    stubWindowOpen();
+    renderQueue();
+    fireEvent.click(await screen.findByRole('button', { name: 'Start sending' }));
+    const progress = () => document.getElementById('msg-focus-progress')?.textContent;
+    expect(progress()).toBe('1 of 4');
+    // Exactly one message on screen, in large type; no Sent before Open WhatsApp.
+    expect(document.querySelectorAll('[id^="msg-row-"]')).toHaveLength(1);
+    expect(document.getElementById('msg-row-m1')).toBeTruthy();
+    expect(document.getElementById('msg-sent-m1')).toBeNull();
+    fireEvent.click(document.getElementById('msg-primary-m1') as HTMLElement);
+    fireEvent.click(await screen.findByRole('button', { name: /Sent & next/ }));
+    await waitFor(() => expect(document.getElementById('msg-row-m2')).toBeTruthy());
+    expect(progress()).toBe('2 of 4');
+    expect(calls.filter((c) => c.path === '/api/messages/m1/sent')).toHaveLength(1);
+    fireEvent.click(document.getElementById('msg-skip-m2') as HTMLElement);
+    fireEvent.click(document.getElementById('msg-skip-confirm-m2') as HTMLElement);
+    await waitFor(() => expect(progress()).toBe('3 of 4'));
+    expect(document.getElementById('msg-row-m3')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the list' }));
+    expect(await screen.findByRole('heading', { name: /Absent today/ })).toBeTruthy();
+    // Back in the list the rows keep what happened in focus mode.
+    expect(document.getElementById('msg-row-m1')?.getAttribute('data-status')).toBe('sent');
+    expect(document.getElementById('msg-row-m2')?.getAttribute('data-status')).toBe('skipped');
+  });
+
   it('an absence that /open finds no longer absent shows the reason and moves on', async () => {
     mockApi(
       queueApi({
