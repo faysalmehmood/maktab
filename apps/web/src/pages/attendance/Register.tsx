@@ -483,7 +483,11 @@ export function RegisterPage() {
         })}
       </ul>
 
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t bg-background/95 p-3 backdrop-blur md:static md:border-0 md:bg-transparent md:p-0">
+      <div
+        data-action-bar
+        style={{ bottom: 'var(--tabbar-h, 0px)' }}
+        className="fixed inset-x-0 z-10 border-t bg-background/95 p-3 backdrop-blur md:static md:border-0 md:bg-transparent md:p-0"
+      >
         <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-3">
           <Counts counts={counts} />
           <Button

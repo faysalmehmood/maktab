@@ -42,9 +42,8 @@ export function SegmentedControl<V extends string>({
               aria-pressed={on}
               onClick={() => onChange(o.value)}
               className={cn(
-                // The control's outer height is the density token (36 px mouse / 44 px touch):
-                // the 4 px track padding is taken out of the buttons.
-                'flex h-[calc(var(--h)-8px)] min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-meta font-medium text-muted-foreground',
+                // Each button is the density token high (36 px mouse / 44 px touch).
+                'flex h-[var(--h)] min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-meta font-medium text-muted-foreground',
                 'focus-visible:outline-2 focus-visible:outline-ring',
                 on && 'bg-card text-foreground shadow-xs',
               )}

@@ -1,9 +1,10 @@
 import 'fake-indexeddb/auto';
 import type { AttendanceSubmission, RegisterResponse, TodayResponse } from '@maktab/shared';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AppShell } from '@/components/AppShell';
 import { SyncBanner, todayPk } from '@/components/attendance/common';
 import { RequireAuth } from '@/components/RequireAuth';
 import { initI18n, setLanguage } from '@/i18n';
@@ -460,5 +461,41 @@ describe('register marks (M7b-1 decision: solid fill for sunlight)', () => {
     expect(document.querySelector('[title="Absent"]:not([data-solid])')?.className).toContain(
       'bg-bad-soft',
     );
+  });
+});
+
+describe('register save bar vs the phone tab bar', () => {
+  const inShell = async (phone: boolean) => {
+    vi.stubGlobal('matchMedia', () => ({
+      matches: phone,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    mockApi({ 'GET /api/attendance/register': register() });
+    renderAt(
+      path,
+      '/*',
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route path={pattern} element={<RegisterPage />} />
+        </Route>
+      </Routes>,
+      ['teacher'],
+    );
+    await screen.findByRole('button', { name: 'Save attendance' });
+    return document.querySelector('[data-action-bar]') as HTMLElement;
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('save bar sits above the tab bar: bottom = --tabbar-h (non-zero on a phone, zero on desktop)', async () => {
+    const bar = await inShell(true);
+    expect(bar.style.bottom).toBe('var(--tabbar-h, 0px)');
+    const h = document.documentElement.style.getPropertyValue('--tabbar-h');
+    expect(h).toContain('3.5rem');
+    expect(h).not.toBe('0px');
+    cleanup();
+    const desktopBar = await inShell(false);
+    expect(desktopBar.style.bottom).toBe('var(--tabbar-h, 0px)');
+    expect(document.documentElement.style.getPropertyValue('--tabbar-h')).toBe('0px');
   });
 });

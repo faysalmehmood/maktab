@@ -434,7 +434,11 @@ export function SetupWizard() {
         </main>
 
         {step !== 'done' && (
-          <nav className="sticky bottom-0 border-t bg-card/95 backdrop-blur">
+          <nav
+            data-action-bar
+            style={{ bottom: 'var(--tabbar-h, 0px)' }}
+            className="sticky border-t bg-card/95 backdrop-blur"
+          >
             <div className="mx-auto flex w-full max-w-[920px] gap-2 px-4 py-3 md:px-8">
               <Button variant="outline" onClick={back} disabled={index === 0}>
                 {t('common.back')}

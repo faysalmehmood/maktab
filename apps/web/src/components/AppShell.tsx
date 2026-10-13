@@ -41,6 +41,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { getJson, useMe } from '@/lib/api';
+import { useIsPhone } from '@/lib/media';
 import { useSchool } from '@/lib/queries';
 import { type GrantRef, holds, isTeacherOnly, useRoles } from '@/lib/roles';
 import { setThemePref, THEMES, type ThemePref, useBrand, useThemePref } from '@/lib/theme';
@@ -562,6 +563,20 @@ export function AppShell() {
     if (outbox.pending + outbox.failed > 0) setUnsentConfirm(true);
     else void signOut();
   };
+
+  // Sticky action bars (attendance Save, setup Next/Back) sit above the phone tab bar: they read
+  // `bottom: var(--tabbar-h, 0px)`. Tab bar = min-h-14 (3.5rem) + the home-indicator inset.
+  const phone = useIsPhone();
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(
+      '--tabbar-h',
+      phone ? 'calc(3.5rem + env(safe-area-inset-bottom, 0px))' : '0px',
+    );
+    return () => {
+      root.style.removeProperty('--tabbar-h');
+    };
+  }, [phone]);
 
   return (
     <>

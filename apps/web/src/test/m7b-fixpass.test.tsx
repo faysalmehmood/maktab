@@ -519,7 +519,7 @@ describe('phone top bar (items 8, 13) and touch targets (verify items 1, 2)', ()
     vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => undefined }));
     renderAt('/', '/', <ThemeSwitch />);
     for (const b of screen.getAllByRole('button')) {
-      expect(b.className).toContain('h-[calc(var(--h)-8px)]');
+      expect(b.className).toContain('h-[var(--h)]');
       expect(b.className).not.toMatch(/flex-col/);
     }
     mockApi({
