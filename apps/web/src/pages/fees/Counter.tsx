@@ -11,13 +11,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Calculator, Search } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
+import { Avatar } from '@/components/avatar';
 import { AmountInput, Figure, MethodChips, Money, StatusBadge } from '@/components/fees/common';
 import { WaiveFineDialog } from '@/components/fees/dialogs';
-import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
+import { ErrorNote, Field, Num } from '@/components/form';
+import { GoLink, ListSkeleton, Page, PageHeader, Panel } from '@/components/page';
+import '@/i18n/screens';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -137,60 +139,58 @@ function FamilySearch({ onPick }: { onPick: (id: string) => void }) {
     setQ(text.trim());
   };
   return (
-    <Card className="gap-3 py-4">
-      <CardContent className="flex flex-col gap-3 px-4">
-        <form onSubmit={submit} className="flex flex-col gap-2">
-          <label htmlFor="counter-search" className="text-sm font-medium">
-            {t('fee.counter.searchLabel')}
-          </label>
-          <div className="flex gap-2">
-            <Input
-              id="counter-search"
-              type="search"
-              value={text}
-              autoComplete="off"
-              onChange={(e) => setText(e.target.value)}
-            />
-            <Button type="submit" id="counter-search-go">
-              <Search aria-hidden />
-              <span className="sr-only sm:not-sr-only">{t('fee.counter.search')}</span>
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">{t('fee.counter.searchHint')}</p>
-        </form>
-        <ErrorNote error={hits.error} />
-        {hits.data && hits.data.families.length === 0 && (
-          <p className="text-sm text-muted-foreground">{t('fee.counter.noResults')}</p>
-        )}
-        <ul className="flex flex-col divide-y">
-          {hits.data?.families.map((f) => (
-            <li key={f.family_id}>
-              <button
-                type="button"
-                id={`family-${f.family_id}`}
-                onClick={() => onPick(f.family_id)}
-                className="flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 py-2 text-start hover:bg-accent"
-              >
-                <span className="font-medium">
-                  <bdi>{f.family_name}</bdi>
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {f.students.map((s, i) => (
-                    <span key={s.id}>
-                      {i > 0 && '، '}
-                      <bdi>{s.name}</bdi> <Num>{s.admission_no}</Num>
-                    </span>
-                  ))}
-                </span>
-                <span className="ms-auto">
-                  <Money paisa={f.due} className="font-semibold" />
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
+    <Panel bodyClassName="flex flex-col gap-3 p-4">
+      <form onSubmit={submit} className="flex flex-col gap-2">
+        <label htmlFor="counter-search" className="text-sm font-medium">
+          {t('fee.counter.searchLabel')}
+        </label>
+        <div className="flex gap-2">
+          <Input
+            id="counter-search"
+            type="search"
+            value={text}
+            autoComplete="off"
+            onChange={(e) => setText(e.target.value)}
+          />
+          <Button type="submit" id="counter-search-go">
+            <Search aria-hidden />
+            <span className="sr-only sm:not-sr-only">{t('fee.counter.search')}</span>
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">{t('fee.counter.searchHint')}</p>
+      </form>
+      <ErrorNote error={hits.error} />
+      {hits.data && hits.data.families.length === 0 && (
+        <p className="text-sm text-muted-foreground">{t('fee.counter.noResults')}</p>
+      )}
+      <ul className="flex flex-col divide-y">
+        {hits.data?.families.map((f) => (
+          <li key={f.family_id}>
+            <button
+              type="button"
+              id={`family-${f.family_id}`}
+              onClick={() => onPick(f.family_id)}
+              className="flex min-h-12 w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-2 text-start hover:bg-accent"
+            >
+              <span className="font-medium">
+                <bdi>{f.family_name}</bdi>
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {f.students.map((s, i) => (
+                  <span key={s.id}>
+                    {i > 0 && '، '}
+                    <bdi>{s.name}</bdi> <Num>{s.admission_no}</Num>
+                  </span>
+                ))}
+              </span>
+              <span className="ms-auto">
+                <Money paisa={f.due} className="font-semibold" />
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Panel>
   );
 }
 
@@ -265,8 +265,8 @@ function LineRow({
           {t('fee.col.paid')} <Money paisa={line.paid} />
         </span>
         {allocated !== undefined && allocated > 0 && (
-          <span className="font-medium text-primary">
-            → <Money paisa={allocated} />
+          <span className="rounded bg-brand-soft px-1.5 font-semibold text-brand">
+            <span className="rtl:-scale-x-100 inline-block">→</span> <Money paisa={allocated} />
           </span>
         )}
       </dl>
@@ -323,39 +323,42 @@ export function PayerCard({
   }
   const sponsoredOpen = payer.sponsored.filter((l) => l.due > 0);
   return (
-    <Card className="gap-3 py-4" id="payer-card">
-      <CardHeader className="px-4">
-        <CardTitle className="flex flex-wrap items-center gap-2">
-          <bdi>{payer.name}</bdi>
-          {payer.type === 'family' && (
-            <Button asChild variant="link" size="sm" className="ms-auto">
-              <Link to={`/fees/family/${payer.id}`}>{t('fee.family.title')}</Link>
-            </Button>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 px-4">
-        {payer.students.length > 0 && (
-          <p className="flex flex-wrap gap-2 text-sm">
-            {payer.students.map((s) => (
-              <span key={s.id} className="flex items-center gap-1">
-                <bdi>{s.name}</bdi>
-                {s.group && (
-                  <span className="text-muted-foreground">
-                    · <bdi>{s.group}</bdi>
-                  </span>
-                )}
-                {s.sponsored && <Badge variant="outline">{t('fee.family.sponsored_badge')}</Badge>}
-              </span>
-            ))}
-          </p>
-        )}
+    <Panel
+      id="payer-card"
+      title={<bdi>{payer.name}</bdi>}
+      action={
+        payer.type === 'family' && (
+          <GoLink to={`/fees/family/${payer.id}`}>{t('fee.family.title')}</GoLink>
+        )
+      }
+      bodyClassName="flex flex-col"
+    >
+      {payer.students.length > 0 && (
+        <ul className="flex flex-wrap gap-2 border-b px-4 py-3" aria-label={t('fee.col.student')}>
+          {payer.students.map((s) => (
+            <li
+              key={s.id}
+              className="flex min-h-10 items-center gap-2 rounded-full border bg-background py-1 ps-1 pe-3 text-sm"
+            >
+              <Avatar name={s.name} size="sm" />
+              <bdi className="font-medium">{s.name}</bdi>
+              {s.group && (
+                <span className="text-muted-foreground">
+                  <bdi>{s.group}</bdi>
+                </span>
+              )}
+              {s.sponsored && <Badge variant="outline">{t('fee.family.sponsored_badge')}</Badge>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-col gap-3 px-4 py-3">
         {open.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('fee.counter.noDues')}</p>
+          <p className="py-2 text-sm text-muted-foreground">{t('fee.counter.noDues')}</p>
         ) : (
           [...byStudent.entries()].map(([sid, g]) => (
             <div key={sid}>
-              <h3 className="text-sm font-semibold">
+              <h3 className="text-meta font-semibold text-muted-foreground">
                 <bdi>{g.name}</bdi>
               </h3>
               <ul className="flex flex-col divide-y">
@@ -376,21 +379,8 @@ export function PayerCard({
             </div>
           ))
         )}
-        <div className="grid grid-cols-3 gap-2 border-t pt-3" id="payer-totals">
-          <Figure label={t('fee.counter.dueBeforeCredit')}>
-            <Money paisa={payer.due_before_credit} />
-          </Figure>
-          <Figure label={t('fee.counter.credit')}>
-            <Money paisa={payer.credit} />
-          </Figure>
-          <Figure label={t('fee.counter.netDue')} tone="strong">
-            <span id="payer-net-due">
-              <Money paisa={payer.net_due} />
-            </span>
-          </Figure>
-        </div>
         {sponsoredOpen.length > 0 && (
-          <div className="rounded-md border border-dashed p-3" id="sponsor-shares">
+          <div className="rounded-lg border border-dashed p-3" id="sponsor-shares">
             <h3 className="text-sm font-semibold">{t('fee.counter.sponsorShare')}</h3>
             <p className="text-xs text-muted-foreground">{t('fee.counter.sponsorNote')}</p>
             <ul className="flex flex-col divide-y opacity-80">
@@ -400,8 +390,30 @@ export function PayerCard({
             </ul>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+      <div
+        className="grid grid-cols-3 divide-x border-t bg-muted/40 rtl:divide-x-reverse"
+        id="payer-totals"
+      >
+        <div className="px-4 py-3">
+          <Figure label={t('fee.counter.dueBeforeCredit')}>
+            <Money paisa={payer.due_before_credit} />
+          </Figure>
+        </div>
+        <div className="px-4 py-3">
+          <Figure label={t('fee.counter.credit')}>
+            <Money paisa={payer.credit} />
+          </Figure>
+        </div>
+        <div className="px-4 py-3">
+          <Figure label={t('fee.counter.netDue')} tone="strong">
+            <span id="payer-net-due">
+              <Money paisa={payer.net_due} />
+            </span>
+          </Figure>
+        </div>
+      </div>
+    </Panel>
   );
 }
 
@@ -687,12 +699,17 @@ function CollectForm({
   const shownAccount = shown && accounts.find((x) => x.id === shown.a.account);
 
   return (
-    <form onSubmit={open} className="flex flex-col gap-4" id="collect-form" noValidate>
+    <form
+      onSubmit={open}
+      className="grid gap-4 pb-24 md:pb-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)] lg:items-start"
+      id="collect-form"
+      noValidate
+    >
       {pending && (
         <div
           role="alert"
           id="counter-pending"
-          className="flex flex-col gap-2 rounded-md border border-warn bg-warn-soft p-3 text-sm"
+          className="flex flex-col gap-2 rounded-xl border border-warn bg-warn-soft p-4 text-sm lg:col-span-2"
         >
           <p className="flex items-center gap-2 font-semibold">
             <AlertTriangle className="size-4 shrink-0" aria-hidden />
@@ -740,8 +757,8 @@ function CollectForm({
           ? { onWaive: (fine: FineDto, line: FeeLineDto) => setWaiving({ fine, line }) }
           : {})}
       />
-      <Card className="gap-3 py-4">
-        <CardContent className="px-4">
+      <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-18">
+        <Panel title={t('screens.fees.payment')} bodyClassName="p-4">
           <fieldset disabled={locked} className="flex min-w-0 flex-col gap-4" id="counter-inputs">
             <Field id="counter-amount" label="fee.counter.amount" required error={errors.amount}>
               <div className="flex flex-col gap-2">
@@ -761,17 +778,31 @@ function CollectForm({
                     {t('fee.counter.amountHigh', { due: `⁨${money(payer.net_due)}⁩` })}
                   </p>
                 )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="self-start"
-                  aria-pressed={keypad}
-                  onClick={() => setKeypad((k) => !k)}
-                >
-                  <Calculator aria-hidden />
-                  {t('fee.counter.keypad')}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {payer.net_due > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      id="counter-full-due"
+                      onClick={() =>
+                        setAmountText(formatRupeeInput(paisaToRupeeText(payer.net_due)))
+                      }
+                    >
+                      {t('screens.fees.fullDue')} <Money paisa={payer.net_due} />
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-pressed={keypad}
+                    onClick={() => setKeypad((k) => !k)}
+                  >
+                    <Calculator aria-hidden />
+                    {t('fee.counter.keypad')}
+                  </Button>
+                </div>
               </div>
             </Field>
             <div className="flex flex-col gap-1.5">
@@ -868,14 +899,13 @@ function CollectForm({
               )}
             </div>
           </fieldset>
-        </CardContent>
-      </Card>
+        </Panel>
 
-      <Card className="gap-3 py-4" id="allocation-preview">
-        <CardHeader className="px-4">
-          <CardTitle>{t('fee.counter.allocation')}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 px-4">
+        <Panel
+          id="allocation-preview"
+          title={t('fee.counter.allocation')}
+          bodyClassName="flex flex-col gap-3 p-4"
+        >
           <fieldset className="flex flex-wrap gap-2" disabled={locked}>
             {[false, true].map((d) => (
               <button
@@ -885,8 +915,10 @@ function CollectForm({
                 aria-pressed={direct === d}
                 onClick={() => setDirect(d)}
                 className={cn(
-                  'min-h-11 rounded-md border px-3 text-sm',
-                  direct === d && 'border-primary bg-primary/10 font-medium',
+                  'min-h-11 rounded-md border px-3 text-sm font-medium',
+                  direct === d
+                    ? 'border-brand bg-brand-soft text-brand'
+                    : 'bg-card hover:bg-accent',
                 )}
               >
                 {t(d ? 'fee.counter.direct' : 'fee.counter.oldestFirst')}
@@ -920,7 +952,7 @@ function CollectForm({
                   <Money paisa={preview.credit} />
                 </span>
               </li>
-              <li className="flex gap-2 font-medium" id="allocation-after">
+              <li className="flex gap-2 font-semibold" id="allocation-after">
                 {t('fee.counter.balanceAfter')}
                 <span className="ms-auto">
                   <Money paisa={balanceAfter(preview, payer.credit)} />
@@ -928,25 +960,45 @@ function CollectForm({
               </li>
             </ul>
           )}
-        </CardContent>
-      </Card>
+          {!preview && !directEmpty && (
+            <p className="text-sm text-muted-foreground">{t('screens.fees.previewEmpty')}</p>
+          )}
+        </Panel>
 
-      <ErrorNote error={confirming ? null : networkError} />
-      {offline && !pending && (
-        <p id="counter-offline" role="status" className="text-sm text-warn">
-          {t('fee.counter.offlineReadOnly')}
-        </p>
-      )}
-      <Button
-        type="submit"
-        size="lg"
-        id="counter-confirm"
-        // Offline the family view is a read-only copy (M7): no new collection until the phone is
-        // back online. An attempt already made keeps its own retry (same idempotency key).
-        disabled={collect.isPending || (!locked && directEmpty) || (offline && !pending)}
-      >
-        {t('fee.counter.confirm')}
-      </Button>
+        <ErrorNote error={confirming ? null : networkError} />
+        {offline && !pending && (
+          <p
+            id="counter-offline"
+            role="status"
+            className="rounded-lg bg-warn-soft p-3 text-sm font-medium text-warn"
+          >
+            {t('fee.counter.offlineReadOnly')}
+          </p>
+        )}
+        <div
+          data-action-bar
+          style={{ bottom: 'var(--tabbar-h, 0px)' }}
+          className="fixed inset-x-0 z-10 flex items-center gap-3 border-t bg-card/95 p-3 backdrop-blur md:static md:border-0 md:bg-transparent md:p-0"
+        >
+          {amount ? (
+            <span className="flex min-w-0 flex-col md:hidden">
+              <span className="text-meta text-muted-foreground">{t('fee.counter.amount')}</span>
+              <Money paisa={amount} className="text-lg font-bold" />
+            </span>
+          ) : null}
+          <Button
+            type="submit"
+            size="lg"
+            id="counter-confirm"
+            className="ms-auto min-w-40 md:w-full"
+            // Offline the family view is a read-only copy (M7): no new collection until the phone is
+            // back online. An attempt already made keeps its own retry (same idempotency key).
+            disabled={collect.isPending || (!locked && directEmpty) || (offline && !pending)}
+          >
+            {t('fee.counter.confirm')}
+          </Button>
+        </div>
+      </div>
 
       <Dialog open={confirming} onOpenChange={(o) => !collect.isPending && setConfirming(o)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto">
@@ -983,7 +1035,7 @@ function CollectForm({
                   </li>
                 ))}
               </ul>
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-t pt-3 [&>dd]:text-end [&>dd]:whitespace-nowrap">
                 {needsAccount(shown.a.method) && (
                   <>
                     <dt className="text-muted-foreground">{t('fee.counter.confirmAccount')}</dt>
@@ -1051,20 +1103,23 @@ export function CounterPage() {
     [refetchPayer, qc],
   );
   return (
-    <section className="flex max-w-2xl flex-col gap-4">
-      <PageTitle
+    <Page width={family || sponsor ? 'detail' : 'form'}>
+      <PageHeader
+        title={t('fee.counter.title')}
         actions={
           (family || sponsor) && (
-            <Button variant="outline" size="sm" onClick={() => setParams({})}>
+            <Button variant="outline" onClick={() => setParams({})}>
               {t('fee.counter.change')}
             </Button>
           )
         }
-      >
-        {t('fee.counter.title')}
-      </PageTitle>
+      />
       {!family && !sponsor && <FamilySearch onPick={pick} />}
-      {payer.isLoading && <p className="text-muted-foreground">{t('common.loading')}</p>}
+      {payer.isLoading && (
+        <Panel>
+          <ListSkeleton rows={4} />
+        </Panel>
+      )}
       <ErrorNote error={payer.error} />
       {payer.data && (
         // Not remounted on reload: after stale_dues the amount stays and the message explains; a
@@ -1077,6 +1132,6 @@ export function CounterPage() {
           onRefresh={refetch}
         />
       )}
-    </section>
+    </Page>
   );
 }

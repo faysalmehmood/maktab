@@ -23,7 +23,9 @@ export function RowMenu({
   actions,
   label,
   className,
+  id,
 }: {
+  id?: string;
   actions: readonly RowAction[];
   /** Accessible name of the button, e.g. "More actions for EXP-2026-00012". */
   label?: string;
@@ -57,6 +59,7 @@ export function RowMenu({
   return (
     <DropdownMenu.Root dir={i18n.language === 'ur' ? 'rtl' : 'ltr'} modal={false}>
       <DropdownMenu.Trigger
+        id={id}
         aria-label={label ?? t('shell.rowMenu')}
         className={cn(
           'inline-grid size-ctl shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',

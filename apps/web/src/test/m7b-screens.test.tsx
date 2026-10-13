@@ -1,12 +1,15 @@
 import 'fake-indexeddb/auto';
 import type { RegisterResponse } from '@maktab/shared';
-import { act, fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { initI18n, setLanguage } from '@/i18n';
 import * as ob from '@/offline/outbox';
 import { _reset } from '@/offline/sync';
 import { RegisterPage } from '@/pages/attendance/Register';
+import { CounterPage } from '@/pages/fees/Counter';
+import { ReceiptPage } from '@/pages/fees/Receipt';
 import { ids, meAs, mockApi, renderAt } from './api-mock';
+import { accounts, fam, familyStatement, receiptId, receiptPrint } from './fee-fixtures';
 
 /*
  * M7b part 2 (screens): the key interactions of each restyled screen. Money, permission and
@@ -109,5 +112,57 @@ describe('attendance register (M7b-2)', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Correct this register' }));
     expect(await screen.findByLabelText('Reason for the correction')).toBeTruthy();
+  });
+});
+
+describe('fee counter and receipt result (M7b-2)', () => {
+  it('"Full due" fills the amount with the net due; the preview then pays every open line', async () => {
+    mockApi({ [`GET /api/fees/family/${fam}`]: familyStatement(), 'GET /api/accounts': accounts });
+    renderAt(`/fees/counter?family=${fam}`, '/fees/counter', <CounterPage />, ['owner']);
+    const amount = (await screen.findByLabelText(/Amount/)) as HTMLInputElement;
+    expect(screen.getByText('Type an amount to see which months it pays.')).toBeTruthy();
+    const net = familyStatement().totals.due;
+    fireEvent.click(screen.getByRole('button', { name: /Full due/ }));
+    expect(amount.value).toBe((net / 100).toLocaleString('en-US'));
+    const after = document.getElementById('allocation-after') as HTMLElement;
+    expect(after.textContent).toContain('PKR 0');
+    // The children show as chips with their initials; Collect sits in the action bar.
+    expect(
+      screen.getAllByText('Ali')[0]?.closest('li')?.querySelector('[data-avatar]'),
+    ).toBeTruthy();
+    const bar = document.querySelector('[data-action-bar]') as HTMLElement;
+    expect(within(bar).getByRole('button', { name: 'Confirm and issue receipt' })).toBeTruthy();
+    expect(bar.style.bottom).toBe('var(--tabbar-h, 0px)');
+  });
+
+  it("result screen: school header, amount, still due, and Reverse only inside the owner's menu", async () => {
+    mockApi({
+      [`GET /api/receipts/${receiptId}`]: receiptPrint(),
+      [`POST /api/receipts/${receiptId}/parent-link`]: { url: null },
+    });
+    renderAt(`/receipts/${receiptId}?lang=en`, '/receipts/:id', <ReceiptPage />, ['owner']);
+    const result = await waitFor(() => {
+      const el = document.getElementById('receipt-result');
+      if (!el) throw new Error('not yet');
+      return el;
+    });
+    expect(within(result).getByText('Payment received')).toBeTruthy();
+    expect(document.getElementById('receipt-amount')?.textContent).toBe('PKR 7,000');
+    // Reverse is not a button on the page; it is the destructive item of the "more" menu.
+    expect(screen.queryByRole('button', { name: 'Reverse' })).toBeNull();
+    fireEvent.keyDown(screen.getByRole('button', { name: /^More actions: / }), { key: 'Enter' });
+    const menu = await screen.findByRole('menu');
+    const item = within(menu).getByRole('menuitem', { name: 'Reverse' });
+    expect(item.dataset.destructive).toBe('true');
+    fireEvent.click(item);
+    expect(await screen.findByText('Reverse this receipt')).toBeTruthy();
+  });
+
+  it('an accountant gets no "more" menu on the receipt (no Reverse grant)', async () => {
+    mockApi({ [`GET /api/receipts/${receiptId}`]: receiptPrint() });
+    renderAt(`/receipts/${receiptId}?lang=en`, '/receipts/:id', <ReceiptPage />, ['accountant']);
+    await screen.findByText('Payment received');
+    expect(screen.queryByRole('button', { name: /^More actions: / })).toBeNull();
+    expect(document.getElementById('receipt-print')).toBeTruthy();
   });
 });

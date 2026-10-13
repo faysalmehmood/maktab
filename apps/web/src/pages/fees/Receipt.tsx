@@ -1,17 +1,21 @@
 import type { ReceiptDetailDto, ReceiptPrintDto } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Printer, Send, Share2, Undo2 } from 'lucide-react';
+import { Plus, Printer, Send, Share2, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { PrintBadge } from '@/components/brand/SchoolBadge';
+import { PrintBadge, SchoolMark } from '@/components/brand/SchoolBadge';
 import { AmountInput, MethodChips, ReasonDialog } from '@/components/fees/common';
 import { type ReceiptFormat, type ReceiptLang, ReceiptPrint } from '@/components/fees/ReceiptPrint';
-import { ErrorNote, Field } from '@/components/form';
+import { ErrorNote, Field, Num } from '@/components/form';
+import { GoLink, ListSkeleton, Mny, Page, Panel, StatusBadge } from '@/components/page';
+import { RowMenu } from '@/components/row-menu';
+import '@/i18n/screens';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson } from '@/lib/api';
+import { shortDate } from '@/lib/dates';
 import { canCollect, canReverse, money, type PaymentMethod, rupeesToPaisa } from '@/lib/fees';
 import { printWhenReady } from '@/lib/print';
 import { useSchool } from '@/lib/queries';
@@ -137,7 +141,7 @@ function ReverseDialog({
 
 /** PLAN §14.4 step 4: print (A5 / 58 mm, ur / en), share, send, reverse. */
 export function ReceiptPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { id } = useParams();
   const roles = useRoles();
   const [params, setParams] = useSearchParams();
@@ -166,7 +170,14 @@ export function ReceiptPage() {
     setParams(n, { replace: true });
   };
 
-  if (q.isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (q.isLoading)
+    return (
+      <Page width="detail">
+        <Panel>
+          <ListSkeleton rows={3} />
+        </Panel>
+      </Page>
+    );
   if (!data) return <ErrorNote error={q.error} />;
   const r = data.receipt;
   const share = async () => {
@@ -183,20 +194,23 @@ export function ReceiptPage() {
   };
   const chip = (active: boolean) =>
     cn(
-      'min-h-11 min-w-11 rounded-md border px-3 text-sm',
-      active && 'border-primary bg-primary/10 font-medium',
+      'flex h-[var(--h)] min-w-11 items-center justify-center rounded-md px-3 text-meta font-medium text-muted-foreground',
+      'focus-visible:outline-2 focus-visible:outline-ring',
+      active && 'bg-card text-foreground shadow-xs',
     );
   const canShowShare = typeof navigator !== 'undefined';
   const familyPayment = r.payer_type === 'family' && r.kind === 'payment';
+  const mayReverse = r.kind === 'payment' && !data.reversed && canReverse(roles);
+  const after = data.totals;
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="no-print flex flex-col gap-3 print:hidden">
+    <Page width="detail">
+      <div className="no-print flex flex-col gap-4 print:hidden">
         {data.reversed && (
           <p
             role="status"
             id="receipt-reversed"
-            className="rounded-md bg-destructive/10 p-3 text-sm font-medium text-destructive"
+            className="rounded-lg bg-bad-soft p-3 text-sm font-medium text-bad"
           >
             {t('fee.receipt.reversed')}
             {r.reversed_by && (
@@ -214,107 +228,186 @@ export function ReceiptPage() {
         )}
         {r.reverses_id && (
           <Link
-            className="inline-flex min-h-11 items-center self-start text-sm underline"
+            className="inline-flex min-h-11 items-center self-start text-sm font-semibold text-brand underline"
             to={`/receipts/${r.reverses_id}`}
           >
             {t('fee.receipt.original')}
           </Link>
         )}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">{t('fee.receipt.format')}</span>
-          <button
-            type="button"
-            id="receipt-fmt-a5"
-            className={chip(fmt === 'a5')}
-            aria-pressed={fmt === 'a5'}
-            onClick={() => set('fmt', 'a5')}
-          >
-            <bdi className="num">{t('fee.receipt.a5')}</bdi>
-          </button>
-          <button
-            type="button"
-            id="receipt-fmt-thermal"
-            className={chip(fmt === 'thermal')}
-            aria-pressed={fmt === 'thermal'}
-            onClick={() => set('fmt', 'thermal')}
-          >
-            <bdi className="num">{t('fee.receipt.thermal')}</bdi>
-          </button>
-          <span className="ms-2 text-sm text-muted-foreground">{t('fee.receipt.language')}</span>
-          <button
-            type="button"
-            id="receipt-lang-ur"
-            lang="ur"
-            className={cn(chip(lang === 'ur'), 'font-system')}
-            aria-pressed={lang === 'ur'}
-            onClick={() => set('lang', 'ur')}
-          >
-            اردو
-          </button>
-          <button
-            type="button"
-            id="receipt-lang-en"
-            lang="en"
-            className={chip(lang === 'en')}
-            aria-pressed={lang === 'en'}
-            onClick={() => set('lang', 'en')}
-          >
-            English
-          </button>
-        </div>
+        <Panel id="receipt-result" bodyClassName="flex flex-col gap-4 p-4">
+          <div className="flex items-start gap-3">
+            {school && (
+              <SchoolMark
+                school={school}
+                logoSrc={school.has_logo ? '/api/school/logo' : null}
+                size={40}
+              />
+            )}
+            <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+              <bdi className="max-w-full truncate font-semibold">
+                {(i18n.language === 'ur' && data.school.name_ur) || data.school.name}
+              </bdi>
+              <span className="text-meta whitespace-nowrap text-muted-foreground">
+                {t('fee.receipt.title')} <Num>{r.receipt_no}</Num>
+              </span>
+              {data.reversed ? (
+                <StatusBadge tone="bad">{t('screens.fees.reversedShort')}</StatusBadge>
+              ) : r.kind === 'payment' ? (
+                <StatusBadge tone="ok">{t('screens.fees.received')}</StatusBadge>
+              ) : null}
+            </span>
+            {mayReverse && (
+              <RowMenu
+                id="receipt-more"
+                label={t('screens.fees.receiptMore', { no: r.receipt_no })}
+                actions={[
+                  {
+                    id: 'receipt-reverse',
+                    label: t('fee.receipt.reverse'),
+                    icon: Undo2,
+                    destructive: true,
+                    onSelect: () => setReversing(true),
+                  },
+                ]}
+              />
+            )}
+          </div>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-4 sm:grid-cols-4">
+            <div className="col-span-2 sm:col-span-1">
+              <dt className="text-meta text-muted-foreground">{t('screens.fees.amount')}</dt>
+              <dd className="text-2xl font-bold" id="receipt-amount">
+                <Mny paisa={r.amount} />
+              </dd>
+            </div>
+            <div>
+              <dt className="text-meta text-muted-foreground">{t('screens.fees.payer')}</dt>
+              <dd className="font-semibold">
+                <bdi>{r.payer_name ?? ''}</bdi>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-meta text-muted-foreground">{t('fee.counter.confirmDate')}</dt>
+              <dd className="font-semibold">
+                <bdi>{shortDate(r.business_date, i18n.language)}</bdi>
+                <span className="text-meta font-normal text-muted-foreground">
+                  {' · '}
+                  {t(`fee.methods.${r.method}`)}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-meta text-muted-foreground">
+                {after.payer_due > 0 ? t('screens.fees.stillDue') : t('fee.counter.credit')}
+              </dt>
+              <dd className="font-semibold" id="receipt-after">
+                <Mny paisa={after.payer_due > 0 ? after.payer_due : after.payer_credit} />
+              </dd>
+            </div>
+          </dl>
+          <div className="flex flex-wrap gap-2 border-t pt-4">
+            <Button id="receipt-print" onClick={() => void printWhenReady()}>
+              <Printer aria-hidden />
+              {t('fee.receipt.print')}
+            </Button>
+            {canShowShare && (
+              <Button
+                id="receipt-share"
+                variant="outline"
+                data-mode={shareMode()}
+                onClick={() => void share()}
+              >
+                <Share2 aria-hidden />
+                {t('fee.receipt.share')}
+              </Button>
+            )}
+            {familyPayment && canCollect(roles) && !data.reversed && (
+              <Button
+                id="receipt-notify"
+                variant="outline"
+                disabled={notify.isPending}
+                onClick={() => notify.mutate()}
+              >
+                <Send aria-hidden />
+                {t('fee.receipt.notify')}
+              </Button>
+            )}
+          </div>
+          <ErrorNote error={notify.error} />
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="mb-1.5 text-meta font-semibold text-muted-foreground">
+                {t('fee.receipt.format')}
+              </legend>
+              <div className="flex gap-1 rounded-lg bg-muted p-1">
+                <button
+                  type="button"
+                  id="receipt-fmt-a5"
+                  className={chip(fmt === 'a5')}
+                  aria-pressed={fmt === 'a5'}
+                  onClick={() => set('fmt', 'a5')}
+                >
+                  <bdi className="num">{t('fee.receipt.a5')}</bdi>
+                </button>
+                <button
+                  type="button"
+                  id="receipt-fmt-thermal"
+                  className={chip(fmt === 'thermal')}
+                  aria-pressed={fmt === 'thermal'}
+                  onClick={() => set('fmt', 'thermal')}
+                >
+                  <bdi className="num">{t('fee.receipt.thermal')}</bdi>
+                </button>
+              </div>
+            </fieldset>
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="mb-1.5 text-meta font-semibold text-muted-foreground">
+                {t('fee.receipt.language')}
+              </legend>
+              <div className="flex gap-1 rounded-lg bg-muted p-1">
+                <button
+                  type="button"
+                  id="receipt-lang-ur"
+                  lang="ur"
+                  dir="rtl"
+                  className={cn(chip(lang === 'ur'), 'font-system')}
+                  aria-pressed={lang === 'ur'}
+                  onClick={() => set('lang', 'ur')}
+                >
+                  اردو
+                </button>
+                <button
+                  type="button"
+                  id="receipt-lang-en"
+                  lang="en"
+                  dir="ltr"
+                  className={chip(lang === 'en')}
+                  aria-pressed={lang === 'en'}
+                  onClick={() => set('lang', 'en')}
+                >
+                  English
+                </button>
+              </div>
+            </fieldset>
+          </div>
+        </Panel>
         <div className="flex flex-wrap gap-2">
-          <Button id="receipt-print" onClick={() => void printWhenReady()}>
-            <Printer aria-hidden />
-            {t('fee.receipt.print')}
-          </Button>
-          {canShowShare && (
-            <Button
-              id="receipt-share"
-              variant="outline"
-              data-mode={shareMode()}
-              onClick={() => void share()}
-            >
-              <Share2 aria-hidden />
-              {t('fee.receipt.share')}
-            </Button>
-          )}
-          {familyPayment && canCollect(roles) && !data.reversed && (
-            <Button
-              id="receipt-notify"
-              variant="outline"
-              disabled={notify.isPending}
-              onClick={() => notify.mutate()}
-            >
-              <Send aria-hidden />
-              {t('fee.receipt.notify')}
-            </Button>
-          )}
-          {r.kind === 'payment' && !data.reversed && canReverse(roles) && (
-            <Button id="receipt-reverse" variant="destructive" onClick={() => setReversing(true)}>
-              <Undo2 aria-hidden />
-              {t('fee.receipt.reverse')}
-            </Button>
-          )}
-        </div>
-        <ErrorNote error={notify.error} />
-        <div className="flex flex-wrap gap-2 text-sm">
           {canCollect(roles) && (
-            <Button asChild variant="link" size="sm">
+            <Button asChild variant="outline">
               <Link
+                id="receipt-new-payment"
                 to={
                   r.payer_type === 'family'
                     ? `/fees/counter?family=${r.payer_id}`
                     : `/fees/counter?sponsor=${r.payer_id}`
                 }
               >
+                <Plus aria-hidden />
                 {t('fee.receipt.newPayment')}
               </Link>
             </Button>
           )}
           {r.payer_type === 'family' && (
-            <Button asChild variant="link" size="sm">
-              <Link to={`/fees/family/${r.payer_id}`}>{t('fee.receipt.family')}</Link>
-            </Button>
+            <GoLink to={`/fees/family/${r.payer_id}`}>{t('fee.receipt.family')}</GoLink>
           )}
         </div>
       </div>
@@ -322,6 +415,6 @@ export function ReceiptPage() {
         <ReceiptPrint data={data} fmt={fmt} lang={lang} badge={<PrintBadge school={school} />} />
       </div>
       {reversing && <ReverseDialog receipt={r} open={reversing} onOpenChange={setReversing} />}
-    </section>
+    </Page>
   );
 }

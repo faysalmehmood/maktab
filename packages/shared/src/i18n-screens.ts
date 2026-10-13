@@ -26,4 +26,15 @@ export const screensEn = {
       'This register was already taken. Saving makes a correction: it asks for a reason and keeps the earlier register in history.',
     noteSaved: 'Note',
   },
+  fees: {
+    payment: 'Payment',
+    fullDue: 'Full due',
+    previewEmpty: 'Type an amount to see which months it pays.',
+    received: 'Payment received',
+    reversedShort: 'Reversed',
+    receiptMore: 'More actions: {{no}}',
+    amount: 'Amount',
+    payer: 'Paid by',
+    stillDue: 'Still due',
+  },
 } as const;

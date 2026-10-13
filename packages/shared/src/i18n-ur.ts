@@ -1437,6 +1437,17 @@ export const screensUr: Shape<typeof screensEn> = {
       'یہ رجسٹر پہلے ہو چکا ہے۔ محفوظ کرنے پر یہ درستی بنے گی: وجہ پوچھی جائے گی اور پہلا رجسٹر ریکارڈ میں رہے گا۔',
     noteSaved: 'نوٹ',
   },
+  fees: {
+    payment: 'ادائیگی',
+    fullDue: 'پورے واجبات',
+    previewEmpty: 'رقم لکھیں تاکہ معلوم ہو یہ کن مہینوں میں جائے گی۔',
+    received: 'رقم وصول ہو گئی',
+    reversedShort: 'منسوخ',
+    receiptMore: 'مزید اقدامات: {{no}}',
+    amount: 'رقم',
+    payer: 'ادا کنندہ',
+    stillDue: 'ابھی واجب',
+  },
 };
 
 export const ur: Messages & { screens: Shape<typeof screensEn> } = {

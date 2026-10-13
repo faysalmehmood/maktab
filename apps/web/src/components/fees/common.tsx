@@ -3,7 +3,7 @@ import { Delete } from 'lucide-react';
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ErrorNote, Field } from '@/components/form';
-import { Badge } from '@/components/ui/badge';
+import { type Tone, StatusBadge as ToneBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -31,11 +31,17 @@ export function Money({ paisa, className }: { paisa: number; className?: string 
   return <bdi className={cn('num whitespace-nowrap', className)}>{money(paisa)}</bdi>;
 }
 
+const FEE_TONE: Record<FeeLineDto['status'], Tone> = {
+  overdue: 'bad',
+  due: 'warn',
+  partial: 'info',
+  paid: 'ok',
+};
+
+/** A fee line's state in the fixed status tones: overdue red, due amber, part paid blue, paid green. */
 export function StatusBadge({ status }: { status: FeeLineDto['status'] }) {
   const { t } = useTranslation();
-  const variant =
-    status === 'overdue' ? 'destructive' : status === 'paid' ? 'outline' : ('secondary' as const);
-  return <Badge variant={variant}>{t(`fee.status.${status}`)}</Badge>;
+  return <ToneBadge tone={FEE_TONE[status]}>{t(`fee.status.${status}`)}</ToneBadge>;
 }
 
 export const METHODS: PaymentMethod[] = [
@@ -70,7 +76,9 @@ export function MethodChips({
           onClick={() => onChange(m)}
           className={cn(
             'min-h-11 min-w-11 rounded-full border px-4 text-sm font-medium',
-            value === m ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-accent',
+            value === m
+              ? 'border-brand bg-brand text-brand-fg shadow-xs'
+              : 'bg-card hover:bg-accent',
           )}
         >
           {t(`fee.methods.${m}`)}
@@ -112,7 +120,7 @@ export function AmountInput({
         inputMode="decimal"
         autoComplete="off"
         dir="ltr"
-        className="num h-14 text-end text-2xl font-semibold"
+        className="num h-14 text-end text-2xl font-bold tracking-tight"
         value={value}
         aria-invalid={invalid || undefined}
         onChange={(e) => onChange(formatRupeeInput(e.target.value))}
@@ -125,7 +133,7 @@ export function AmountInput({
               key={k}
               type="button"
               variant="outline"
-              className="num h-12 text-lg"
+              className="num h-12 text-lg font-semibold"
               onClick={() => press(k)}
             >
               {k}
@@ -315,8 +323,8 @@ export function Figure({
 }) {
   return (
     <div className="flex min-w-0 flex-col">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={cn(tone === 'strong' ? 'text-xl font-semibold' : 'font-medium')}>
+      <span className="text-meta text-muted-foreground">{label}</span>
+      <span className={cn(tone === 'strong' ? 'text-xl font-bold' : 'font-semibold')}>
         {children}
       </span>
     </div>
