@@ -3,7 +3,11 @@
 #
 # Enable by setting the repository variable BACKUP_ENABLED=true (forks and clones stay quiet).
 # Variables (optional): D1_DATABASE_NAME (default maktab), BACKUP_R2_BUCKET (default maktab-backups),
-#   APP_URL (default https://maktab.conceptlix.com: where the run is reported).
+#   APP_URL (default https://maktab.conceptlix.com: where the run is reported),
+#   BACKUP_ALLOW_SHRINK=true (accept one dump that is less than half the previous size; set it after
+#   a deliberate big deletion, run, then remove it).
+# Keep-alive: GitHub disables scheduled workflows after 60 days without repository activity, so on the
+# 1st of each month (Karachi) the run commits docs/backup-status.md to main as github-actions[bot].
 # Secrets:
 #   CLOUDFLARE_API_TOKEN   Account > D1 > Edit; Account > Workers R2 Storage > Edit;
 #                          Account > Workers Scripts > Read
@@ -20,7 +24,7 @@ on:
     - cron: "30 21 * * *" # 02:30 PKT: `d1 export --remote` blocks the DB while it runs.
   workflow_dispatch: {}
 permissions:
-  contents: read
+  contents: write # the monthly docs/backup-status.md keep-alive commit
   issues: write
 concurrency: { group: nightly-backup, cancel-in-progress: false }
 env:
@@ -43,16 +47,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
+            .nvmrc
             apps/api/wrangler.toml
             packages/db/sql
             packages/db/scripts/sheet-export.ts
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with: { node-version-file: .nvmrc }
       - name: Install wrangler, age, rclone
         run: |
           set -euo pipefail
           echo "STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          echo "KDAY=$(TZ=Asia/Karachi date +%d)" >> "$GITHUB_ENV"
           npm i --no-save --prefix "$RUNNER_TEMP/w" "wrangler@$WRANGLER_VERSION"
           echo "$RUNNER_TEMP/w/node_modules/.bin" >> "$GITHUB_PATH"
           sudo apt-get update -qq && sudo apt-get install -y -qq age rclone
@@ -99,28 +105,54 @@ jobs:
           echo "SHA=$(cut -d' ' -f1 "$F.sha256")" >> "$GITHUB_ENV"
           echo "BYTES=$(stat -c%s "$F")" >> "$GITHUB_ENV"
 
-      - name: Size regression check
+      # Never withholds the upload: the size verdict comes after it and only changes the reported
+      # status. Only a genuine "key does not exist" means "no previous size" (the first run); any other
+      # error reading LAST_SIZE is reported, and LAST_SIZE is then left alone.
+      - name: Previous size (daily/LAST_SIZE)
         run: |
-          set -euo pipefail
-          wrangler r2 object get "$R2_BUCKET/daily/LAST_SIZE" --remote --file last_size 2>/dev/null || echo 0 > last_size
-          PREV=$(cat last_size); NOW=$BYTES
-          echo "prev=$PREV now=$NOW"
-          if [ "$PREV" -gt 0 ] && [ "$NOW" -lt $((PREV/2)) ]; then echo "::error::backup shrank by >50%"; exit 1; fi
-          if [ "$NOW" -lt 1000 ]; then echo "::error::backup suspiciously small"; exit 1; fi
-          echo "$NOW" > last_size
+          set -uo pipefail
+          if OUT=$(wrangler r2 object get "$R2_BUCKET/daily/LAST_SIZE" --remote --file last_size 2>&1); then
+            PREV=$(tr -dc '0-9' < last_size); echo "PREV=${PREV:-0}" >> "$GITHUB_ENV"; echo "PREV_STATE=ok" >> "$GITHUB_ENV"
+          elif echo "$OUT" | grep -qiE 'specified key does not exist|NoSuchKey|object not found|\(code: ?10007\)'; then
+            echo "no previous size: first run"; echo "PREV=0" >> "$GITHUB_ENV"; echo "PREV_STATE=none" >> "$GITHUB_ENV"
+          else
+            echo "$OUT"; echo "::warning::could not read daily/LAST_SIZE"
+            echo "PREV=0" >> "$GITHUB_ENV"; echo "PREV_STATE=error" >> "$GITHUB_ENV"
+          fi
 
       - name: Upload to R2 (daily/, monthly/ on the 1st)
         run: |
           set -euo pipefail
           wrangler r2 object put "$R2_BUCKET/daily/$F" --file "$F" --remote
           wrangler r2 object put "$R2_BUCKET/daily/$F.sha256" --file "$F.sha256" --remote
-          wrangler r2 object put "$R2_BUCKET/daily/LAST_SIZE" --file last_size --remote
           # Pointer the restore drill reads (wrangler has no object listing).
           echo "daily/$F" > latest
           wrangler r2 object put "$R2_BUCKET/daily/LATEST" --file latest --remote
-          if [ "$(TZ=Asia/Karachi date +%d)" = "01" ]; then
+          if [ "$KDAY" = "01" ]; then
             wrangler r2 object put "$R2_BUCKET/monthly/$F" --file "$F" --remote
             wrangler r2 object put "$R2_BUCKET/monthly/$F.sha256" --file "$F.sha256" --remote
+          fi
+          echo "UPLOADED=true" >> "$GITHUB_ENV"
+
+      - name: Size verdict (after the upload)
+        env:
+          ALLOW_SHRINK: ${{ vars.BACKUP_ALLOW_SHRINK }}
+        run: |
+          set -euo pipefail
+          NOW=$BYTES
+          echo "prev=$PREV ($PREV_STATE) now=$NOW"
+          if [ "$PREV_STATE" = error ]; then CHECK=unknown
+          elif [ "$NOW" -lt 1000 ]; then CHECK=too_small
+          elif [ "$PREV" -gt 0 ] && [ "$NOW" -lt $((PREV/2)) ] && [ "${ALLOW_SHRINK:-}" != "true" ]; then CHECK=shrank
+          else CHECK=ok; fi
+          echo "SIZE_CHECK=$CHECK" >> "$GITHUB_ENV"
+          # LAST_SIZE follows every good upload; a flagged shrink keeps the old size, so the run stays
+          # red each night until someone looks (and sets BACKUP_ALLOW_SHRINK=true if it was deliberate).
+          if [ "$CHECK" = ok ]; then
+            echo "$NOW" > last_size
+            wrangler r2 object put "$R2_BUCKET/daily/LAST_SIZE" --file last_size --remote
+          else
+            echo "::error::size check: $CHECK (previous $PREV bytes, now $NOW bytes); the dump WAS uploaded"
           fi
 
       - name: Upload to Backblaze B2 (second provider)
@@ -139,7 +171,7 @@ jobs:
           B2="B2:$B2_BUCKET"
           rclone copyto "$F" "$B2/daily/$F" --s3-no-check-bucket
           rclone copyto "$F.sha256" "$B2/daily/$F.sha256" --s3-no-check-bucket
-          if [ "$(TZ=Asia/Karachi date +%d)" = "01" ]; then rclone copyto "$F" "$B2/monthly/$F" --s3-no-check-bucket; fi
+          if [ "$KDAY" = "01" ]; then rclone copyto "$F" "$B2/monthly/$F" --s3-no-check-bucket; fi
           rclone check "$F" "$B2/daily/" --include "$F" --one-way
           # Prune: names sort by date. 90 daily, 24 monthly.
           rclone lsf "$B2/daily/" --include '*.age' | sort | head -n -90 | while read -r f; do
@@ -181,28 +213,115 @@ jobs:
             esac
           }
           if [ "$JOB_STATUS" != "success" ]; then STATUS=failed
+          elif [ "${SIZE_CHECK:-ok}" != "ok" ]; then STATUS=failed   # uploaded, but shrank/too small
           elif [ "$B2_OUTCOME" != "success" ]; then STATUS=partial   # one provider only
           elif [ "$HAVE_SHEET" = "true" ] && [ "$SHEET_OUTCOME" != "success" ]; then STATUS=partial
           else STATUS=ok; fi
-          R2=$(jq -nc --argjson ok "$([ "$JOB_STATUS" = success ] && echo true || echo false)" '{name:"r2", ok:$ok}')
+          R2=$(jq -nc --argjson ok "$([ "${UPLOADED:-}" = true ] && echo true || echo false)" \
+            --arg check "${SIZE_CHECK:-ok}" '{name:"r2", ok:$ok} + (if $check != "ok" then {detail:$check} else {} end)')
+          # backup_enabled: tells the app's backup_stale alarm that the schedule is meant to run.
+          DETAILS=$(jq -nc --arg check "${SIZE_CHECK:-}" --arg prev "${PREV:-0}" --arg ps "${PREV_STATE:-}" \
+            '{backup_enabled:true, prev_bytes:($prev|tonumber), prev_state:$ps}
+             + (if $check != "" then {size_check:$check} else {} end)')
+          NOTE=""
+          if [ -n "${SIZE_CHECK:-}" ] && [ "$SIZE_CHECK" != ok ]; then NOTE="$SIZE_CHECK: previous ${PREV:-0} bytes, now ${BYTES:-0} bytes (uploaded)"; fi
           BODY=$(jq -nc --arg status "$STATUS" --arg started "$STARTED" --arg key "daily/${F:-}" \
             --arg sha "${SHA:-}" --arg bytes "${BYTES:-0}" --arg url "$RUN_URL" \
             --argjson r2 "$R2" --argjson b2 "$(target b2 "$B2_OUTCOME")" \
             --argjson sheet "$(target sheet "$SHEET_OUTCOME")" \
+            --argjson details "$DETAILS" --arg note "$NOTE" \
             '{kind:"nightly", status:$status, started_at:$started, run_url:$url,
-              targets:[$r2,$b2,$sheet]}
+              targets:[$r2,$b2,$sheet], details:$details}
+             + (if $note != "" then {note:$note} else {} end)
              + (if $sha != "" then {object_key:$key, sha256:$sha, bytes:($bytes|tonumber)} else {} end)')
           echo "$BODY"
           curl -fsS -X POST "$APP_URL/api/backup/runs" -H "authorization: Bearer $TOKEN" \
             -H 'content-type: application/json' --data "$BODY" || echo "::warning::report failed"
 
-      - name: Notify on failure (GitHub issue emails watchers)
+      # After the report: a flagged size makes the run red (so the issue below opens), the upload stays.
+      - name: Fail the run when the size check did not pass
+        if: ${{ env.SIZE_CHECK != '' && env.SIZE_CHECK != 'ok' }}
+        run: |
+          echo "::error::size check $SIZE_CHECK; see the step 'Size verdict'. Deliberate? Set the variable BACKUP_ALLOW_SHRINK=true for one run."
+          exit 1
+
+      # One open issue at a time: a later failure comments on it; the next good run closes it.
+      - name: Notify on failure (one issue, watchers get an e-mail)
         if: failure()
+        uses: actions/github-script@v7
+        env:
+          SIZE_CHECK: ${{ env.SIZE_CHECK }}
+        with:
+          script: |
+            const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const day = new Date().toISOString().slice(0, 10);
+            const why = process.env.SIZE_CHECK && process.env.SIZE_CHECK !== 'ok'
+              ? ` (size check: ${process.env.SIZE_CHECK}; the dump was uploaded)` : '';
+            const open = await github.rest.issues.listForRepo({ ...context.repo, state: 'open',
+              labels: 'backup-failed', per_page: 1 });
+            if (open.data.length) {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: open.data[0].number,
+                body: `Failed again ${day}${why}. Run: ${url}` });
+            } else {
+              await github.rest.issues.create({ ...context.repo,
+                title: `Nightly backup FAILED ${day}`,
+                body: `Run: ${url}${why}\nCheck docs/restore.md before assuming the last good backup is recent.\nThis issue closes itself after the next successful run.`,
+                labels: ['backup-failed'] });
+            }
+
+      - name: Close the failure issue after a good run
+        if: success()
         uses: actions/github-script@v7
         with:
           script: |
             const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            await github.rest.issues.create({ ...context.repo,
-              title: `Nightly backup FAILED ${new Date().toISOString().slice(0, 10)}`,
-              body: `Run: ${url}\nCheck docs/restore.md before assuming the last good backup is recent.`,
-              labels: ['backup-failed'] });
+            const open = await github.paginate(github.rest.issues.listForRepo, { ...context.repo,
+              state: 'open', labels: 'backup-failed', per_page: 100 });
+            for (const i of open) {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: i.number,
+                body: `Recovered: the nightly backup succeeded. Run: ${url}` });
+              await github.rest.issues.update({ ...context.repo, issue_number: i.number, state: 'closed',
+                state_reason: 'completed' });
+            }
+
+      # Keep-alive (GitHub's 60-day rule for scheduled workflows): on the 1st (Karachi) commit a short
+      # status file to main as github-actions[bot]. No checkout needed: the contents API makes the commit.
+      - name: Monthly status commit (docs/backup-status.md)
+        if: ${{ always() && env.KDAY == '01' }}
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const e = process.env;
+            const path = 'docs/backup-status.md';
+            const status = e.JOB_STATUS === 'success' ? (e.SIZE_CHECK && e.SIZE_CHECK !== 'ok' ? 'failed' : 'ok') : 'failed';
+            const targets = ['r2: ' + (e.UPLOADED === 'true' ? 'ok' : 'not uploaded'),
+              'b2: ' + (e.HAVE_B2 === 'true' ? 'configured' : 'not configured'),
+              'sheet: ' + (e.HAVE_SHEET === 'true' ? 'configured' : 'not configured')];
+            const text = [
+              '# Nightly backup status',
+              '',
+              'Written by the nightly-backup workflow on the 1st of each month (Asia/Karachi) so the',
+              'repository shows activity and GitHub keeps the schedule enabled (docs/backup.md, "60-day rule").',
+              'Live status: Settings → Backup in the app.',
+              '',
+              '| | |', '|---|---|',
+              `| Last run | ${e.DAY || new Date().toISOString().slice(0, 10)} (${status}) |`,
+              `| File | ${e.F ? 'daily/' + e.F : '—'} |`,
+              `| Size | ${e.BYTES ? e.BYTES + ' bytes' : '—'} |`,
+              `| sha256 | ${e.SHA ? e.SHA.slice(0, 12) + '…' : '—'} |`,
+              `| Targets | ${targets.join(', ')} |`,
+              '',
+            ].join('\n');
+            let sha;
+            try {
+              const cur = await github.rest.repos.getContent({ ...context.repo, path, ref: 'main' });
+              sha = cur.data.sha;
+            } catch (err) { if (err.status !== 404) throw err; }
+            await github.rest.repos.createOrUpdateFileContents({ ...context.repo, path, branch: 'main', sha,
+              message: `backup: monthly status ${e.DAY || ''} [skip ci]`,
+              content: Buffer.from(text).toString('base64'),
+              committer: { name: 'github-actions[bot]', email: '41898282+github-actions[bot]@users.noreply.github.com' },
+              author: { name: 'github-actions[bot]', email: '41898282+github-actions[bot]@users.noreply.github.com' } });

@@ -38,6 +38,8 @@ private key never goes to GitHub (except the protected drill environment below),
 | `B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET`, `B2_ENDPOINT` | secrets | optional Backblaze B2 copy (S3 endpoint, e.g. `https://s3.us-west-004.backblazeb2.com`) |
 | `GOOGLE_SA_JSON`, `SHEET_ID` | secrets | optional Google Sheet copy (section 6) |
 | `APP_URL` | variable | optional; default `https://maktab.conceptlix.com` |
+| `BACKUP_R2_BUCKET` | variable | optional; default `maktab-backups` (both workflows) |
+| `BACKUP_ALLOW_SHRINK` | variable | optional; `true` accepts a dump less than half the previous size (section 5); remove it again afterwards |
 
 Without the B2 secrets each run is reported **partial** (one provider only) but still succeeds.
 
@@ -76,11 +78,34 @@ the workflow itself (90 daily, 24 monthly).
    with D1 error 7500; the app retries once, and nobody works at 02:30).
 2. Sanity: core tables, an owner, `message_template`, `parent_link`, every trigger / view / index of
    `packages/db/sql`.
-3. `gzip -9`, `gzip -t`, `age -r $AGE_RECIPIENT`, `sha256sum`; size must not drop by more than half.
+3. `gzip -9`, `gzip -t`, `age -r $AGE_RECIPIENT`, `sha256sum`.
 4. R2: `daily/<YYYY-MM-DD>.sql.gz.age` + `.sha256`, `daily/LATEST` (pointer for the drill), the 1st
    of the month also under `monthly/`. B2 when configured. The Google Sheet when configured.
-5. The plain-text dump is shredded; the run (status `ok` / `partial` / `failed`, size, sha256,
-   targets) is POSTed to Maktab; a failure also opens a GitHub issue (watchers get an e-mail).
+5. **Size check, after the upload** (a backup is never withheld): the encrypted size is compared with
+   `daily/LAST_SIZE`. Less than half of it (`shrank`), under 1,000 bytes (`too_small`) or an unreadable
+   `LAST_SIZE` (`unknown`; only wrangler's "the specified key does not exist" counts as "first run, no
+   previous size") makes the run **failed** with that detail, although the file is in R2.
+   `LAST_SIZE` is updated after every upload that passed the check; a flagged shrink keeps the old
+   value, so the run stays red each night until someone looks. If the shrink was deliberate (a big
+   clean-up), set the variable `BACKUP_ALLOW_SHRINK=true`, let one run pass, then delete the variable.
+6. The plain-text dump is shredded; the run (status `ok` / `partial` / `failed`, size, sha256,
+   targets, `details.backup_enabled`, `details.size_check`) is POSTed to Maktab (`POST
+   /api/backup/runs`: strict schema, ISO date-times, bodies over 8 KB refused with 400, never cut).
+7. A failure opens **one** GitHub issue labelled `backup-failed` (watchers get an e-mail); while it is
+   open, later failures comment on it instead of opening another. The next successful run comments
+   "Recovered" and closes it.
+8. On the 1st of each month (Karachi) the run commits `docs/backup-status.md` (last run date, size,
+   sha256 prefix, targets) to `main` as `github-actions[bot]` — see "The 60-day rule" below.
+
+### The 60-day rule
+
+GitHub **disables scheduled workflows in a public repository after 60 days without repository
+activity** (no commits, issues, etc.), silently: the backups simply stop. The monthly status commit is
+the keep-alive, so a quiet school repository still has activity at least every ~31 days. It needs
+`contents: write` (set in the workflow) and a `main` that `github-actions[bot]` may push to; if branch
+protection refuses it, the step warns and the run still succeeds — then either allow the bot or make
+any commit/issue at least every 60 days. If the schedule was disabled anyway: Actions →
+nightly-backup → **Enable workflow**. The app notices too: the `backup_stale` alarm (section 8).
 
 What is inside: every table, including `message_template` (staff-edited texts), `message` (texts carry
 a `{link}` placeholder, never a working link) and `parent_link` (token **hashes** only; links are
@@ -121,12 +146,28 @@ Settings → Backup and record "drill done on <date>".
 A daily pass in the Worker cron (after 03:00 PKT) and the panel on the backup page check: rows in
 `ledger_consistency` (including receipt-number/series mismatches and cash receipts outside a drawer
 session), messages queued for more than 3 days, failed messages (7 days), parent-page gate lockouts
-(24 h) and fee generation needing attention. Anything found shows a banner on the owner's dashboard
-until dismissed. The same pass applies data retention (Settings → Recycle bin & data): parent-page
-access log older than the chosen number of days (default 90), export jobs older than 30 days.
+(24 h), fee generation needing attention, and **backup_stale**: no nightly backup finished `ok` or
+`partial` within 36 hours, or the latest nightly report is `failed` ("Backups have not run since …;
+check GitHub Actions and the Cloudflare API token"). backup_stale stays silent until backups are set
+up: it needs a successful nightly run to exist and the latest report to carry `backup_enabled: true`
+(every run sends it), so a school that never enabled backups never sees it. Anything found shows a
+banner on the owner's dashboard until dismissed. The same pass applies data retention (Settings →
+Recycle bin & data): parent-page access log older than the chosen number of days (default 90, at least
+7, at most 3650), export jobs older than 30 days; it deletes in batches of 200 (at most 8 batches per
+table, within a 10-second budget) and leaves any remainder for the next day.
 
 ## 9. Homelab pull (optional)
 
     rclone copy r2:maktab-backups/daily ~/backups/maktab/daily --max-age 3d
 
 with an R2 API token limited to *Object Read* on `maktab-backups`. The files stay encrypted.
+
+## 10. "Download everything" ZIP layout
+
+`tables/<table>.csv` — one CSV per database table, named exactly after the table (`tables/student.csv`,
+`tables/receipt.csv`, …; UTF-8 with BOM, CRLF), plus `schema.sql` and `README.txt`. Not included:
+sign-in sessions, the parent-page access log and D1's own migration bookkeeping (`d1_migrations`).
+Formula guard: a cell that starts with `=`, `+`, `-` or `@` is written with a leading apostrophe
+(`'=SUM(…)`), so a spreadsheet shows it as text and never runs it; strip the apostrophe if you load the
+CSV into a database. Parts are retried up to 3 times (1 s, 2 s, 4 s) and the ZIP is streamed (fflate
+`Zip`), so a big school does not need the whole export in memory twice.
