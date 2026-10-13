@@ -1,15 +1,23 @@
 import {
+  BRAND_COLOR_KEYS,
+  BRAND_COLORS,
+  type BrandColor,
+  brandColor,
+  DEFAULT_BRAND_COLOR,
   formatPkPhone,
+  isBrandColor,
   MAX_LOGO_BYTES,
   SCHOOL_MODES,
   type SchoolDto,
   type SchoolInput,
   type SchoolResponse,
   schoolInputSchema,
+  suggestShortName,
 } from '@maktab/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { type IdentityLike, SchoolBadge } from '@/components/brand/SchoolBadge';
 import { ErrorNote, Field } from '@/components/form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,7 +37,58 @@ export function schoolToInput(s: SchoolDto | null | undefined): SchoolInput {
     phone: formatPkPhone(s?.phone),
     default_lang: s?.default_lang ?? 'ur',
     receipt_prefix: s?.receipt_prefix ?? '',
+    short_name: s?.short_name ?? '',
+    city: s?.city ?? '',
+    brand_color: isBrandColor(s?.brand_color) ? s.brand_color : DEFAULT_BRAND_COLOR,
   };
+}
+
+/** The curated colours as a radio group of swatches (UI plan §6.3); status colours never change. */
+export function ColourPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: BrandColor;
+  onChange: (c: BrandColor) => void;
+  disabled?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-2 text-sm font-medium">{t('brand.colour')}</legend>
+      <div className="flex flex-wrap gap-2">
+        {BRAND_COLOR_KEYS.map((k) => (
+          <label
+            key={k}
+            title={t(`brand.colours.${k}`)}
+            className={cn(
+              'grid size-ctl cursor-pointer place-items-center rounded-full border-2 border-transparent',
+              'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring',
+              value === k && 'border-foreground',
+            )}
+          >
+            <input
+              type="radio"
+              name="brand-colour"
+              id={`colour-${k}`}
+              value={k}
+              className="sr-only"
+              checked={value === k}
+              disabled={disabled}
+              onChange={() => onChange(k)}
+            />
+            <span className="sr-only">{t(`brand.colours.${k}`)}</span>
+            <span
+              aria-hidden
+              className="size-[calc(var(--h)-10px)] rounded-full"
+              style={{ background: BRAND_COLORS[k].light.brand }}
+            />
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
 }
 
 export function useSaveSchool() {
@@ -59,15 +118,25 @@ export function SchoolForm({
   formId,
   readOnly = false,
   onSaved,
+  onDraft,
 }: {
   school: SchoolDto | null | undefined;
-  part?: 'profile' | 'mode' | 'all';
+  /**
+   * `identity` (wizard step 1: names, badge, colour, contacts), `mode` (school/academy and the
+   * default language), `profile` (identity + language + receipt prefix) or `all`.
+   */
+  part?: 'identity' | 'profile' | 'mode' | 'all';
   formId?: string;
   readOnly?: boolean;
   onSaved?: (s: SchoolDto | null) => void;
+  /** Every edit, for a live preview of the badge and sign-in page. */
+  onDraft?: (d: SchoolInput) => void;
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<SchoolInput>(() => schoolToInput(school));
+  useEffect(() => {
+    onDraft?.(draft);
+  }, [draft, onDraft]);
   const [errors, setErrors] = useState<FieldErrors>({});
   const save = useSaveSchool();
   // Printed receipt numbers carry the prefix: locked once a receipt exists (API: prefix_locked).
@@ -84,7 +153,12 @@ export function SchoolForm({
       return;
     }
     setErrors({});
-    save.mutate(draft, {
+    // The receipt prefix defaults from the short name (UI plan §7.2) while none is set.
+    const body =
+      !draft.receipt_prefix && draft.short_name && !prefixLocked
+        ? { ...draft, receipt_prefix: String(draft.short_name).toUpperCase() }
+        : draft;
+    save.mutate(body, {
       onSuccess: (data) => {
         if (!formId) toast.success(t('common.saved'));
         onSaved?.(data.school);
@@ -93,7 +167,10 @@ export function SchoolForm({
   };
 
   const showProfile = part !== 'mode';
-  const showMode = part !== 'profile';
+  const showMode = part === 'mode' || part === 'all';
+  const showLang = part !== 'identity';
+  const showPrefix = part === 'profile' || part === 'all';
+  const suggested = suggestShortName(draft.name);
   return (
     <form id={formId} onSubmit={submit} className="flex flex-col gap-4" noValidate>
       {showProfile && (
@@ -116,6 +193,40 @@ export function SchoolForm({
               onChange={(e) => set('name_ur', e.target.value)}
             />
           </Field>
+          <div className="grid gap-4 sm:grid-cols-[1fr_9rem]">
+            <Field id="school-city" label="brand.city">
+              <Input
+                id="school-city"
+                value={draft.city ?? ''}
+                readOnly={readOnly}
+                onChange={(e) => set('city', e.target.value)}
+              />
+            </Field>
+            <Field
+              id="school-short"
+              label="brand.shortName"
+              error={errors.short_name}
+              hint={t('brand.shortNameHelp')}
+            >
+              <Input
+                id="school-short"
+                dir="ltr"
+                maxLength={4}
+                autoCapitalize="characters"
+                placeholder={suggested}
+                value={draft.short_name ?? ''}
+                readOnly={readOnly}
+                onChange={(e) =>
+                  set('short_name', e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())
+                }
+              />
+            </Field>
+          </div>
+          <ColourPicker
+            value={brandColor(draft.brand_color)}
+            disabled={readOnly}
+            onChange={(c) => set('brand_color', c)}
+          />
           <Field id="school-address" label="school.address">
             <Input
               id="school-address"
@@ -135,33 +246,39 @@ export function SchoolForm({
               onChange={(e) => set('phone', e.target.value)}
             />
           </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field id="school-lang" label="school.defaultLang">
-              <Select
-                id="school-lang"
-                value={draft.default_lang}
-                disabled={readOnly}
-                onChange={(e) => set('default_lang', e.target.value === 'en' ? 'en' : 'ur')}
-              >
-                <option value="ur">اردو</option>
-                <option value="en">English</option>
-              </Select>
-            </Field>
-            <Field
-              id="school-prefix"
-              label="school.receiptPrefix"
-              error={errors.receipt_prefix}
-              hint={prefixLocked ? t('fee.setup.prefixLocked') : t('school.receiptPrefixHelp')}
-            >
-              <Input
-                id="school-prefix"
-                dir="ltr"
-                value={draft.receipt_prefix ?? ''}
-                readOnly={readOnly || prefixLocked}
-                onChange={(e) => set('receipt_prefix', e.target.value.toUpperCase())}
-              />
-            </Field>
-          </div>
+          {(showLang || showPrefix) && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {showLang && (
+                <Field id="school-lang" label="school.defaultLang">
+                  <Select
+                    id="school-lang"
+                    value={draft.default_lang}
+                    disabled={readOnly}
+                    onChange={(e) => set('default_lang', e.target.value === 'en' ? 'en' : 'ur')}
+                  >
+                    <option value="ur">اردو</option>
+                    <option value="en">English</option>
+                  </Select>
+                </Field>
+              )}
+              {showPrefix && (
+                <Field
+                  id="school-prefix"
+                  label="school.receiptPrefix"
+                  error={errors.receipt_prefix}
+                  hint={prefixLocked ? t('fee.setup.prefixLocked') : t('school.receiptPrefixHelp')}
+                >
+                  <Input
+                    id="school-prefix"
+                    dir="ltr"
+                    value={draft.receipt_prefix ?? ''}
+                    readOnly={readOnly || prefixLocked}
+                    onChange={(e) => set('receipt_prefix', e.target.value.toUpperCase())}
+                  />
+                </Field>
+              )}
+            </div>
+          )}
         </>
       )}
       {showMode && (
@@ -192,6 +309,19 @@ export function SchoolForm({
           ))}
         </fieldset>
       )}
+      {part === 'mode' && (
+        <Field id="school-lang" label="school.defaultLang">
+          <Select
+            id="school-lang"
+            value={draft.default_lang}
+            disabled={readOnly}
+            onChange={(e) => set('default_lang', e.target.value === 'en' ? 'en' : 'ur')}
+          >
+            <option value="ur">اردو</option>
+            <option value="en">English</option>
+          </Select>
+        </Field>
+      )}
       <ErrorNote error={save.error} />
       {!formId && !readOnly && (
         <Button type="submit" className="self-start" disabled={save.isPending}>
@@ -211,10 +341,13 @@ export function LogoUpload({
   school,
   staged,
   onStage,
+  badge,
 }: {
   school: SchoolDto | null | undefined;
   staged?: File | null;
   onStage?: (f: File | null) => void;
+  /** Draw the generated badge while there is no logo (the wizard's live identity). */
+  badge?: IdentityLike;
 }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -259,6 +392,14 @@ export function LogoUpload({
               className="size-14 rounded-md border object-contain"
             />
           )}
+          {badge && !school?.has_logo && !(staging && preview) && (
+            <SchoolBadge
+              shortName={badge.short_name}
+              name={badge.name}
+              color={badge.brand_color}
+              size={56}
+            />
+          )}
           <Input
             id="school-logo"
             type="file"
@@ -276,6 +417,9 @@ export function LogoUpload({
       </Field>
       {staging && staged && (
         <p className="text-sm text-muted-foreground">{t('setup.logoStaged')}</p>
+      )}
+      {badge && !school?.has_logo && !staged && (
+        <p className="text-sm text-muted-foreground">{t('brand.badgeNote')}</p>
       )}
       {tooBig && (
         <p role="alert" className="text-sm text-destructive">
