@@ -32,8 +32,10 @@ export default function GuideSheet({ task: id, onClose }: { task: string; onClos
             : 'w-full gap-0 overflow-y-auto bg-card p-0 sm:max-w-lg'
         }
       >
-        <SheetHeader className="gap-1 border-b px-5 pt-5 pb-4">
-          <p className="text-meta font-semibold text-brand">{say(GUIDE_UI.help, lang)}</p>
+        <SheetHeader className="gap-2 border-b px-5 pt-5 pb-4 pe-12">
+          <p className="text-meta leading-loose font-semibold text-brand">
+            {say(GUIDE_UI.help, lang)}
+          </p>
           <SheetTitle className="text-title">
             <Rich text={task.title[lang]} />
           </SheetTitle>

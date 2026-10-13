@@ -22,7 +22,8 @@ describe('docs:guide', () => {
         cwd: root,
         encoding: 'utf8',
       });
-    expect(run()).toContain('unchanged');
+    // --check first: it never writes, so a stale doc fails here instead of being fixed quietly.
     expect(run('--check')).toContain('up to date');
+    expect(run()).toContain('unchanged');
   });
 });

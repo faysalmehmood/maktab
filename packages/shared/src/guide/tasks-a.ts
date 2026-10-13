@@ -588,8 +588,8 @@ export const TASKS_A: readonly GuideTask[] = [
       },
       {
         text: {
-          en: 'Enter [[fee.counter.amount]] (or tap [[screens.fees.fullDue]]) and choose [[fee.counter.method]]: Cash, Bank, JazzCash, EasyPaisa, Cheque. Oldest dues are paid first.',
-          ur: '[[fee.counter.amount]] لکھیں (یا [[screens.fees.fullDue]] دبائیں) اور [[fee.counter.method]] چنیں: Cash، Bank، JazzCash، EasyPaisa، Cheque۔ پہلے پرانا بقایا ادا ہوتا ہے۔',
+          en: 'Enter [[fee.counter.amount]] (or tap [[screens.fees.fullDue]]) and choose [[fee.counter.method]]: [[fee.methods.cash]], [[fee.methods.bank]], [[fee.methods.jazzcash]], [[fee.methods.easypaisa]], [[fee.methods.cheque]]. Oldest dues are paid first.',
+          ur: '[[fee.counter.amount]] لکھیں (یا [[screens.fees.fullDue]] دبائیں) اور [[fee.counter.method]] چنیں: [[fee.methods.cash]]، [[fee.methods.bank]]، [[fee.methods.jazzcash]]، [[fee.methods.easypaisa]]، [[fee.methods.cheque]]۔ پہلے پرانا بقایا ادا ہوتا ہے۔',
         },
       },
       {

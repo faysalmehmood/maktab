@@ -238,7 +238,7 @@ In the app: `/guide/admit-sibling` · for owner, admin, accountant · "Show me" 
 *Find the family, enter the amount, confirm, then print or share the receipt.*
 
 1. **Fee counter**: search by name, admission no. or guardian phone, then tap the family. You see every child's fees and the total due.
-2. Enter **Amount received (Rs)** (or tap **Full due**) and choose **Paid by**: Cash, Bank, JazzCash, EasyPaisa, Cheque. Oldest dues are paid first.
+2. Enter **Amount received (Rs)** (or tap **Full due**) and choose **Paid by**: **Cash**, **Bank**, **JazzCash**, **EasyPaisa**, **Cheque**. Oldest dues are paid first.
 3. Press **Confirm and issue receipt**, check the box that opens, and confirm. The receipt number is issued.
 4. On the receipt: choose **A5** (normal printer) or **58 mm** (thermal), the receipt language, then **Print**. Or **Share** to send it from the phone.
 5. **Send payment-received** puts a WhatsApp thank-you, with the family's private link, in the send queue.
@@ -256,7 +256,7 @@ In the app: `/guide/collect-fee` · for owner, admin, accountant · "Show me" to
 *خاندان تلاش کریں، رقم لکھیں، تصدیق کریں، پھر رسید پرنٹ یا شیئر کریں۔*
 
 1. **فیس کاؤنٹر**: نام، داخلہ نمبر یا سرپرست کے فون سے تلاش کریں، پھر خاندان پر ٹیپ کریں۔ ہر بچے کی فیس اور کل بقایا سامنے آ جائے گا۔
-2. **وصول شدہ رقم (روپے)** لکھیں (یا **پورے واجبات** دبائیں) اور **ادائیگی بذریعہ** چنیں: Cash، Bank، JazzCash، EasyPaisa، Cheque۔ پہلے پرانا بقایا ادا ہوتا ہے۔
+2. **وصول شدہ رقم (روپے)** لکھیں (یا **پورے واجبات** دبائیں) اور **ادائیگی بذریعہ** چنیں: **نقد**، **بینک**، **جاز کیش**، **ایزی پیسہ**، **چیک**۔ پہلے پرانا بقایا ادا ہوتا ہے۔
 3. **تصدیق کریں اور رسید جاری کریں** دبائیں، کھلنے والا خانہ دیکھیں اور تصدیق کریں۔ رسید نمبر جاری ہو جاتا ہے۔
 4. رسید پر: **A5** (عام پرنٹر) یا **58 mm** (تھرمل) اور رسید کی زبان چنیں، پھر **پرنٹ**۔ یا فون سے بھیجنے کے لیے **شیئر**۔
 5. **ادائیگی کا پیغام بھیجیں** شکریے کا واٹس ایپ پیغام، خاندان کے نجی لنک کے ساتھ، قطار میں ڈال دیتا ہے۔
@@ -481,7 +481,7 @@ Each family's private page, without a login.
 - Sending the link in a class WhatsApp group: it is private to one family.
 - Looking for an old link later: Maktab does not keep it. Make a **New link**.
 
-In the app: `/guide/parent-links` · for owner, admin, accountant · "Show me" tour: 2 steps.
+In the app: `/guide/parent-links` · for owner, admin, accountant · "Show me" tour: 3 steps.
 
 <div dir="rtl" lang="ur">
 

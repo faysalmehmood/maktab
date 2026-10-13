@@ -367,6 +367,17 @@ export const TASKS_B: readonly GuideTask[] = [
       },
       {
         path: '/students/:id',
+        target: 'profile-tab-guardians',
+        wait: true,
+        click: true,
+        title: { en: 'Guardians tab', ur: 'سرپرستوں کا ٹیب' },
+        body: {
+          en: 'Each guardian has their own link. Next opens the tab.',
+          ur: 'ہر سرپرست کا اپنا لنک ہوتا ہے۔ "آگے" سے یہ ٹیب کھلے گا۔',
+        },
+      },
+      {
+        path: '/students/:id',
         target: 'parent-link',
         wait: true,
         title: { en: '[[msg.link.title]]', ur: '[[msg.link.title]]' },

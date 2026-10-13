@@ -227,7 +227,14 @@ export function TourEngine({
   }, [phase]);
 
   const next = () => {
-    if (step?.click && el.current && phase === 'shown') el.current.click();
+    if (step?.click && el.current && phase === 'shown') {
+      // A row target: press the link or button inside it (an <li> itself does nothing).
+      const t = el.current;
+      const press = t.matches('a,button,[role=tab]')
+        ? t
+        : (t.querySelector<HTMLElement>('a,button,[role=tab]') ?? t);
+      press.click();
+    }
     if (last) onClose(phase !== 'missing');
     else setPos({ i: pos.i + 1, dir: 1, by: 'user', skipped: false });
   };
@@ -266,8 +273,8 @@ export function TourEngine({
           data-tour-spot
           style={{
             top: rect.top - PAD,
-            left: rect.left - PAD,
-            width: rect.width + PAD * 2,
+            left: Math.max(2, rect.left - PAD),
+            width: Math.min(rect.width + PAD * 2, view.w - 4 - Math.max(2, rect.left - PAD)),
             height: rect.height + PAD * 2,
           }}
           className="absolute rounded-xl shadow-[0_0_0_9999px_rgb(6_18_16/0.5)] ring-2 ring-brand motion-safe:transition-all motion-safe:duration-200"
