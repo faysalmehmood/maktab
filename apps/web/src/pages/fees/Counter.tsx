@@ -153,7 +153,7 @@ function FamilySearch({ onPick }: { onPick: (id: string) => void }) {
             autoComplete="off"
             onChange={(e) => setText(e.target.value)}
           />
-          <Button type="submit" id="counter-search-go">
+          <Button type="submit" id="counter-search-go" className="min-w-11">
             <Search aria-hidden />
             <span className="sr-only sm:not-sr-only">{t('fee.counter.search')}</span>
           </Button>
@@ -393,7 +393,7 @@ export function PayerCard({
         )}
       </div>
       <div
-        className="grid grid-cols-3 divide-x border-t bg-muted/40 rtl:divide-x-reverse"
+        className="grid grid-cols-1 divide-y border-t bg-muted/40 sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:rtl:divide-x-reverse"
         id="payer-totals"
       >
         <div className="px-4 py-3">

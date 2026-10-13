@@ -8,6 +8,7 @@ import { DateText } from '@/components/date-text';
 import { useFeeInvalidate } from '@/components/fees/dialogs';
 import { FeesTabs } from '@/components/fees/FeesTabs';
 import { ErrorNote, Field, Num } from '@/components/form';
+import { MonthInput } from '@/components/month-input';
 import { EmptyState, Mny, Page, PageHeader, Panel, StatusBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -19,7 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson } from '@/lib/api';
 import { karachiToday } from '@/lib/fees';
@@ -448,13 +448,7 @@ export function BillingPage() {
           >
             <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:items-end">
               <Field id="billing-period" label="fee.billing.period">
-                <Input
-                  id="billing-period"
-                  type="month"
-                  className="num"
-                  value={period}
-                  onChange={(e) => setPeriod(e.target.value)}
-                />
+                <MonthInput id="billing-period" value={period} onChange={(v) => setPeriod(v)} />
               </Field>
               <Checkbox
                 id="billing-prorata"

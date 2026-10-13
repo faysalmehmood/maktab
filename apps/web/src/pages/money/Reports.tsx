@@ -12,6 +12,7 @@ import { Link } from 'react-router';
 import { Money } from '@/components/fees/common';
 import { Field, PageTitle } from '@/components/form';
 import { AccountSelect, MoneyErrorNote, ReportActions } from '@/components/money/common';
+import { MonthInput } from '@/components/month-input';
 import { Page, PageHeader } from '@/components/page';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -190,22 +191,10 @@ export function IncomeExpensePage() {
       </PageTitle>
       <div className="grid gap-2 sm:grid-cols-2 print:hidden">
         <Field id="ie-from" label="money.common.from">
-          <Input
-            id="ie-from"
-            type="month"
-            className="num"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
+          <MonthInput id="ie-from" value={from} onChange={(v) => setFrom(v)} />
         </Field>
         <Field id="ie-to" label="money.common.to">
-          <Input
-            id="ie-to"
-            type="month"
-            className="num"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
+          <MonthInput id="ie-to" value={to} onChange={(v) => setTo(v)} />
         </Field>
       </div>
       <p className="text-sm text-muted-foreground">{t('money.reports.excluded')}</p>

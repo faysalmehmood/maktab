@@ -24,9 +24,9 @@ import {
   PaySettingsDialog,
   PayslipPrint,
 } from '@/components/money/payslip';
+import { MonthInput } from '@/components/month-input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/sonner';
 import {
   Table,
@@ -240,14 +240,7 @@ export function SalaryPage() {
       </PageTitle>
       <div className="flex flex-wrap items-end gap-2">
         <Field id="salary-period" label="money.common.month">
-          <Input
-            id="salary-period"
-            type="month"
-            dir="ltr"
-            className="num"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-          />
+          <MonthInput id="salary-period" value={period} onChange={(v) => setPeriod(v)} />
         </Field>
         {canPreparePayroll(roles) && (
           <Button
@@ -631,24 +624,10 @@ export function SalaryRegisterPage() {
       </PageTitle>
       <div className="grid gap-2 sm:grid-cols-2 print:hidden">
         <Field id="register-from" label="money.common.from">
-          <Input
-            id="register-from"
-            type="month"
-            dir="ltr"
-            className="num"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
+          <MonthInput id="register-from" value={from} onChange={(v) => setFrom(v)} />
         </Field>
         <Field id="register-to" label="money.common.to">
-          <Input
-            id="register-to"
-            type="month"
-            dir="ltr"
-            className="num"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
+          <MonthInput id="register-to" value={to} onChange={(v) => setTo(v)} />
         </Field>
       </div>
       <ErrorNote error={q.error} />

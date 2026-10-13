@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { todayPk } from '@/components/attendance/common';
 import { ErrorNote, Num } from '@/components/form';
+import { MonthInput } from '@/components/month-input';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { reportUrl, STATUS_CLASS, useReport } from '@/lib/attendance';
@@ -66,12 +66,7 @@ export function ReportPage() {
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="rep-month">{t('attendance.month')}</Label>
-          <Input
-            id="rep-month"
-            type="month"
-            value={month}
-            onChange={(e) => e.target.value && set('month', e.target.value)}
-          />
+          <MonthInput id="rep-month" value={month} onChange={(v) => set('month', v)} />
         </div>
         {perSubject && group && (
           <div className="flex flex-col gap-1.5">

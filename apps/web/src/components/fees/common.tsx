@@ -324,7 +324,12 @@ export function Figure({
   return (
     <div className="flex min-w-0 flex-col">
       <span className="text-meta text-muted-foreground">{label}</span>
-      <span className={cn(tone === 'strong' ? 'text-xl font-bold' : 'font-semibold')}>
+      <span
+        className={cn(
+          'tabular-nums break-words',
+          tone === 'strong' ? 'text-xl font-bold' : 'font-semibold',
+        )}
+      >
         {children}
       </span>
     </div>

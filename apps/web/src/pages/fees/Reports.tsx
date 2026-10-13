@@ -16,6 +16,7 @@ import { FeesTabs } from '@/components/fees/FeesTabs';
 import { type ActiveFilter, FilterBar } from '@/components/filter-bar';
 import { ErrorNote, Field, Num } from '@/components/form';
 import { ReportActions } from '@/components/money/common';
+import { MonthInput } from '@/components/month-input';
 import {
   EmptyState,
   GoLink,
@@ -149,13 +150,7 @@ export function FeeRegisterPage() {
           </Select>
         </Field>
         <Field id="register-period" label="fee.col.period">
-          <Input
-            id="register-period"
-            type="month"
-            className="num"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-          />
+          <MonthInput id="register-period" value={period} onChange={(v) => setPeriod(v)} />
         </Field>
       </Panel>
       {/* On paper the choice is the heading: which class, which month. */}

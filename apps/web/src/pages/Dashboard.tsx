@@ -184,10 +184,10 @@ function RegistersCard() {
       }
       action={
         next ? (
-          <Button asChild>
+          <Button asChild className="h-auto min-h-ctl max-w-full min-w-0 py-2">
             <Link to={registerPath(next.grp_id, d.date, next.grp_subject_id || null)}>
               <CalendarCheck aria-hidden />
-              <bdi>
+              <bdi className="block min-w-0 truncate">
                 {t('home.registers.take', {
                   name: `${next.programme_name} ${next.grp_name}${next.subject_name ? ` ${next.subject_name}` : ''}`,
                 })}

@@ -22,3 +22,7 @@ export const shortDate = (iso: string, lang: string): string =>
 /** "Oct 2026" from "2026-10" or a full date. */
 export const monthLabel = (period: string, lang: string): string =>
   fmt(lang, { month: 'short', year: 'numeric' }).format(at(`${period.slice(0, 7)}-15`));
+
+/** "October" / "اکتوبر" for month 1–12 (no year), through the same Intl path as every other date. */
+export const monthName = (month: number, lang: string): string =>
+  fmt(lang, { month: 'long' }).format(new Date(Date.UTC(2026, month - 1, 15, 12)));

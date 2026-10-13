@@ -33,6 +33,20 @@ curl -X POST localhost:8787/api/<route> -H "Origin: http://localhost:5173" \
 
 - Read [docs/PLAN.md](docs/PLAN.md) first. Larger changes start as an issue or an ADR in `docs/ADR/`.
 - Before a pull request: `npm run typecheck && npm run lint && npm test && npm run build`.
+- Layout changes: with the app running (`npm run dev`) and a dev session cookie, run the phone sweep.
+  It loads each route at 360×780 and 390×844 with touch emulation, in en + ur and light + dark, and
+  fails on horizontal overflow, an interactive target under 44 px, or a redirect to `/login`
+  (it also lists JS console errors). It builds nothing:
+
+  ```sh
+  node apps/web/scripts/sweep-360.mjs http://localhost:5173 \
+    --cookie "$(npm run -s dev:session -w @maktab/api -- owner@example.com)" \
+    --var student=<id> --var receipt=<id> --var group=<id> --var family=<id>
+  ```
+
+  `--routes /a,/b@#button` overrides the route list (`@selector` clicks that element after load);
+  `--lang`, `--theme`, `--viewports` and `--port` (Chrome's debugging port, default 9350) narrow it.
+  Run it once per role for the home pages, and pass a parent link (`/p#<token>`) as a route.
 - Every new API route goes through `defineRoute(... requires(resource, action) ...)` and gets a row in
   the snapshot in `apps/api/test/permissions.test.ts`. Undeclared routes are refused at runtime.
 - Money is integer paisa, money rows are never updated or deleted, and balances are derived.
