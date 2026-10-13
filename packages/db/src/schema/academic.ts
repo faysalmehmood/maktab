@@ -63,6 +63,11 @@ export const school = sqliteTable(
     announcementGroupsNote: text('announcement_groups_note'),
     /** Suggested advance recovery per payslip, as a percent of the slip's pay (M4). */
     advanceRecoveryPct: integer('advance_recovery_pct').notNull().default(25),
+    /**
+     * Data retention (M6): parent-link access log rows older than this many days are deleted by the
+     * daily pass (7–3650, validated by the API).
+     */
+    accessLogDays: integer('access_log_days').notNull().default(90),
     ...stamps(),
   },
   () => [check('school_mode', oneOf('mode', SCHOOL_MODES))],
@@ -156,6 +161,11 @@ export const grp = sqliteTable(
     room: text('room'),
     nextGrpId: text('next_grp_id').references((): AnySQLiteColumn => grp.id),
     status: text('status', { enum: GRP_STATUSES }).notNull().default('open'),
+    /**
+     * Recycle bin (M6): a group with no enrolments can be archived (hidden from lists and pickers)
+     * and restored; never deleted, so nothing that points at it can dangle.
+     */
+    archivedAt: text('archived_at'),
     ...stamps(),
   },
   (t) => [

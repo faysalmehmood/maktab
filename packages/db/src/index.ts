@@ -8,4 +8,5 @@ export {
   type Schema,
 } from './client';
 export * from './ledger';
+export * from './ops/alarms';
 export * from './schema';
