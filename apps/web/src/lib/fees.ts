@@ -1,6 +1,7 @@
 import {
   type FamilyStatementDto,
   type FeeHeadDto,
+  type FeeRateDto,
   type FeeSettingsDto,
   type FineDto,
   feeErrorsEn,
@@ -157,6 +158,13 @@ export const useFeeHeads = () =>
   useQuery({
     queryKey: ['fee-heads'],
     queryFn: () => getJson<{ heads: FeeHeadDto[] }>('/api/fees/heads'),
+  });
+
+export const useFeeRates = (enabled = true) =>
+  useQuery({
+    queryKey: ['fee-rates'],
+    queryFn: () => getJson<{ rates: FeeRateDto[] }>('/api/fees/rates'),
+    enabled,
   });
 
 export const useFeeSettings = () =>

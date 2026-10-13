@@ -70,3 +70,17 @@ export function finish(): never {
 
 /** Random suffix so a script can run again against the same database. */
 export const runId = Math.random().toString(36).slice(2, 7);
+
+/**
+ * POST /api/school/complete-setup, first adding a class group when there is none (since M7 the API
+ * refuses to finish setup with no group: 409 no_groups). Expects a current session to exist.
+ */
+export async function completeSetup(api: ReturnType<typeof makeApi>): Promise<Res<unknown>> {
+  const groups = await api<{ items: unknown[] }>('GET', '/api/groups');
+  if (!groups.body.items?.length) {
+    let progs = await api<{ items: { id: string }[] }>('GET', '/api/programmes');
+    if (!progs.body.items?.length) progs = await api('POST', '/api/programmes/seed-pk');
+    await api('POST', '/api/groups', { programme_id: progs.body.items[0]?.id, name: 'Smoke' });
+  }
+  return api('POST', '/api/school/complete-setup');
+}

@@ -272,6 +272,36 @@ describe('send queue', () => {
     );
   });
 
+  it('Urdu previews read right-to-left as Urdu; the copy fallback gives each text its own direction', async () => {
+    mockApi(
+      queueApi({
+        'POST /api/messages/bulk-text': {
+          text: 'السلام علیکم\n\nHello',
+          count: 2,
+          grp_name: 'Class 5 A',
+        },
+      }),
+    );
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    renderQueue();
+    const ur = await waitFor(() => {
+      const el = document.getElementById('msg-text-m1');
+      if (!el) throw new Error('row m1 not rendered');
+      return el;
+    });
+    expect(ur.getAttribute('dir')).toBe('rtl');
+    expect(ur.getAttribute('lang')).toBe('ur');
+    const en = document.getElementById('msg-text-m2');
+    expect(en?.getAttribute('dir')).toBe('ltr');
+    expect(en?.getAttribute('lang')).toBe('en');
+    fireEvent.click(await screen.findByRole('button', { name: /Copy all texts/ }));
+    const area = (await screen.findByLabelText(/copy/i, {
+      selector: 'textarea',
+    })) as HTMLTextAreaElement;
+    expect(area.getAttribute('dir')).toBe('auto');
+    expect(area.style.unicodeBidi).toBe('plaintext');
+  });
+
   it('shows Compose only to message.compose roles', async () => {
     mockApi(queueApi());
     renderAt('/messages', '/messages', <MessagesPage />, ['accountant']);

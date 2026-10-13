@@ -40,29 +40,38 @@ describe('setup wizard', () => {
     });
     renderAt('/setup', '/setup', <SetupWizard />);
 
-    expect(await screen.findByText('Step 1 of 7')).toBeTruthy();
+    expect(await screen.findByText('Step 1 of 8')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'School' })).toBeTruthy();
 
     // Next with an empty name stays put and says why.
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText('Required')).toBeTruthy();
-    expect(screen.getByText('Step 1 of 7')).toBeTruthy();
+    expect(screen.getByText('Step 1 of 8')).toBeTruthy();
 
+    // Before the first save the logo cannot be uploaded yet, and the step says so.
+    expect(screen.getByText(/then you can add the logo here/)).toBeTruthy();
+    expect(document.getElementById('school-logo')).toBeNull();
     fireEvent.change(screen.getByLabelText(/School name/), { target: { value: 'Al-Noor' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(await screen.findByText('Step 2 of 7')).toBeTruthy();
+    // The first save stays on step 1 so the logo upload appears (defect 4.6.1).
+    expect(await screen.findByText('Saved. Add your logo now, or press Next.')).toBeTruthy();
+    expect(document.getElementById('school-logo')).toBeTruthy();
+    expect(screen.getByText('Step 1 of 8')).toBeTruthy();
+    expect(screen.getByText('PNG, JPEG or WebP, up to 512 KB.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('Step 2 of 8')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Type' })).toBeTruthy();
-    expect(api.calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
+    expect(api.calls.filter((c) => c.method === 'PUT')).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(await screen.findByText('Step 1 of 7')).toBeTruthy();
+    expect(await screen.findByText('Step 1 of 8')).toBeTruthy();
     expect((screen.getByLabelText(/School name/) as HTMLInputElement).value).toBe('Al-Noor');
 
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(await screen.findByText('Step 2 of 7')).toBeTruthy();
+    expect(await screen.findByText('Step 2 of 8')).toBeTruthy();
     fireEvent.click(screen.getByLabelText(/Academy/));
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(await screen.findByText('Step 3 of 7')).toBeTruthy();
+    expect(await screen.findByText('Step 3 of 8')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Session' })).toBeTruthy();
     const modePut = api.calls.filter((c) => c.method === 'PUT').at(-1);
     expect(modePut?.body).toMatchObject({ mode: 'academy', name: 'Al-Noor' });
@@ -84,20 +93,58 @@ describe('setup wizard', () => {
       'GET /api/sessions': { items: [session] },
       'GET /api/programmes': { items: [] },
       'GET /api/subjects': { items: [] },
-      'GET /api/groups': { items: [] },
+      'GET /api/groups': { items: [{ id: 'G1', name: '5-A' }] },
       'GET /api/staff': { items: [] },
+      'GET /api/fees/heads': { heads: [] },
+      'GET /api/fees/rates': { rates: [] },
     });
     renderAt('/setup', '/setup', <SetupWizard />);
-    for (let step = 1; step <= 6; step++) {
-      expect(await screen.findByText(`Step ${step} of 7`)).toBeTruthy();
+    for (let step = 1; step <= 7; step++) {
+      expect(await screen.findByText(`Step ${step} of 8`)).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     }
     fireEvent.click(await screen.findByRole('button', { name: 'Open Maktab' }));
     await waitFor(() =>
       expect(api.calls.some((c) => c.path === '/api/school/complete-setup')).toBe(true),
     );
+    // The Fees step came between Groups and Staff; no rates yet is a note, not a block.
+    expect(screen.queryByText(/No fee rates yet/)).toBeNull();
     // No PUT carried a completion flag.
     for (const c of api.calls.filter((x) => x.method === 'PUT'))
       expect(c.body).not.toHaveProperty('setup_completed');
+  });
+
+  it('Fees step between Groups and Staff; Done refuses to finish with no class group', async () => {
+    const school = saved({ name: 'Al-Noor', mode: 'both' });
+    const api = mockApi({
+      'GET /api/school': () => school,
+      'PUT /api/school': () => school,
+      'GET /api/sessions': { items: [session] },
+      'GET /api/programmes': { items: [] },
+      'GET /api/subjects': { items: [] },
+      'GET /api/groups': { items: [] },
+      'GET /api/staff': { items: [] },
+      'GET /api/fees/heads': { heads: [] },
+      'GET /api/fees/rates': { rates: [] },
+    });
+    renderAt('/setup', '/setup', <SetupWizard />);
+    for (let step = 1; step <= 5; step++) {
+      expect(await screen.findByText(`Step ${step} of 8`)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    }
+    expect(await screen.findByText('Step 6 of 8')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Fees' })).toBeTruthy();
+    expect(screen.getByText(/monthly rate for each class/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('heading', { name: 'Staff' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText(/Add at least one class group first/)).toBeTruthy();
+    const open = screen.getByRole('button', { name: 'Open Maktab' }) as HTMLButtonElement;
+    expect(open.disabled).toBe(true);
+    // The stale "Fees come in a later update" copy is gone (defect 4.6.3).
+    expect(screen.queryByText(/later update/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to groups' }));
+    expect(await screen.findByText('Step 5 of 8')).toBeTruthy();
+    expect(api.calls.some((c) => c.path === '/api/school/complete-setup')).toBe(false);
   });
 });

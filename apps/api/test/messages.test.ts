@@ -745,7 +745,13 @@ describe('parent links and the public parent page', () => {
     expect(Object.keys(rc.body).sort()).toEqual(
       ['school', 'labels', 'lang', 'receipt', 'students', 'totals', 'reversed'].sort(),
     );
-    expect(Object.keys(rc.body.school).sort()).toEqual(['address', 'name', 'name_ur', 'phone']);
+    expect(Object.keys(rc.body.school).sort()).toEqual([
+      'address',
+      'logo_v',
+      'name',
+      'name_ur',
+      'phone',
+    ]);
     const rcBody = JSON.stringify({ ...rc.body, labels: null });
     expect(rcBody).not.toMatch(ULID);
     expect(rcBody).not.toMatch(

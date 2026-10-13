@@ -31,7 +31,16 @@ import type {
 } from '@maktab/shared';
 import { newId } from '@maktab/shared';
 import { localD1File, mintDevSession } from './dev-session';
-import { always, EMAIL, expectOk, finish, makeApi, runId as run, step } from './smoke-lib';
+import {
+  always,
+  completeSetup,
+  EMAIL,
+  expectOk,
+  finish,
+  makeApi,
+  runId as run,
+  step,
+} from './smoke-lib';
 
 let ownerCookie = '';
 let acctCookie = '';
@@ -93,7 +102,7 @@ async function main() {
     }
     const after = await api<SchoolResponse>('GET', '/api/school');
     if (!after.body.school?.setup_completed_at) {
-      const r = await api('POST', '/api/school/complete-setup');
+      const r = await completeSetup(api);
       expectOk(r.status === 200, r);
     }
   });

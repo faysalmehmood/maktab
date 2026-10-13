@@ -745,6 +745,16 @@ function AccountsEditor() {
   );
 }
 
+/** The setup wizard's Fees step (PLAN §14.1): heads and rates only; rules stay in Settings. */
+export function WizardFees() {
+  return (
+    <div className="flex flex-col gap-6">
+      <HeadsEditor />
+      <RatesEditor />
+    </div>
+  );
+}
+
 /** Settings → Fees (admin/owner; PLAN §14.12 fee parts). */
 export function FeeSetup() {
   const fees = useFeeSettings().data?.fees;

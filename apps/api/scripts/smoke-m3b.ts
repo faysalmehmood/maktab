@@ -31,7 +31,16 @@ import type {
 } from '@maktab/shared';
 import { newId, previewOldestFirst } from '@maktab/shared';
 import { mintDevSession } from './dev-session';
-import { always, EMAIL, expectOk, finish, makeApi, runId as run, step } from './smoke-lib';
+import {
+  always,
+  completeSetup,
+  EMAIL,
+  expectOk,
+  finish,
+  makeApi,
+  runId as run,
+  step,
+} from './smoke-lib';
 
 let cookie = '';
 const api = makeApi(() => cookie);
@@ -85,7 +94,7 @@ async function main() {
     await api('POST', '/api/programmes/seed-pk');
     const after = await api<SchoolResponse>('GET', '/api/school');
     if (!after.body.school?.setup_completed_at)
-      expectOk((await api('POST', '/api/school/complete-setup')).status === 200, 'complete-setup');
+      expectOk((await completeSetup(api)).status === 200, 'complete-setup');
   });
 
   await step('a group with tuition + admission rates; a family of two admitted', async () => {

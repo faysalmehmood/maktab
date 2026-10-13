@@ -78,6 +78,7 @@ export const moneyEn = {
     photo: 'Bill photo',
     photoHint: 'Optional. A photo of the bill or receipt.',
     viewPhoto: 'Bill',
+    addPhoto: 'Add bill photo',
     photoAdded: 'Photo added',
     voidTitle: 'Void expense {{no}}?',
     voidBody: 'The expense stays in the register, marked void, with your reason.',

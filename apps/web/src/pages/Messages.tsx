@@ -337,6 +337,10 @@ function CopyClassTexts({ grpId, grpName }: { grpId: string; grpName: string }) 
             readOnly
             value={fallback}
             rows={8}
+            // One class's texts in each guardian's language, one per paragraph: each paragraph takes
+            // its own direction (Urdu right-to-left, English left-to-right) — UI plan 4.6.4.
+            dir="auto"
+            style={{ unicodeBidi: 'plaintext' }}
             onFocus={(e) => e.currentTarget.select()}
           />
         </div>

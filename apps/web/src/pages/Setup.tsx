@@ -3,6 +3,7 @@ import { Check } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
+import { WizardFees } from '@/components/fees/setup';
 import { ErrorNote, Num } from '@/components/form';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { GroupsEditor } from '@/components/setup/groups';
@@ -12,7 +13,8 @@ import { SessionForm, SessionsList } from '@/components/setup/sessions';
 import { InviteForm, StaffList } from '@/components/setup/staff';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useCurrentSession, useSchool } from '@/lib/queries';
+import { useFeeHeads, useFeeRates } from '@/lib/fees';
+import { useCurrentSession, useGroups, useSchool } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +24,7 @@ export const WIZARD_STEPS = [
   'session',
   'programmes',
   'groups',
+  'fees',
   'staff',
   'done',
 ] as const;
@@ -31,7 +34,7 @@ type Step = (typeof WIZARD_STEPS)[number];
 const FORM_ID = 'wizard-step';
 
 /**
- * First run (PLAN §14.1): school → mode → session → classes → groups → staff → done. Each form
+ * First run (PLAN §14.1): school → mode → session → classes → groups → fees → staff → done. Each form
  * step saves on Next; list steps save as you edit. Re-enterable from Settings at any time.
  */
 export function SetupWizard() {
@@ -45,12 +48,20 @@ export function SetupWizard() {
   const next = () => setIndex((i) => Math.min(i + 1, WIZARD_STEPS.length - 1));
   const back = () => setIndex((i) => Math.max(i - 1, 0));
   const finish = useCompleteSetup();
+  const groups = useGroups();
+  const heads = useFeeHeads();
+  const rates = useFeeRates(step === 'done');
+  // The school's first save stays on step 1 so the logo upload (it needs the saved school) shows.
+  const [firstSave, setFirstSave] = useState(false);
 
   if (!roles.includes('owner')) {
     return <p className="p-6">{t('setup.ownerOnly')}</p>;
   }
   if (school.isPending) return <p className="p-6 text-muted-foreground">{t('common.loading')}</p>;
   const dto = school.data?.school ?? null;
+
+  const noGroups = !groups.isPending && (groups.data?.items.length ?? 0) === 0;
+  const noRates = !heads.isPending && !rates.isPending && (rates.data?.rates.length ?? 0) === 0;
 
   // Steps where Next submits the step's own form; the others advance directly.
   const formStep = step === 'school' || step === 'mode' || (step === 'session' && !current);
@@ -93,8 +104,23 @@ export function SetupWizard() {
           {step === 'school' && (
             <>
               <p className="text-sm text-muted-foreground">{t('setup.intro')}</p>
-              <SchoolForm school={dto} part="profile" formId={FORM_ID} onSaved={next} />
-              {dto && <LogoUpload school={dto} />}
+              <SchoolForm
+                school={dto}
+                part="profile"
+                formId={FORM_ID}
+                onSaved={() => {
+                  if (dto) next();
+                  else setFirstSave(true);
+                }}
+              />
+              {dto ? (
+                <>
+                  {firstSave && <p className="text-sm text-primary">{t('setup.logoSaved')}</p>}
+                  <LogoUpload school={dto} />
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">{t('setup.logoAfterSave')}</p>
+              )}
             </>
           )}
           {step === 'mode' && (
@@ -125,6 +151,12 @@ export function SetupWizard() {
               <GroupsEditor sessionId={current?.id ?? null} />
             </>
           )}
+          {step === 'fees' && (
+            <>
+              <p className="text-sm text-muted-foreground">{t('setup.feesHelp')}</p>
+              <WizardFees />
+            </>
+          )}
           {step === 'staff' && (
             <>
               <p className="text-sm text-muted-foreground">{t('setup.staffHelp')}</p>
@@ -137,10 +169,24 @@ export function SetupWizard() {
               <Check className="size-10 text-primary" aria-hidden />
               <p className="text-lg font-medium">{t('setup.doneTitle')}</p>
               <p className="text-muted-foreground">{t('setup.doneBody')}</p>
+              {noGroups && (
+                <div role="alert" className="flex flex-col items-start gap-2">
+                  <p className="text-sm text-destructive">{t('setup.noGroups')}</p>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIndex(WIZARD_STEPS.indexOf('groups'))}
+                  >
+                    {t('setup.backToGroups')}
+                  </Button>
+                </div>
+              )}
+              {!noGroups && noRates && (
+                <p className="text-sm text-muted-foreground">{t('setup.noRates')}</p>
+              )}
               <ErrorNote error={finish.error} />
               <Button
                 size="lg"
-                disabled={finish.isPending || !dto}
+                disabled={finish.isPending || !dto || noGroups || groups.isPending}
                 onClick={() =>
                   finish.mutate(undefined, { onSuccess: () => navigate('/', { replace: true }) })
                 }

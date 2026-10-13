@@ -235,7 +235,55 @@ export function AddExpenseDialog({
   );
 }
 
-function ExpenseRow({ e, onVoid }: { e: ExpenseDto; onVoid?: (e: ExpenseDto) => void }) {
+/** A missing bill photo can be added later from the row (the recorder, or an owner/admin). */
+function AddPhotoButton({ e }: { e: ExpenseDto }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const add = useMutation({
+    mutationFn: async (file: File) =>
+      uploadFile(`/api/expenses/${e.id}/photo`, await resizeToJpeg(file), 'bill.jpg'),
+    onSuccess: () => {
+      toast.success(t('common.saved'));
+      void qc.invalidateQueries({ queryKey: ['expenses'] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : t('common.error')),
+  });
+  const id = `expense-add-photo-${e.id}`;
+  return (
+    <Button asChild variant="outline" size="sm" className="min-h-11">
+      <label htmlFor={id} aria-disabled={add.isPending}>
+        <Camera aria-hidden />
+        {t('money.expense.addPhoto')}
+        <input
+          id={id}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          disabled={add.isPending}
+          onChange={(ev) => {
+            const f = ev.target.files?.[0];
+            if (f) add.mutate(f);
+          }}
+        />
+      </label>
+    </Button>
+  );
+}
+
+/**
+ * One expense. Its first actions look at it (the bill photo, or adding one that is missing); Void
+ * is secondary, at the far end, never the only thing a row offers (UI plan 4.6.8).
+ */
+function ExpenseRow({
+  e,
+  onVoid,
+  canAddPhoto = false,
+}: {
+  e: ExpenseDto;
+  onVoid?: (e: ExpenseDto) => void;
+  canAddPhoto?: boolean;
+}) {
   const { t, i18n } = useTranslation();
   return (
     <Card className="gap-1 py-3" data-expense={e.id}>
@@ -278,11 +326,12 @@ function ExpenseRow({ e, onVoid }: { e: ExpenseDto; onVoid?: (e: ExpenseDto) => 
               </a>
             </Button>
           )}
+          {!e.has_photo && !e.voided && canAddPhoto && <AddPhotoButton e={e} />}
           {onVoid && !e.voided && (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="min-h-11"
+              className="ms-auto min-h-11 text-destructive"
               id={`expense-void-${e.id}`}
               onClick={() => onVoid(e)}
             >
@@ -448,6 +497,7 @@ export function ExpensesPage() {
                 key={e.id}
                 e={e}
                 onVoid={canVoidExpense(roles) ? setVoiding : undefined}
+                canAddPhoto={canCreateExpense(roles)}
               />
             ))}
           </div>

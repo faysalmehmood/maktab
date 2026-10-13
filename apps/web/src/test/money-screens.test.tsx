@@ -334,6 +334,26 @@ describe('expenses', () => {
     );
   });
 
+  it('Void is never the only row action: a row without a bill offers "Add bill photo" first', async () => {
+    mockApi({
+      ...API,
+      'GET /api/expenses': {
+        expenses: [expense({ id: 'E3', has_photo: false })],
+        total: RS(1200),
+        from: today,
+        to: today,
+      },
+    });
+    renderAt('/expenses', '/expenses', <ExpensesPage />, ['admin']);
+    const voidBtn = await byId('expense-void-E3');
+    const row = voidBtn.closest('[data-expense]') as HTMLElement;
+    const actions = [...row.querySelectorAll('a, button, label')].map((b) => b.textContent);
+    expect(actions).toEqual(['Add bill photo', 'Void']);
+    // Void is the secondary (ghost) action at the far end.
+    expect(voidBtn.getAttribute('data-variant') ?? voidBtn.className).toMatch(/ghost|ms-auto/);
+    expect(row.querySelector('input[type="file"]')?.getAttribute('capture')).toBe('environment');
+  });
+
   it('an accountant gets no void', async () => {
     mockApi(API);
     renderAt('/expenses', '/expenses', <ExpensesPage />, ['accountant']);

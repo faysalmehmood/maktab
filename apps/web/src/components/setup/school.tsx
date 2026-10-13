@@ -1,5 +1,6 @@
 import {
   formatPkPhone,
+  MAX_LOGO_BYTES,
   SCHOOL_MODES,
   type SchoolDto,
   type SchoolInput,
@@ -205,6 +206,8 @@ export function LogoUpload({ school }: { school: SchoolDto | null | undefined })
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [version, setVersion] = useState(0);
+  const [tooBig, setTooBig] = useState(false);
+  const kb = MAX_LOGO_BYTES / 1024;
   const upload = useMutation({
     mutationFn: (file: File) => uploadFile<SchoolResponse>('/api/school/logo', file, file.name),
     onSuccess: (data) => {
@@ -216,7 +219,7 @@ export function LogoUpload({ school }: { school: SchoolDto | null | undefined })
   if (!school) return null;
   return (
     <div className="flex flex-col gap-2">
-      <Field id="school-logo" label="school.logo" hint={t('school.logoHelp')}>
+      <Field id="school-logo" label="school.logo" hint={t('school.logoHelp', { kb })}>
         <div className="flex items-center gap-3">
           {school.has_logo && (
             <img
@@ -231,11 +234,18 @@ export function LogoUpload({ school }: { school: SchoolDto | null | undefined })
             accept="image/png,image/jpeg,image/webp"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) upload.mutate(f);
+              // Same limit as the API (MAX_LOGO_BYTES), so a big photo is refused before upload.
+              setTooBig(!!f && f.size > MAX_LOGO_BYTES);
+              if (f && f.size <= MAX_LOGO_BYTES) upload.mutate(f);
             }}
           />
         </div>
       </Field>
+      {tooBig && (
+        <p role="alert" className="text-sm text-destructive">
+          {t('school.logoTooBig', { kb })}
+        </p>
+      )}
       <ErrorNote error={upload.error} />
     </div>
   );

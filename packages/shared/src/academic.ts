@@ -392,4 +392,6 @@ export function customValueError(
 
 /** Server-side cap for uploaded photos; the client resizes to ≤ 100 KB first (PLAN §6). */
 export const MAX_PHOTO_BYTES = 200 * 1024;
+/** The school logo upload limit (API and the hint under the upload field). */
+export const MAX_LOGO_BYTES = 512 * 1024;
 export const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;

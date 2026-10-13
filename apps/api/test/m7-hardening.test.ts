@@ -206,3 +206,31 @@ describe('Turnstile in front of Google sign-in', () => {
     expect(good.headers.get('set-cookie')).toContain('maktab_oauth=');
   });
 });
+
+describe('setup cannot finish without a class group (UI plan 4.6.2)', () => {
+  it('complete-setup answers 409 no_groups until a group exists; a finished school stays finished', async () => {
+    const t = testApp();
+    const owner = await signedInAs(t.db, ['owner']);
+    const api = async (method: string, path: string, body?: unknown) => {
+      const res = await t.request(path, {
+        method,
+        headers: { cookie: owner.cookie, 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+    await api('PUT', '/api/school', { name: 'Al-Noor', mode: 'school' });
+    const early = await api('POST', '/api/school/complete-setup');
+    expect(early.status).toBe(409);
+    expect(early.body).toMatchObject({ error: { code: 'no_groups' } });
+    await api('POST', '/api/sessions', {
+      name: 'S',
+      start_date: '2026-04-01',
+      end_date: '2027-03-31',
+    });
+    const progs = (await api('POST', '/api/programmes/seed-pk')).body as { items: ProgrammeDto[] };
+    const p5 = progs.items.find((p) => p.name === 'Class 5')?.id;
+    expect((await api('POST', '/api/groups', { programme_id: p5, name: '5-A' })).status).toBe(201);
+    expect((await api('POST', '/api/school/complete-setup')).status).toBe(200);
+  });
+});

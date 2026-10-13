@@ -2,6 +2,7 @@ import { customField, programme, school, session, subject, term } from '@maktab/
 import {
   customFieldInputSchema,
   customFieldPatchSchema,
+  MAX_LOGO_BYTES,
   newId,
   programmeInputSchema,
   programmePatchSchema,
@@ -23,8 +24,6 @@ import { idParam, jsonBody, notFoundError, userId } from '../lib/http';
 import { auditSql, changed, tx } from '../lib/tx';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
 import { customFieldDto, programmeDto, schoolDto, sessionDto, subjectDto, termDto } from './dto';
-
-const MAX_LOGO_BYTES = 512 * 1024;
 
 /** The Pakistani ladder (PLAN §14.1): grades chained by next_programme_id, then courses. */
 export const PK_GRADES = [
@@ -152,6 +151,12 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const db = c.get('db');
       const existing = await currentSchool(c);
       if (!existing) throw new ApiError(409, 'no_school', 'Save the school profile first');
+      // A school with no class group cannot admit anyone (PLAN §14.1, M7): finish needs one.
+      const [g] = await db.all<{ n: number }>(
+        sql`SELECT count(*) AS n FROM grp WHERE archived_at IS NULL`,
+      );
+      if (!existing.setupCompletedAt && !Number(g?.n))
+        throw new ApiError(409, 'no_groups', 'Add at least one class or group first');
       if (!existing.setupCompletedAt) {
         const at = new Date().toISOString();
         await tx(db, [

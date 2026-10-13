@@ -74,7 +74,7 @@ export const feeEn = {
     student: 'Student',
     period: 'Month',
     head: 'Fee',
-    gross: 'Fee',
+    gross: 'Full fee',
     concession: 'Concession',
     fine: 'Fine',
     adjustment: 'Adjustment',
