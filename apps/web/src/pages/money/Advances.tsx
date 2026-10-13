@@ -1,17 +1,21 @@
 import { newId } from '@maktab/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { HandCoins, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { AmountInput, Money } from '@/components/fees/common';
-import { Field, PageTitle } from '@/components/form';
+import { type Column, DataTable } from '@/components/data-table';
+import { DateText } from '@/components/date-text';
+import { AmountInput } from '@/components/fees/common';
+import { Field } from '@/components/form';
 import {
   AccountSelect,
   MoneyErrorNote,
   payOutAccounts,
   ReportActions,
 } from '@/components/money/common';
+import { EmptyState, Mny, Page, PageHeader, Panel } from '@/components/page';
+import { RowMenu } from '@/components/row-menu';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -24,14 +28,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { sendJson } from '@/lib/api';
 import { karachiToday, rupeesToPaisa, useAccounts } from '@/lib/fees';
@@ -186,90 +182,130 @@ export function AddAdvanceDialog({
   );
 }
 
-/** Balances per staff member and the advances given (shared with the advance register). */
-export function AdvanceTables() {
+type AdvanceList = NonNullable<ReturnType<typeof useAdvances>['data']>;
+type Balance = AdvanceList['balances'][number];
+type Advance = AdvanceList['advances'][number];
+
+/**
+ * Balances per staff member and the advances given (shared with the advance register): two
+ * DataTables (cards on a phone, so amounts are never cut off). `onGive` adds a row menu with
+ * "Give advance" for that person.
+ */
+export function AdvanceTables({ onGive }: { onGive?: (staffId: string) => void }) {
   const { t } = useTranslation();
   const q = useAdvances();
+  const balances: Column<Balance>[] = [
+    {
+      id: 'staff',
+      header: t('money.common.staff'),
+      primary: true,
+      cell: (b) => <bdi data-staff={b.staff_id}>{b.staff_name}</bdi>,
+    },
+    {
+      id: 'outstanding',
+      header: t('money.advance.outstanding'),
+      numeric: true,
+      cell: (b) => (
+        <Mny paisa={b.outstanding} className={b.outstanding > 0 ? 'font-semibold' : undefined} />
+      ),
+    },
+    {
+      id: 'advanced',
+      header: t('money.advance.advanced'),
+      numeric: true,
+      cell: (b) => <Mny paisa={b.advanced} />,
+    },
+    {
+      id: 'recovered',
+      header: t('money.advance.recovered'),
+      numeric: true,
+      cell: (b) => <Mny paisa={b.recovered} />,
+    },
+    {
+      id: 'last',
+      header: t('money.advance.last'),
+      cell: (b) => (b.last_advance ? <DateText iso={b.last_advance} /> : '—'),
+    },
+  ];
+  const given: Column<Advance>[] = [
+    {
+      id: 'staff',
+      header: t('money.common.staff'),
+      primary: true,
+      cell: (a) => <bdi>{a.staff_name}</bdi>,
+    },
+    { id: 'date', header: t('money.common.date'), cell: (a) => <DateText iso={a.date} /> },
+    {
+      id: 'account',
+      header: t('money.common.account'),
+      cell: (a) => <bdi>{a.account_name}</bdi>,
+    },
+    {
+      id: 'note',
+      header: t('money.common.note'),
+      hideOnPhone: true,
+      cell: (a) => (a.note ? <bdi>{a.note}</bdi> : '—'),
+    },
+    {
+      id: 'amount',
+      header: t('money.common.amount'),
+      numeric: true,
+      cell: (a) => <Mny paisa={a.amount} />,
+    },
+  ];
+  const total = (q.data?.balances ?? []).reduce((n, b) => n + b.outstanding, 0);
   return (
     <>
       <MoneyErrorNote error={q.error} />
-      {q.data && q.data.balances.length === 0 && (
-        <p className="text-muted-foreground">{t('money.advance.empty')}</p>
-      )}
-      {q.data && q.data.balances.length > 0 && (
-        <div className="overflow-x-auto">
-          <Table id="advance-balances">
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('money.common.staff')}</TableHead>
-                <TableHead className="text-end">{t('money.advance.advanced')}</TableHead>
-                <TableHead className="text-end">{t('money.advance.recovered')}</TableHead>
-                <TableHead className="text-end">{t('money.advance.outstanding')}</TableHead>
-                <TableHead>{t('money.advance.last')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {q.data.balances.map((b) => (
-                <TableRow key={b.staff_id} data-staff={b.staff_id}>
-                  <TableCell>
-                    <bdi>{b.staff_name}</bdi>
-                  </TableCell>
-                  <TableCell className="text-end">
-                    <Money paisa={b.advanced} />
-                  </TableCell>
-                  <TableCell className="text-end">
-                    <Money paisa={b.recovered} />
-                  </TableCell>
-                  <TableCell className="text-end font-semibold">
-                    <Money paisa={b.outstanding} />
-                  </TableCell>
-                  <TableCell>
-                    <bdi className="num">{b.last_advance ?? '—'}</bdi>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <Panel
+        id="advance-balances-panel"
+        title={t('money.advance.outstanding')}
+        action={
+          q.data && q.data.balances.length > 0 ? (
+            <span id="advance-total" className="text-sm font-semibold">
+              <Mny paisa={total} />
+            </span>
+          ) : undefined
+        }
+      >
+        <DataTable
+          id="advance-balances"
+          caption={t('money.advance.outstanding')}
+          columns={balances}
+          rows={q.data?.balances}
+          rowKey={(b) => b.staff_id}
+          loading={q.isPending}
+          rowActions={
+            onGive
+              ? (b) => (
+                  <RowMenu
+                    className="print:hidden"
+                    label={`${t('shell.rowMenu')}: ${b.staff_name}`}
+                    actions={[
+                      {
+                        id: `advance-give-${b.staff_id}`,
+                        label: t('money.advance.add'),
+                        icon: HandCoins,
+                        onSelect: () => onGive(b.staff_id),
+                      },
+                    ]}
+                  />
+                )
+              : undefined
+          }
+          empty={<EmptyState icon={HandCoins} title={t('money.advance.empty')} />}
+        />
+      </Panel>
       {q.data && q.data.advances.length > 0 && (
-        <>
-          <h2 className="font-semibold">{t('money.advance.history')}</h2>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('money.common.date')}</TableHead>
-                  <TableHead>{t('money.common.staff')}</TableHead>
-                  <TableHead>{t('money.common.account')}</TableHead>
-                  <TableHead>{t('money.common.note')}</TableHead>
-                  <TableHead className="text-end">{t('money.common.amount')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {q.data.advances.map((a) => (
-                  <TableRow key={a.id}>
-                    <TableCell>
-                      <bdi className="num">{a.date}</bdi>
-                    </TableCell>
-                    <TableCell>
-                      <bdi>{a.staff_name}</bdi>
-                    </TableCell>
-                    <TableCell>
-                      <bdi>{a.account_name}</bdi>
-                    </TableCell>
-                    <TableCell>
-                      <bdi>{a.note ?? ''}</bdi>
-                    </TableCell>
-                    <TableCell className="text-end">
-                      <Money paisa={a.amount} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </>
+        <Panel title={t('money.advance.history')}>
+          <DataTable
+            id="advance-history"
+            caption={t('money.advance.history')}
+            columns={given}
+            rows={q.data.advances}
+            rowKey={(a) => a.id}
+          />
+        </Panel>
       )}
     </>
   );
@@ -278,32 +314,38 @@ export function AdvanceTables() {
 export function AdvancesPage() {
   const { t } = useTranslation();
   const roles = useRoles();
-  const [adding, setAdding] = useState(false);
+  // `null` closed; '' open with no one chosen; a staff id when opened from a row.
+  const [adding, setAdding] = useState<string | null>(null);
+  const pay = canPaySalary(roles);
   return (
-    <section className="flex max-w-4xl flex-col gap-4">
-      <PageTitle
+    <Page>
+      <PageHeader
+        title={t('money.advance.title')}
+        subtitle={t('money.advance.hint')}
         actions={
           <>
-            {canPaySalary(roles) && (
-              <Button id="advance-add" onClick={() => setAdding(true)} className="print:hidden">
+            <ReportActions id="advances" csv="/api/advances?format=csv" />
+            <Button asChild variant="outline" className="print:hidden">
+              <Link to="/salary">{t('money.nav.salary')}</Link>
+            </Button>
+            {pay && (
+              <Button id="advance-add" onClick={() => setAdding('')} className="print:hidden">
                 <Plus aria-hidden />
                 {t('money.advance.add')}
               </Button>
             )}
-            <Button asChild variant="outline" className="print:hidden">
-              <Link to="/salary">{t('money.nav.salary')}</Link>
-            </Button>
           </>
         }
-      >
-        {t('money.advance.title')}
-      </PageTitle>
-      <p className="text-sm text-muted-foreground">{t('money.advance.hint')}</p>
-      <AdvanceTables />
-      <div className="flex flex-wrap gap-2">
-        <ReportActions id="advances" csv="/api/advances?format=csv" />
-      </div>
-      <AddAdvanceDialog open={adding} onOpenChange={setAdding} />
-    </section>
+      />
+      <AdvanceTables onGive={pay ? setAdding : undefined} />
+      {adding !== null && (
+        <AddAdvanceDialog
+          key={adding}
+          open
+          staffId={adding || undefined}
+          onOpenChange={(o) => !o && setAdding(null)}
+        />
+      )}
+    </Page>
   );
 }

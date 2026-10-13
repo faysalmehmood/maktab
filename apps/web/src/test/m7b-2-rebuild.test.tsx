@@ -4,6 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { initI18n, setLanguage } from '@/i18n';
 import { BillingPage } from '@/pages/fees/Billing';
 import { ConcessionRegisterPage, FeeRegisterPage } from '@/pages/fees/Reports';
+import { AdvancesPage } from '@/pages/money/Advances';
 import { group, ids, mockApi, renderAt } from './api-mock';
 import { line } from './fee-fixtures';
 
@@ -231,5 +232,37 @@ describe('billing (rebuilt)', () => {
     renderAt('/fees/billing', '/fees/billing', <BillingPage />, ['owner']);
     expect(await screen.findByText('Nothing generated for this month yet.')).toBeTruthy();
     expect(document.getElementById('billing-attention-panel')).toBeNull();
+  });
+});
+
+describe('advances (rebuilt)', () => {
+  const routes = {
+    'GET /api/advances': {
+      balances: [
+        {
+          staff_id: 'ST',
+          staff_name: 'Bilal',
+          advanced: RS(4000),
+          recovered: RS(1000),
+          outstanding: RS(3000),
+          last_advance: '2026-10-01',
+        },
+      ],
+      advances: [],
+    },
+    'GET /api/payroll/staff': {
+      staff: [{ id: 'ST', name: 'Bilal', role: 'teacher', status: 'active' }],
+    },
+    'GET /api/accounts': { accounts: [], my_drawer: null },
+  };
+
+  it('"Give advance" from a row opens the dialog with that person chosen', async () => {
+    mockApi(routes);
+    renderAt('/advances', '/advances', <AdvancesPage />, ['accountant']);
+    expect((await byId('advance-total')).textContent).toBe('PKR 3,000');
+    const menu = await openMenu('More actions: Bilal');
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Give advance' }));
+    const staff = (await byId('advance-staff')) as HTMLSelectElement;
+    await waitFor(() => expect(staff.value).toBe('ST'));
   });
 });

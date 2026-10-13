@@ -12,6 +12,7 @@ import { Link } from 'react-router';
 import { Money } from '@/components/fees/common';
 import { Field, PageTitle } from '@/components/form';
 import { AccountSelect, MoneyErrorNote, ReportActions } from '@/components/money/common';
+import { Page, PageHeader } from '@/components/page';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
@@ -685,13 +686,12 @@ export function ExpenseRegisterPage() {
 export function AdvanceRegisterPage() {
   const { t } = useTranslation();
   return (
-    <section className="flex max-w-4xl flex-col gap-4">
-      <PageTitle
+    <Page>
+      <PageHeader
+        title={t('money.reports.advances')}
         actions={<ReportActions id="advance-register" csv="/api/reports/advances?format=csv" />}
-      >
-        {t('money.reports.advances')}
-      </PageTitle>
+      />
       <AdvanceTables />
-    </section>
+    </Page>
   );
 }
