@@ -72,6 +72,7 @@ export function Tabs<V extends string>({
   onChange,
   idBase,
   className,
+  side = false,
 }: {
   label: string;
   value: V;
@@ -79,14 +80,18 @@ export function Tabs<V extends string>({
   onChange: (v: V) => void;
   idBase: string;
   className?: string;
+  /** A side list on wide screens (lg+): vertical, ↑/↓ move, the marker on the start edge. */
+  side?: boolean;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const move = (e: KeyboardEvent<HTMLDivElement>) => {
     const at = items.findIndex((i) => i.value === value);
     const rtl = getComputedStyle(e.currentTarget).direction === 'rtl';
+    const vertical = side && getComputedStyle(e.currentTarget).flexDirection === 'column';
     const step: Record<string, number> = {
-      ArrowRight: rtl ? -1 : 1,
-      ArrowLeft: rtl ? 1 : -1,
+      ...(vertical
+        ? { ArrowDown: 1, ArrowUp: -1 }
+        : { ArrowRight: rtl ? -1 : 1, ArrowLeft: rtl ? 1 : -1 }),
       Home: -at,
       End: items.length - 1 - at,
     };
@@ -104,7 +109,13 @@ export function Tabs<V extends string>({
       role="tablist"
       aria-label={label}
       onKeyDown={move}
-      className={cn('flex gap-1 overflow-x-auto border-b [scrollbar-width:none]', className)}
+      aria-orientation={side ? undefined : 'horizontal'}
+      data-side={side || undefined}
+      className={cn(
+        'flex gap-1 overflow-x-auto border-b [scrollbar-width:none]',
+        side && 'lg:flex-col lg:gap-0.5 lg:overflow-visible lg:border-b-0',
+        className,
+      )}
     >
       {items.map((it, i) => {
         const on = it.value === value;
@@ -126,6 +137,9 @@ export function Tabs<V extends string>({
               'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring',
               on &&
                 'text-brand after:absolute after:inset-x-2 after:bottom-[-1px] after:h-0.5 after:rounded-full after:bg-brand',
+              side &&
+                'lg:justify-start lg:rounded-md lg:text-start lg:hover:bg-accent lg:after:hidden',
+              side && on && 'lg:bg-brand-soft',
             )}
           >
             {it.label}
