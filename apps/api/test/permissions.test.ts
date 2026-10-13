@@ -112,6 +112,7 @@ GET    /api/subjects                             D A A A A D
 GET    /api/custom-fields                        D A A A A D
 PUT    /api/school                               D A A D D D
 POST   /api/school/complete-setup                D A D D D D
+GET    /api/home/first-week                      D A D D D D
 POST   /api/school/logo                          D A A D D D
 POST   /api/sessions                             D A A D D D
 PATCH  /api/sessions/:id                         D A A D D D

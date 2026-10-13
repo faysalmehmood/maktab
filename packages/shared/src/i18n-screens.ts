@@ -6,6 +6,25 @@
  */
 
 export const screensEn = {
+  home: {
+    msg: {
+      queued: 'Message waiting',
+      sent: 'Message sent',
+      skipped: 'Message skipped',
+      failed: 'Message failed',
+      none: 'No message',
+    },
+    firstWeek: 'Your first week',
+    firstWeekDone: '{{done}} of {{total}} done',
+    stepDone: 'Done',
+    steps: {
+      setup: 'Finish setting up the school',
+      admission: 'Admit the first student',
+      fees: 'Bill the first month of fees',
+      register: 'Take the first attendance register',
+      message: 'Send the first message to a family',
+    },
+  },
   att: {
     progress: '{{done}} of {{total}} registers taken',
     progressLabel: 'Registers taken',

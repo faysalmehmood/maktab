@@ -637,6 +637,8 @@ describe('reads', () => {
       ['Ali', '923001234567'],
       ['Bilal', '923017654321'],
     ]);
+    // Each absentee carries its family (the home matches the family's absence message to it).
+    expect(d.body.absentees.find((a) => a.name === 'Ali')?.family_id).toBe(s.ali.family_id);
     expect(d.body.queued_absence_messages).toBe(2); // Khan on WhatsApp, Ahmed to call
     const acct = await signedInAs(s.db, ['accountant']);
     expect((await client(s.request, acct.cookie)('GET', '/api/dashboard/today')).status).toBe(403);

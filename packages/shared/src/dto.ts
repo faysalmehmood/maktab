@@ -292,3 +292,12 @@ export type ImportCommitResult = ImportReport & {
   /** Rows of the file after this chunk (`total` − `offset` − chunk rows); 0 = the run is done. */
   remaining: number;
 };
+
+/** GET /api/home/first-week: the owner's first steps, each done or not (M7b-2 home checklist). */
+export type FirstWeekDto = {
+  setup: boolean;
+  admission: boolean;
+  fees: boolean;
+  register: boolean;
+  message: boolean;
+};

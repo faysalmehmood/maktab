@@ -265,6 +265,8 @@ export type MessageDto = {
 
 export type AbsenteeDto = {
   student_id: string;
+  /** The family the absence message goes to (home: message state per family, M7b-2). */
+  family_id: string;
   name: string;
   grp_id: string;
   grp_name: string;

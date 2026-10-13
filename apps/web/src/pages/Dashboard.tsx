@@ -1,6 +1,19 @@
-import { type CashSessionDto, formatPkPhone } from '@maktab/shared';
+import {
+  type CashSessionDto,
+  type FirstWeekDto,
+  formatPkPhone,
+  type MessageListDto,
+} from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarCheck, CircleAlert, MessageSquareText, RotateCw, Wallet } from 'lucide-react';
+import {
+  CalendarCheck,
+  CheckCircle2,
+  Circle,
+  CircleAlert,
+  MessageSquareText,
+  RotateCw,
+  Wallet,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -22,6 +35,7 @@ import {
   type Tone,
 } from '@/components/page';
 import { Button } from '@/components/ui/button';
+import '@/i18n/screens';
 import { getJson, sendJson, useMe } from '@/lib/api';
 import {
   canCorrect,
@@ -36,7 +50,7 @@ import { canCollect, canGenerate, canReadMoney, canUseCash, karachiToday } from 
 import { useOnline } from '@/lib/media';
 import { canReadMessages, useMessageCounts } from '@/lib/messages';
 import { useSchool } from '@/lib/queries';
-import { useRoles } from '@/lib/roles';
+import { canManageRoles, useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 
 /** Hour of day on the school clock (Asia/Karachi, UTC+5, no DST). */
@@ -494,7 +508,25 @@ function NeedsAttention() {
 /** Absent today, with the family's phone (office). */
 function AbsentPanel() {
   const { t } = useTranslation();
+  const roles = useRoles();
   const d = useDashboardToday(true).data;
+  // Each absent family's message state (UI plan §5.5 Home), from today's absence rows in the
+  // caller's message scope; nothing is shown to a role that cannot read messages.
+  const seesMessages = canReadMessages(roles);
+  const msgs = useQuery({
+    queryKey: ['messages', 'absence-today', d?.date],
+    queryFn: () =>
+      getJson<MessageListDto>(`/api/messages?template_key=absence&date=${d?.date ?? ''}`),
+    enabled: seesMessages && !!d?.date && d.absentees.length > 0,
+  });
+  const stateOf = (familyId: string): 'queued' | 'sent' | 'skipped' | 'failed' | null => {
+    const rows = msgs.data?.items.filter((m) => m.family_id === familyId) ?? [];
+    if (!rows.length) return null;
+    if (rows.some((m) => m.status === 'queued')) return 'queued';
+    if (rows.some((m) => m.status === 'sent' || m.status === 'delivered' || m.status === 'read'))
+      return 'sent';
+    return rows.some((m) => m.status === 'failed') ? 'failed' : 'skipped';
+  };
   if (!d || d.day_off) return null;
   return (
     <Panel
@@ -527,16 +559,91 @@ function AbsentPanel() {
                 </>
               }
               trailing={
-                a.guardian_phone && (
-                  <bdi className="num text-sm text-muted-foreground">
-                    {formatPkPhone(a.guardian_phone)}
-                  </bdi>
-                )
+                <>
+                  {a.guardian_phone && (
+                    <bdi className="num hidden text-sm text-muted-foreground sm:inline">
+                      {formatPkPhone(a.guardian_phone)}
+                    </bdi>
+                  )}
+                  {seesMessages && msgs.data && <MessageState state={stateOf(a.family_id)} />}
+                </>
               }
             />
           ))}
         </RowList>
       )}
+    </Panel>
+  );
+}
+
+/** One family's absence message today: waiting, sent, skipped, failed, or none queued. */
+function MessageState({ state }: { state: 'queued' | 'sent' | 'skipped' | 'failed' | null }) {
+  const { t } = useTranslation();
+  const tone =
+    state === 'sent' ? 'ok' : state === 'queued' ? 'warn' : state === 'failed' ? 'bad' : 'neutral';
+  return (
+    <span data-message-state={state ?? 'none'}>
+      <StatusBadge tone={tone}>{t(`screens.home.msg.${state ?? 'none'}`)}</StatusBadge>
+    </span>
+  );
+}
+
+/**
+ * The owner's first week (fresh install): setup, first admission, first fee month, first register,
+ * first message. Each open step links to where it is done; the card goes away once all are done
+ * (and never shows while loading or after a failed load, so it cannot nag on a bad connection).
+ */
+function FirstWeekCard() {
+  const { t } = useTranslation();
+  const q = useQuery({
+    queryKey: ['first-week'],
+    queryFn: () => getJson<FirstWeekDto>('/api/home/first-week'),
+    staleTime: 60_000,
+  });
+  const d = q.data;
+  if (!d) return null;
+  const steps: { id: keyof FirstWeekDto; to: string }[] = [
+    { id: 'setup', to: '/setup' },
+    { id: 'admission', to: '/students/new' },
+    { id: 'fees', to: '/fees/billing' },
+    { id: 'register', to: '/attendance' },
+    { id: 'message', to: '/messages' },
+  ];
+  const done = steps.filter((s) => d[s.id]).length;
+  if (done === steps.length) return null;
+  return (
+    <Panel
+      id="home-first-week"
+      title={t('screens.home.firstWeek')}
+      action={
+        <span className="text-meta text-muted-foreground">
+          {t('screens.home.firstWeekDone', { done, total: steps.length })}
+        </span>
+      }
+    >
+      <RowList>
+        {steps.map((s) =>
+          d[s.id] ? (
+            <ListRow
+              key={s.id}
+              leading={<CheckCircle2 className="size-5 shrink-0 text-ok" aria-hidden />}
+              title={
+                <span className="text-muted-foreground line-through">
+                  {t(`screens.home.steps.${s.id}`)}
+                </span>
+              }
+              trailing={<span className="sr-only">{t('screens.home.stepDone')}</span>}
+            />
+          ) : (
+            <ListRow
+              key={s.id}
+              to={s.to}
+              leading={<Circle className="size-5 shrink-0 text-muted-foreground" aria-hidden />}
+              title={t(`screens.home.steps.${s.id}`)}
+            />
+          ),
+        )}
+      </RowList>
     </Panel>
   );
 }
@@ -567,6 +674,7 @@ function OfficeHome() {
         {money && <CollectedCard />}
         {messages && <MessagesCard />}
       </div>
+      {canManageRoles(roles) && <FirstWeekCard />}
       <NeedsAttention />
       {money && <MonthTiles />}
       {attendance && <AbsentPanel />}

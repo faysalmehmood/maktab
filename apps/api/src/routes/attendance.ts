@@ -522,7 +522,7 @@ export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const ids = [...new Set(items.map((i) => i.grp_id))];
       const absentees = ids.length
         ? await db.all<AbsenteeDto & { programme_name: string }>(
-            sql`SELECT st.id AS student_id, st.name, g.id AS grp_id, g.name AS grp_name,
+            sql`SELECT st.id AS student_id, st.family_id, st.name, g.id AS grp_id, g.name AS grp_name,
                   p.name AS programme_name, m.status,
                   gd.name AS guardian_name, COALESCE(gd.whatsapp, gd.phone) AS guardian_phone
                 FROM current_register c

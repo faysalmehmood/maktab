@@ -2,6 +2,7 @@ import { customField, programme, school, session, subject, term } from '@maktab/
 import {
   customFieldInputSchema,
   customFieldPatchSchema,
+  type FirstWeekDto,
   MAX_LOGO_BYTES,
   newId,
   programmeInputSchema,
@@ -180,6 +181,33 @@ export function catalogRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       }
       const row = await currentSchool(c);
       return c.json({ school: row ? schoolDto(row) : null });
+    },
+  );
+
+  /**
+   * The owner's first-week checklist on the home (M7b-2): has each first step happened yet? Only
+   * yes/no facts, no counts or names; the card hides itself once every answer is yes.
+   */
+  defineRoute(
+    app,
+    table,
+    { method: 'GET', path: '/api/home/first-week', access: requires('role', 'manage') },
+    async (c) => {
+      const db = c.get('db');
+      const [r] = await db.all<Record<keyof FirstWeekDto, number>>(sql`SELECT
+          EXISTS(SELECT 1 FROM school WHERE setup_completed_at IS NOT NULL) AS setup,
+          EXISTS(SELECT 1 FROM student) AS admission,
+          EXISTS(SELECT 1 FROM charge) AS fees,
+          EXISTS(SELECT 1 FROM att_register) AS register,
+          EXISTS(SELECT 1 FROM message WHERE status IN ('sent', 'delivered', 'read')) AS message`);
+      const body: FirstWeekDto = {
+        setup: !!r?.setup,
+        admission: !!r?.admission,
+        fees: !!r?.fees,
+        register: !!r?.register,
+        message: !!r?.message,
+      };
+      return c.json(body);
     },
   );
 

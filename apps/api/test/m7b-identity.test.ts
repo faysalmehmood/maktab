@@ -98,3 +98,27 @@ describe('M7b school identity', () => {
     expect((await f.request('/api/identity/logo')).status).toBe(404);
   });
 });
+
+describe('M7b-2 first-week checklist', () => {
+  it('owner only; yes/no facts that turn true as the first steps happen', async () => {
+    const f = await setup();
+    const get = async (cookie: string) => {
+      const res = await f.request('/api/home/first-week', { headers: { cookie } });
+      return { status: res.status, body: (await res.json()) as Record<string, boolean> };
+    };
+    const fresh = await get(f.owner.cookie);
+    expect(fresh.status).toBe(200);
+    expect(fresh.body).toEqual({
+      setup: false,
+      admission: false,
+      fees: false,
+      register: false,
+      message: false,
+    });
+    await f.put({ name: 'Global Science Academy', short_name: 'GSA' });
+    await f.db.run(sql`UPDATE school SET setup_completed_at = '2026-10-13T00:00:00Z'`);
+    expect((await get(f.owner.cookie)).body).toMatchObject({ setup: true, admission: false });
+    const admin = await signedInAs(f.db, ['admin']);
+    expect((await get(admin.cookie)).status).toBe(403);
+  });
+});

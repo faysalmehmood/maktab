@@ -9,6 +9,7 @@ import { RegisterPage } from '@/pages/attendance/Register';
 import { CounterPage } from '@/pages/fees/Counter';
 import { ReceiptPage } from '@/pages/fees/Receipt';
 import { GroupDetail, GroupsPage } from '@/pages/Groups';
+import { Dashboard } from '@/pages/Dashboard';
 import { StudentDetail } from '@/pages/students/StudentDetail';
 import { group, ids, meAs, mockApi, renderAt, session } from './api-mock';
 import { accounts, fam, familyStatement, receiptId, receiptPrint } from './fee-fixtures';
@@ -359,5 +360,64 @@ describe('classes (M7b-2)', () => {
     expect(screen.getByRole('link', { name: 'Take attendance' }).getAttribute('href')).toContain(
       `/attendance/register/${ids.group}?date=`,
     );
+  });
+});
+
+describe('home additions (M7b-2)', () => {
+  const today = {
+    date: '2026-10-13',
+    day_off: null,
+    registers: { total: 1, taken: 1, not_taken: [] },
+    absentees: [
+      { student_id: 'S1', family_id: 'F1', name: 'Ali', grp_id: 'G1', grp_name: 'Class 5 A', status: 'A', guardian_name: 'Raza', guardian_phone: null },
+      { student_id: 'S2', family_id: 'F2', name: 'Sara', grp_id: 'G1', grp_name: 'Class 5 A', status: 'A', guardian_name: 'Khan', guardian_phone: null },
+    ],
+    queued_absence_messages: 1,
+    billing_alerts: 0,
+  };
+  const msg = (id: string, family_id: string, status: string) => ({
+    id,
+    family_id,
+    template_key: 'absence',
+    status,
+    lang: 'en',
+    preview: '',
+    created_at: '2026-10-13T04:00:00Z',
+  });
+  const routes = (firstWeek: Record<string, boolean>) => ({
+    'GET /api/school': { school: null },
+    'GET /api/dashboard/today': today,
+    'GET /api/messages/counts': { queued: 1, sent_today: 1, skipped_today: 0, by_template: {} },
+    'GET /api/messages': { items: [msg('M1', 'F1', 'sent'), msg('M2', 'F2', 'queued')], total: 2, counts: {} },
+    'GET /api/home/first-week': firstWeek,
+  });
+
+  it('absent today shows each family\'s message state; the first-week card lists what is left', async () => {
+    const api = mockApi(
+      routes({ setup: true, admission: true, fees: false, register: true, message: false }),
+    );
+    renderAt('/', '/', <Dashboard />, ['owner']);
+    const card = await waitFor(() => {
+      const el = document.getElementById('home-first-week');
+      if (!el) throw new Error('no card yet');
+      return el;
+    });
+    expect(within(card).getByText('3 of 5 done')).toBeTruthy();
+    expect(within(card).getByRole('link', { name: 'Bill the first month of fees' }).getAttribute('href')).toBe('/fees/billing');
+    expect(within(card).queryByRole('link', { name: 'Admit the first student' })).toBeNull();
+    const absent = document.getElementById('home-absent') as HTMLElement;
+    await waitFor(() => expect(absent.querySelectorAll('[data-message-state]')).toHaveLength(2));
+    const states = [...absent.querySelectorAll<HTMLElement>('[data-message-state]')].map(
+      (e) => e.dataset.messageState,
+    );
+    expect(states).toEqual(['sent', 'queued']);
+    expect(api.calls.some((c) => c.path === '/api/messages?template_key=absence&date=2026-10-13')).toBe(true);
+  });
+
+  it('the checklist disappears once every first step is done', async () => {
+    mockApi(routes({ setup: true, admission: true, fees: true, register: true, message: true }));
+    renderAt('/', '/', <Dashboard />, ['owner']);
+    await waitFor(() => expect(document.getElementById('home-absent')).toBeTruthy());
+    expect(document.getElementById('home-first-week')).toBeNull();
   });
 });

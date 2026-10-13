@@ -1417,6 +1417,25 @@ export const homeUr: Shape<typeof homeEn> = {
 
 /** M7b part 2 screens (merged as `screens`; English is lazy, see i18n-screens.ts). */
 export const screensUr: Shape<typeof screensEn> = {
+  home: {
+    msg: {
+      queued: 'پیغام منتظر',
+      sent: 'پیغام بھیج دیا',
+      skipped: 'پیغام چھوڑ دیا',
+      failed: 'پیغام ناکام',
+      none: 'کوئی پیغام نہیں',
+    },
+    firstWeek: 'آپ کا پہلا ہفتہ',
+    firstWeekDone: '{{total}} میں سے {{done}} مکمل',
+    stepDone: 'مکمل',
+    steps: {
+      setup: 'اسکول کی ترتیب مکمل کریں',
+      admission: 'پہلے طالب علم کا داخلہ کریں',
+      fees: 'پہلے مہینے کی فیس بنائیں',
+      register: 'پہلا حاضری رجسٹر لیں',
+      message: 'کسی خاندان کو پہلا پیغام بھیجیں',
+    },
+  },
   att: {
     progress: '{{total}} میں سے {{done}} رجسٹر ہو گئے',
     progressLabel: 'رجسٹر جو ہو گئے',
