@@ -3,7 +3,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { type AppDb, atomic, rawStatement } from '../src/client';
 import { failedChunkStatements, karachiToday, runBatch } from '../src/ledger';
 import { createTestDb } from '../src/node';
-import { applyRetention, evaluateAlarms, runDailyOps } from '../src/ops/alarms';
+import {
+  applyRetention,
+  backupStale,
+  evaluateAlarms,
+  RETENTION_BATCH,
+  RETENTION_MAX_BATCHES,
+  runDailyOps,
+} from '../src/ops/alarms';
 
 // M6: the alarms panel / daily pass and data retention, on fixtures with one of each alarm.
 
@@ -51,6 +58,7 @@ describe('alarms', () => {
       'messages_failed',
       'gate_lockouts',
       'billing_attention',
+      'backup_stale',
     ]);
   });
 
@@ -150,7 +158,7 @@ describe('daily pass', () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.total).toBe(1);
-    expect(JSON.parse(rows[0]?.alarms ?? '[]')).toHaveLength(5);
+    expect(JSON.parse(rows[0]?.alarms ?? '[]')).toHaveLength(6);
     // The next Karachi day gets its own row; a quiet day is recorded with total 0.
     await run(
       db,
@@ -179,5 +187,100 @@ describe('retention', () => {
     expect(await all(db, sql`SELECT id FROM export_job`)).toEqual([{ id: 'J2' }]);
     // Nothing left to do: a second pass deletes nothing.
     expect(await applyRetention(db, NOW)).toEqual({ access_log: 0, export_jobs: 0 });
+  });
+
+  it('works in batches up to the cap, and stops when the time budget is spent', async () => {
+    const old = RETENTION_BATCH * RETENTION_MAX_BATCHES + 50;
+    await run(
+      db,
+      `INSERT INTO parent_link (id, guardian_id, token_hash) VALUES ('L1', 'G1', 'h1')`,
+    );
+    await run(
+      db,
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ${old})
+       INSERT INTO parent_link_access (id, link_id, at) SELECT 'A' || i, 'L1', '${iso(NOW - 400 * DAY)}' FROM n`,
+    );
+    // The cap: 8 batches of 200 in one pass, the rest the next day.
+    expect(await applyRetention(db, NOW)).toEqual({
+      access_log: RETENTION_BATCH * RETENTION_MAX_BATCHES,
+      export_jobs: 0,
+    });
+    // A spent budget: no statement at all.
+    let t = 0;
+    expect(await applyRetention(db, NOW, { clock: () => (t += 1000), budgetMs: 500 })).toEqual({
+      access_log: 0,
+      export_jobs: 0,
+    });
+    // One batch fits the budget, then time is up.
+    t = 0;
+    await run(
+      db,
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 300)
+       INSERT INTO parent_link_access (id, link_id, at) SELECT 'B' || i, 'L1', '${iso(NOW - 400 * DAY)}' FROM n`,
+    );
+    expect(
+      (await applyRetention(db, NOW, { clock: () => (t += 600), budgetMs: 1000 })).access_log,
+    ).toBe(RETENTION_BATCH);
+    expect(await applyRetention(db, NOW)).toEqual({
+      access_log: 50 + 300 - RETENTION_BATCH,
+      export_jobs: 0,
+    });
+  });
+});
+
+describe('backup_stale alarm', () => {
+  const HOUR = 3_600_000;
+  const nightly = (id: string, status: string, at: number, enabled: boolean | null = true) =>
+    `INSERT INTO backup_run (id, kind, status, finished_at, details) VALUES ('${id}', 'nightly', '${status}',
+      '${iso(at)}', ${enabled === null ? 'NULL' : `'${JSON.stringify({ backup_enabled: enabled })}'`})`;
+
+  it('is silent before backups are set up (no run at all)', async () => {
+    expect(await backupStale(db, NOW)).toMatchObject({ count: 0, since: null });
+  });
+
+  it('is silent while no run ever succeeded (a failing first setup)', async () => {
+    await run(db, nightly('R1', 'failed', NOW - 100 * HOUR));
+    expect((await backupStale(db, NOW)).count).toBe(0);
+  });
+
+  it('is silent when the latest report does not say backup_enabled', async () => {
+    await run(db, nightly('R1', 'ok', NOW - 100 * HOUR, null));
+    expect((await backupStale(db, NOW)).count).toBe(0);
+    await run(db, nightly('R2', 'ok', NOW - 90 * HOUR, false));
+    expect((await backupStale(db, NOW)).count).toBe(0);
+  });
+
+  it('is quiet with a good run inside 36 hours (ok or partial)', async () => {
+    await run(db, nightly('R1', 'partial', NOW - 20 * HOUR));
+    expect(await backupStale(db, NOW)).toMatchObject({
+      count: 0,
+      since: iso(NOW - 20 * HOUR),
+    });
+  });
+
+  it('fires when the last good run is older than 36 hours', async () => {
+    await run(db, nightly('R1', 'ok', NOW - 37 * HOUR));
+    const a = await backupStale(db, NOW);
+    expect(a).toMatchObject({ kind: 'backup_stale', count: 1, since: iso(NOW - 37 * HOUR) });
+    expect(a.sample[0]).toMatchObject({ id: 'R1' });
+    expect(a.sample[0]?.label).toMatch(/^last ok /);
+  });
+
+  it('fires when the latest nightly failed, even right after a good one', async () => {
+    await run(db, nightly('R1', 'ok', NOW - 25 * HOUR), nightly('R2', 'failed', NOW - HOUR));
+    const a = await backupStale(db, NOW);
+    expect(a).toMatchObject({ count: 1, since: iso(NOW - 25 * HOUR) });
+    expect(a.sample[0]).toMatchObject({ id: 'R2' });
+    expect(a.sample[0]?.label).toMatch(/^failed /);
+  });
+
+  it('drills never count as nightly runs; it shows in the panel and the daily pass', async () => {
+    await run(
+      db,
+      nightly('R1', 'ok', NOW - 50 * HOUR),
+      `INSERT INTO backup_run (id, kind, status, finished_at) VALUES ('D1', 'drill', 'ok', '${iso(NOW - HOUR)}')`,
+    );
+    expect((await counts(db)).backup_stale).toBe(1);
+    expect(await runDailyOps(db, { now: NOW })).toMatchObject({ total: 1 });
   });
 });

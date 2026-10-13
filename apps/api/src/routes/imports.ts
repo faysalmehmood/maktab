@@ -29,7 +29,7 @@ import {
   parseYesNo,
   toCsvLine,
 } from '@maktab/shared';
-import { and, asc, eq, inArray, ne, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, type SQL, sql } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import type { AppEnv } from '../env';
 import { b64urlEncode, utf8 } from '../lib/b64';
@@ -105,7 +105,7 @@ async function readCsvText(c: Context<AppEnv>): Promise<{ text: string; fileName
   return { text, fileName: null };
 }
 
-/** Group lookup by "name" or "programme name" (any of ' ', '-', '/' between) in open groups. */
+/** Group lookup by "name" or "programme name" (any of ' ', '-', '/' between) in open, unarchived groups. */
 async function groupIndex(db: AppDb) {
   const rows = await db
     .select({
@@ -119,7 +119,7 @@ async function groupIndex(db: AppDb) {
     .from(grp)
     .innerJoin(programme, eq(programme.id, grp.programmeId))
     .leftJoin(session, eq(session.id, grp.sessionId))
-    .where(ne(grp.status, 'closed'));
+    .where(and(ne(grp.status, 'closed'), isNull(grp.archivedAt)));
   // Groups of other (past/future) sessions only match when nothing in the current one does.
   const current = rows.filter((r) => r.isCurrent || r.sessionStart === null);
   const pool = current.length ? current : rows;

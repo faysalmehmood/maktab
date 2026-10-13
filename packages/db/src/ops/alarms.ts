@@ -6,7 +6,7 @@ import { karachiToday, periodOf } from '../ledger/util';
 
 /**
  * The alarms panel and the daily alarm pass (M6, PLAN §15 "M6 must remember"). Each check is one
- * bounded read; together ≈ 8 queries, so GET /api/alarms and the cron stay inside the free plan's
+ * bounded read; together ≈ 10 queries, so GET /api/alarms and the cron stay inside the free plan's
  * per-request budget. Samples carry ids and codes only, never names or phone numbers.
  */
 const SAMPLE = 5;
@@ -77,7 +77,50 @@ export async function evaluateAlarms(db: AppDb, nowMs = Date.now()): Promise<Ala
       .map((f) => ({ id: f.grp_id, label: `${f.error_code ?? 'error'} × ${f.fail_streak}` })),
   });
 
+  // 6. Nightly backup stale or failing.
+  alarms.push(await backupStale(db, nowMs));
+
   return { at: iso(nowMs), total: alarms.filter((a) => a.count > 0).length, alarms };
+}
+
+/**
+ * backup_stale (two reads): fires when no nightly backup finished `ok`/`partial` within the last
+ * 36 hours, or the latest nightly report is `failed`. Grace, so a school that has not set backups up
+ * yet never sees it: silent until a successful nightly run exists at all AND the latest nightly report
+ * says `details.backup_enabled = true` (nightly-backup.yml sends it on every run; a run only happens
+ * while the repository variable BACKUP_ENABLED is true).
+ */
+export async function backupStale(db: AppDb, nowMs = Date.now()): Promise<AlarmDto> {
+  const quiet: AlarmDto = { kind: 'backup_stale', count: 0, sample: [], since: null };
+  const [good] = await db.all<{ id: string; finished_at: string }>(sql`
+    SELECT id, finished_at FROM backup_run WHERE kind = 'nightly' AND status IN ('ok', 'partial')
+    ORDER BY finished_at DESC, rowid DESC LIMIT 1`);
+  if (!good) return quiet;
+  const [latest] = await db.all<{
+    id: string;
+    status: string;
+    finished_at: string;
+    enabled: number | null;
+  }>(sql`
+    SELECT id, status, finished_at,
+      CASE WHEN json_valid(details) THEN json_extract(details, '$.backup_enabled') END AS enabled
+    FROM backup_run WHERE kind = 'nightly' ORDER BY finished_at DESC, rowid DESC LIMIT 1`);
+  if (!latest || Number(latest.enabled) !== 1) return quiet;
+  const goodAt = Date.parse(good.finished_at);
+  const stale =
+    !Number.isFinite(goodAt) || goodAt < nowMs - ALARM_RULES.backupStaleHours * 3_600_000;
+  const failed = latest.status === 'failed';
+  if (!stale && !failed) return { ...quiet, since: good.finished_at };
+  return {
+    kind: 'backup_stale',
+    count: 1,
+    since: good.finished_at,
+    sample: [
+      failed
+        ? { id: latest.id, label: `failed ${latest.finished_at.slice(0, 16)}` }
+        : { id: good.id, label: `last ok ${good.finished_at.slice(0, 16)}` },
+    ],
+  };
 }
 
 export type DailyOpsReport =
@@ -96,7 +139,7 @@ export const EXPORT_JOB_KEEP_DAYS = 30;
  * when nothing fired), checked first and inserted with ON CONFLICT DO NOTHING, so a repeated or
  * concurrent tick does nothing twice. If D1 is still busy (error 7500) the pass throws and the next
  * tick tries again. Also applies data retention: parent-link access log rows older than
- * `school.access_log_days`, export jobs older than 30 days (each capped at 1,000 rows a day).
+ * `school.access_log_days`, export jobs older than 30 days (batches of 200 within a time budget).
  */
 export async function runDailyOps(db: AppDb, o: { now?: number } = {}): Promise<DailyOpsReport> {
   const nowMs = o.now ?? Date.now();
@@ -113,26 +156,59 @@ export async function runDailyOps(db: AppDb, o: { now?: number } = {}): Promise<
   return { day, total: result.total, cleanup };
 }
 
+/** Retention deletes this many rows per statement, and stops at either bound below. */
+export const RETENTION_BATCH = 200;
+/** Statements per table per pass: keeps the cron inside the 50-subrequest budget with the alarms. */
+export const RETENTION_MAX_BATCHES = 8;
+/** Wall-clock budget for the whole retention pass; what is left waits for tomorrow's pass. */
+export const RETENTION_BUDGET_MS = 10_000;
+
+/**
+ * Deletes in batches of RETENTION_BATCH (`DELETE … RETURNING`, so the count is exact on D1 and on
+ * better-sqlite3) until a batch comes back short, the batch cap is hit or the time budget runs out.
+ */
+async function deleteInBatches(
+  db: AppDb,
+  batch: () => ReturnType<typeof sql>,
+  deadline: number,
+  clock: () => number,
+): Promise<number> {
+  let total = 0;
+  for (let i = 0; i < RETENTION_MAX_BATCHES && clock() < deadline; i++) {
+    const rows = await db.all<{ id: string }>(batch());
+    total += rows.length;
+    if (rows.length < RETENTION_BATCH) break;
+  }
+  return total;
+}
+
 /** Data retention (Settings → Backup): deletes what has outlived its keep period. */
 export async function applyRetention(
   db: AppDb,
   nowMs = Date.now(),
+  o: { clock?: () => number; budgetMs?: number } = {},
 ): Promise<{ access_log: number; export_jobs: number }> {
+  const clock = o.clock ?? Date.now;
+  const deadline = clock() + (o.budgetMs ?? RETENTION_BUDGET_MS);
   const [school] = await db.all<{ access_log_days: number }>(
     sql`SELECT access_log_days FROM school ORDER BY created_at LIMIT 1`,
   );
   const keep = Number(school?.access_log_days ?? 90);
   const logCutoff = iso(nowMs - keep * 86_400_000);
   const jobCutoff = iso(nowMs - EXPORT_JOB_KEEP_DAYS * 86_400_000);
-  const [a] = await db.all<{ n: number }>(sql`
-    SELECT count(*) AS n FROM (SELECT 1 FROM parent_link_access WHERE at < ${logCutoff} LIMIT 1000)`);
-  if (Number(a?.n ?? 0) > 0)
-    await db.run(sql`DELETE FROM parent_link_access WHERE id IN
-      (SELECT id FROM parent_link_access WHERE at < ${logCutoff} LIMIT 1000)`);
-  const [j] = await db.all<{ n: number }>(sql`
-    SELECT count(*) AS n FROM (SELECT 1 FROM export_job WHERE created_at < ${jobCutoff} LIMIT 1000)`);
-  if (Number(j?.n ?? 0) > 0)
-    await db.run(sql`DELETE FROM export_job WHERE id IN
-      (SELECT id FROM export_job WHERE created_at < ${jobCutoff} LIMIT 1000)`);
-  return { access_log: Number(a?.n ?? 0), export_jobs: Number(j?.n ?? 0) };
+  const access_log = await deleteInBatches(
+    db,
+    () => sql`DELETE FROM parent_link_access WHERE id IN
+      (SELECT id FROM parent_link_access WHERE at < ${logCutoff} LIMIT ${RETENTION_BATCH}) RETURNING id`,
+    deadline,
+    clock,
+  );
+  const export_jobs = await deleteInBatches(
+    db,
+    () => sql`DELETE FROM export_job WHERE id IN
+      (SELECT id FROM export_job WHERE created_at < ${jobCutoff} LIMIT ${RETENTION_BATCH}) RETURNING id`,
+    deadline,
+    clock,
+  );
+  return { access_log, export_jobs };
 }

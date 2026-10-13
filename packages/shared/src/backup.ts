@@ -8,10 +8,15 @@ import { z } from 'zod';
 // ---- Download everything ----------------------------------------------------------------------
 
 /**
- * Never exported: sign-in sessions (live credentials) and the parent-link access log (hashed IPs and
- * user agents of parents' phones). Everything else is the school's own data and goes in the ZIP.
+ * Never exported: sign-in sessions (live credentials), the parent-link access log (hashed IPs and
+ * user agents of parents' phones) and D1's migration bookkeeping (`d1_migrations`, not school data).
+ * Everything else is the school's own data and goes in the ZIP.
  */
-export const EXPORT_EXCLUDED_TABLES = ['user_session', 'parent_link_access'] as const;
+export const EXPORT_EXCLUDED_TABLES = [
+  'user_session',
+  'parent_link_access',
+  'd1_migrations',
+] as const;
 
 /**
  * Columns left out of a table's CSV. `parent_link.token_salt` is what a live link is made from (with
@@ -55,23 +60,40 @@ export type BackupRunKind = (typeof BACKUP_RUN_KINDS)[number];
 export const BACKUP_RUN_STATUSES = ['ok', 'partial', 'failed'] as const;
 export type BackupRunStatus = (typeof BACKUP_RUN_STATUSES)[number];
 
-const isoish = z.string().min(10).max(40);
+/** Bodies of POST /api/backup/runs and /api/backup/drills: refused (400) above this, never cut. */
+export const BACKUP_REPORT_MAX_BYTES = 8 * 1024;
+
+/** ISO 8601 date-time with Z or an offset ("2026-10-13T21:40:05Z"); bounded so a row stays small. */
+const isoDateTime = z.iso.datetime({ offset: true }).max(40);
+
+/** A real calendar day (YYYY-MM-DD); "2026-02-30" is refused. */
+export const isoDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((d) => {
+    const t = Date.parse(`${d}T00:00:00Z`);
+    return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === d;
+  }, 'not a calendar date');
 
 /** What the nightly and restore-drill workflows POST to /api/backup/runs (BACKUP_REPORT_TOKEN). */
-export const backupRunInputSchema = z.object({
+export const backupRunInputSchema = z.strictObject({
   kind: z.enum(['nightly', 'drill']),
   status: z.enum(BACKUP_RUN_STATUSES),
-  started_at: isoish.optional(),
-  finished_at: isoish.optional(),
-  object_key: z.string().max(300).optional(),
-  bytes: z.number().int().min(0).optional(),
+  started_at: isoDateTime.optional(),
+  finished_at: isoDateTime.optional(),
+  object_key: z
+    .string()
+    .regex(/^[A-Za-z0-9._/-]{1,300}$/)
+    .optional(),
+  /** Encrypted dump size; a school's database is megabytes, 10 GB is far past any real one. */
+  bytes: z.number().int().min(0).max(10_000_000_000).optional(),
   sha256: z
     .string()
     .regex(/^[0-9a-f]{64}$/)
     .optional(),
   targets: z
     .array(
-      z.object({
+      z.strictObject({
         name: z.string().min(1).max(40),
         ok: z.boolean(),
         detail: z.string().max(300).optional(),
@@ -79,15 +101,23 @@ export const backupRunInputSchema = z.object({
     )
     .max(10)
     .optional(),
-  details: z.record(z.string(), z.unknown()).optional(),
-  run_url: z.string().url().max(300).optional(),
+  /**
+   * Free-form facts about the run (size check, B2/Sheet outcomes). `backup_enabled: true` tells the
+   * backup_stale alarm the schedule is meant to be running (the workflow sends it on every run).
+   * Bounded by the 8 KB body limit.
+   */
+  details: z
+    .record(z.string().max(64), z.json())
+    .refine((d) => Object.keys(d).length <= 30, 'at most 30 keys')
+    .optional(),
+  run_url: z.url().max(300).optional(),
   note: z.string().max(1000).optional(),
 });
 export type BackupRunInput = z.infer<typeof backupRunInputSchema>;
 
 /** The owner's "restore drill done on <date>" record. */
-export const manualDrillSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+export const manualDrillSchema = z.strictObject({
+  date: isoDay,
   note: z.string().trim().max(1000).optional(),
 });
 
@@ -130,6 +160,7 @@ export const ALARM_KINDS = [
   'messages_failed',
   'gate_lockouts',
   'billing_attention',
+  'backup_stale',
 ] as const;
 export type AlarmKind = (typeof ALARM_KINDS)[number];
 
@@ -141,6 +172,8 @@ export const ALARM_RULES = {
   failedDays: 7,
   /** Parent-page gate lockouts counted over this many hours. */
   lockoutHours: 24,
+  /** No nightly backup finished ok/partial within this many hours (or the latest one failed). */
+  backupStaleHours: 36,
 } as const;
 
 export type AlarmDto = {
@@ -148,6 +181,8 @@ export type AlarmDto = {
   count: number;
   /** A few examples (ids and a short label) to start looking from; never personal data. */
   sample: { id: string | null; label: string }[];
+  /** backup_stale: when the last good (ok/partial) nightly backup finished. */
+  since?: string | null;
 };
 
 export type AlarmsDto = {

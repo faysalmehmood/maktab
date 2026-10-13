@@ -12,7 +12,8 @@ import { AlarmBanner } from '@/components/backup/AlarmBanner';
 import { BackupPanel } from '@/components/backup/BackupPanel';
 import { AboutPanel, RecycleBin } from '@/components/backup/DataPanel';
 import { initI18n, setLanguage } from '@/i18n';
-import { buildExport } from '@/lib/backup';
+import { ApiError } from '@/lib/api';
+import { buildExport, withRetry } from '@/lib/backup';
 import { visibleSections } from '@/pages/Settings';
 import { mockApi, renderAt } from './api-mock';
 
@@ -62,6 +63,7 @@ const alarms: AlarmsDto = {
     { kind: 'messages_failed', count: 0, sample: [] },
     { kind: 'gate_lockouts', count: 1, sample: [{ id: 'L1', label: 'parent_link' }] },
     { kind: 'billing_attention', count: 0, sample: [] },
+    { kind: 'backup_stale', count: 0, sample: [], since: null },
   ],
 };
 
@@ -158,7 +160,7 @@ describe('Download everything', () => {
     const progress: string[] = [];
     const r = await buildExport((p) => progress.push(`${p.index}/${p.total}`));
     expect(progress).toEqual(['1/3', '2/3', '3/3']);
-    const files = unzipSync(r.zip);
+    const files = unzipSync(new Uint8Array(await r.blob.arrayBuffer()));
     expect(Object.keys(files).sort()).toEqual([
       'README.txt',
       'schema.sql',
@@ -179,6 +181,94 @@ describe('Download everything', () => {
       path: '/api/backup/export/J1/finish',
       body: { rows: 3, files: 5 },
     });
+  });
+});
+
+describe('export retries', () => {
+  it('retries a failed part (network or 5xx) and still builds the ZIP', async () => {
+    let failures = 0;
+    const waits: number[] = [];
+    mockApi({
+      'POST /api/backup/export': { id: 'J2', created_at: 'x', tables: ['family'], schema: '' },
+      'GET /api/backup/export/J2/part': () => {
+        failures++;
+        if (failures === 1) throw new TypeError('Failed to fetch');
+        if (failures === 2)
+          return new Response(JSON.stringify({ error: { code: 'x', message: 'busy' } }), {
+            status: 503,
+          });
+        return { table: 'family', columns: ['id'], rows: [['F1']], next: null };
+      },
+      'POST /api/backup/export/J2/finish': { ok: true },
+    });
+    const r = await buildExport(undefined, { wait: async (ms) => void waits.push(ms) });
+    expect(waits).toEqual([1000, 2000]);
+    expect(r.rows).toBe(1);
+    const files = unzipSync(new Uint8Array(await r.blob.arrayBuffer()));
+    expect(strFromU8(files['tables/family.csv'] as Uint8Array)).toBe('\ufeffid\r\nF1\r\n');
+  });
+
+  it('gives up after 3 retries, and never retries a 4xx answer', async () => {
+    const waits: number[] = [];
+    let n = 0;
+    const down = () => {
+      n++;
+      return Promise.reject(new ApiError(502, 'http_error', 'HTTP 502'));
+    };
+    await expect(withRetry(down, { wait: async (ms) => void waits.push(ms) })).rejects.toThrow(
+      'HTTP 502',
+    );
+    expect(n).toBe(4);
+    expect(waits).toEqual([1000, 2000, 4000]);
+    n = 0;
+    const expired = () => {
+      n++;
+      return Promise.reject(new ApiError(409, 'export_expired', 'expired'));
+    };
+    await expect(withRetry(expired, { wait: async () => {} })).rejects.toThrow('expired');
+    expect(n).toBe(1);
+  });
+});
+
+describe('backup_stale alarm', () => {
+  const stale = {
+    kind: 'backup_stale' as const,
+    count: 1,
+    since: '2026-10-10T21:40:00Z',
+    sample: [{ id: 'B9', label: 'last ok 2026-10-10T21:40' }],
+  };
+
+  it('the Backup page explains it in plain words with the last good date', async () => {
+    mockApi({
+      'GET /api/backup/status': status,
+      'GET /api/alarms': { ...alarms, total: 1, alarms: [stale] },
+    });
+    renderAt('/settings', '/settings', <BackupPanel />);
+    expect(await screen.findByText('Nightly backup not running', { exact: false })).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Backups have not run since 10/10/2026; check GitHub Actions (the nightly-backup workflow) and the Cloudflare API token.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('the dashboard banner carries the same explanation', async () => {
+    mockApi({
+      'GET /api/alarms/latest': {
+        event: {
+          day: '2026-10-13',
+          at: alarms.at,
+          total: 1,
+          alarms: [stale],
+          acknowledged_at: null,
+        },
+      },
+    });
+    renderAt('/', '/', <AlarmBanner />);
+    expect(await screen.findByText('1 alarm(s) need attention')).toBeTruthy();
+    expect(document.getElementById('alarm-backup-stale')?.textContent).toContain(
+      'Backups have not run since 10/10/2026',
+    );
   });
 });
 

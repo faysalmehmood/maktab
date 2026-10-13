@@ -126,6 +126,8 @@ const DB_CONFLICTS: [RegExp, string, string][] = [
     'link_conflict',
     'The link changed at the same time; try again',
   ],
+  [/group_archived/, 'group_archived', 'This group is in the recycle bin; restore it first'],
+  [/group_in_use/, 'in_use', 'This group has enrolments; close it instead'],
   [/FOREIGN KEY constraint failed/, 'in_use', 'Referenced by other records'],
   [/UNIQUE constraint failed/, 'conflict', 'Already exists'],
 ];

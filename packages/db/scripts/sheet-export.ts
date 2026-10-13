@@ -44,6 +44,7 @@ export async function buildTabs(query: Query, month = karachiMonth()): Promise<T
             WHERE e.student_id = s.id AND e.status = 'active' AND e.is_primary = 1 LIMIT 1) AS class,
            s.admission_date, s.left_date
     FROM student s JOIN family f ON f.id = s.family_id
+    WHERE f.deleted_at IS NULL
     ORDER BY s.status, class, s.name`);
   const guardians = await query(`
     SELECT f.name AS family, g.name, g.relation, g.phone, g.whatsapp,

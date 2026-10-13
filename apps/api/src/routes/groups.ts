@@ -116,6 +116,16 @@ async function assertSubjects(db: AppDb, ids: string[]): Promise<void> {
   if (found.length !== new Set(ids).size) throw new ApiError(400, 'invalid', 'Unknown subject');
 }
 
+/** Promotion target (`next_grp_id`): a live group, never one in the recycle bin. */
+async function assertNextGroup(db: AppDb, id: string | null | undefined): Promise<void> {
+  if (!id) return;
+  const [g] = await db
+    .select({ id: grp.id })
+    .from(grp)
+    .where(and(eq(grp.id, id), isNull(grp.archivedAt)));
+  if (!g) throw new ApiError(400, 'invalid', 'next_grp_id: unknown or archived group');
+}
+
 export async function groupScope(c: Context<AppEnv>) {
   return scopeToGroups(c.get('db'), userId(c), c.get('grant'));
 }
@@ -191,6 +201,7 @@ export function groupRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       db,
       subjects.map((s) => s.subject_id),
     );
+    await assertNextGroup(db, input.next_grp_id);
     let sessionId = input.session_id;
     if (sessionId === undefined) {
       // Default: the current academic year (a school class always belongs to one).
@@ -254,6 +265,7 @@ export function groupRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       await assertStaff(db, [input.class_teacher_id]);
       if (input.next_grp_id === id)
         throw new ApiError(400, 'invalid', 'next_grp_id: cannot point to itself');
+      await assertNextGroup(db, input.next_grp_id);
       const values = {
         programmeId: input.programme_id,
         sessionId: input.session_id,

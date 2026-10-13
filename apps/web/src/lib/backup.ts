@@ -1,9 +1,11 @@
 import {
+  type AlarmDto,
   type AlarmEventDto,
   type AlarmsDto,
   type BackupStatusDto,
   type ExportJobDto,
   type ExportPartDto,
+  formatDmy,
   hasGrant,
   type RecycleBinDto,
   type RetentionDto,
@@ -11,7 +13,15 @@ import {
   toCsvLine,
 } from '@maktab/shared';
 import { useQuery } from '@tanstack/react-query';
-import { getJson, sendJson } from './api';
+import type { TFunction } from 'i18next';
+import { ApiError, getJson, sendJson } from './api';
+
+/** An alarm's plain-language hint; backup_stale names the day of the last good backup. */
+export function alarmHint(t: TFunction, a: AlarmDto): string {
+  return t(`backup.alarms.hints.${a.kind}`, {
+    date: a.since ? formatDmy(a.since.slice(0, 10)) : '—',
+  });
+}
 
 export const canManageBackup = (r: readonly StaffRole[]) => hasGrant(r, 'backup', 'manage');
 
@@ -49,15 +59,16 @@ export function readmeText(o: { at: string; tables: string[]; rows: number }): s
   return [
     'Maktab — full export ("Download everything")',
     `Made: ${o.at}`,
-    `Files: ${o.tables.length} tables (tables/<name>.csv, UTF-8 with BOM, opens in Excel or Google Sheets), schema.sql (the database structure), this README. Rows: ${o.rows}.`,
+    `Files: ${o.tables.length} tables, one CSV each named after the table (tables/student.csv, tables/receipt.csv, …; UTF-8 with BOM, opens in Excel or Google Sheets), schema.sql (the database structure), this README. Rows: ${o.rows}.`,
     '',
-    'Keep this file safe: it holds every family, phone number and CNIC. Not included: sign-in sessions and the parent-page access log. Parent links appear only as hashes (no working link). Message texts carry a {link} placeholder.',
+    'Keep this file safe: it holds every family, phone number and CNIC. Not included: sign-in sessions, the parent-page access log and the database migration log (d1_migrations). Parent links appear only as hashes (no working link). Message texts carry a {link} placeholder.',
     'Amounts are in paisa (100 paisa = 1 rupee). Dates and times are UTC unless the column says otherwise.',
-    'Cells that start with = + - @ are prefixed with an apostrophe so a spreadsheet never runs them.',
+    "Formula guard: a text cell that starts with = + - or @ is written with a leading apostrophe ('=SUM(...) instead of =SUM(...)) so a spreadsheet shows it as text and never runs it. Remove that apostrophe if you load the CSV into a database.",
     'To rebuild a database, use the encrypted nightly backup (docs/restore.md); this ZIP is a readable copy.',
     '',
     'مکتب — مکمل ڈاؤن لوڈ ("سب کچھ ڈاؤن لوڈ کریں")',
-    `فائلیں: ہر ٹیبل کی ایک CSV فائل (tables/ میں، ایکسل یا گوگل شیٹس میں کھلتی ہے)، schema.sql (ڈیٹا بیس کا ڈھانچہ) اور یہ README۔`,
+    `فائلیں: ہر ٹیبل کی ایک CSV فائل، ٹیبل کے نام پر (مثلاً tables/student.csv، ایکسل یا گوگل شیٹس میں کھلتی ہے)، schema.sql (ڈیٹا بیس کا ڈھانچہ) اور یہ README۔`,
+    "جو خانہ = + - یا @ سے شروع ہو اس کے آگے ' لگا ہوتا ہے تاکہ اسپریڈشیٹ اسے فارمولا سمجھ کر نہ چلائے۔",
     'اس فائل کو محفوظ رکھیں: اس میں ہر خاندان، فون نمبر اور شناختی کارڈ نمبر ہے۔ سائن اِن سیشن اور والدین کے صفحے کا رسائی ریکارڈ شامل نہیں۔ والدین کے لنک صرف ہیش کی صورت میں ہیں۔',
     'رقوم پیسوں میں ہیں (100 پیسے = 1 روپیہ)۔',
     '',
@@ -75,54 +86,115 @@ const utf8 = (s: string) => new Uint8Array(new TextEncoder().encode(s));
 export type ExportProgress = { table: string; index: number; total: number; rows: number };
 
 export type ExportResult = {
-  zip: Uint8Array;
+  /** The ZIP, assembled from fflate's streamed output chunks (never one big in-memory copy). */
+  blob: Blob;
   fileName: string;
   files: number;
   rows: number;
 };
 
+/** Attempts per export part: the first try plus up to three retries. */
+export const PART_RETRIES = 3;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Worth another try: no answer at all (offline, a dropped connection) or a server-side hiccup
+ * (5xx, 429). A 4xx such as `export_expired` is a real answer and is never retried.
+ */
+const retryable = (err: unknown) =>
+  !(err instanceof ApiError) || err.status >= 500 || err.status === 429;
+
+/** Runs `fn`, retrying a transient failure up to `retries` times with doubling backoff. */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  o: { retries?: number; baseMs?: number; wait?: (ms: number) => Promise<void> } = {},
+): Promise<T> {
+  const retries = o.retries ?? PART_RETRIES;
+  const wait = o.wait ?? sleep;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt >= retries || !retryable(err)) throw err;
+      await wait((o.baseMs ?? 1000) * 2 ** attempt);
+    }
+  }
+}
+
 /**
  * "Download everything" (PLAN §9 layer 5): the Worker hands out ≤ 200 rows of one table per request;
- * the browser writes the formula-safe CSVs (@maktab/shared toCsvLine) and the ZIP (fflate), then
- * reports the totals so the export is audited. Nothing is stored server-side.
+ * the browser writes the formula-safe CSVs (@maktab/shared toCsvLine) and streams them into the ZIP
+ * part by part (fflate's streaming `Zip`), so only one part of text is held at a time; then it
+ * reports the totals so the export is audited. Nothing is stored server-side. Each part is retried
+ * up to 3 times (1 s, 2 s, 4 s) before the export gives up.
  */
 export async function buildExport(
   onProgress: (p: ExportProgress) => void = () => {},
+  o: { wait?: (ms: number) => Promise<void> } = {},
 ): Promise<ExportResult> {
   const job = await sendJson<ExportJobDto>('POST', '/api/backup/export');
-  const files: Record<string, Uint8Array> = {};
+  // Loaded on demand: the dashboard (which imports this module for the alarm banner) stays light.
+  const { Zip, ZipDeflate } = await import('fflate');
+  const chunks: Uint8Array[] = [];
+  let zipError: Error | null = null;
+  const zip = new Zip((err, chunk) => {
+    if (err) zipError = err;
+    else chunks.push(chunk);
+  });
+  const mtime = new Date();
+  const open = (name: string) => {
+    const f = new ZipDeflate(name, { level: 6 });
+    f.mtime = mtime;
+    zip.add(f);
+    return f;
+  };
+  let files = 0;
   let rows = 0;
   for (const [i, table] of job.tables.entries()) {
     onProgress({ table, index: i + 1, total: job.tables.length, rows });
-    const lines: string[] = [];
+    const file = open(`tables/${table}.csv`);
     let after = 0;
+    let first = true;
     for (;;) {
-      const part = await getJson<ExportPartDto>(
-        `/api/backup/export/${job.id}/part?table=${encodeURIComponent(table)}&after=${after}`,
+      const part = await withRetry(
+        () =>
+          getJson<ExportPartDto>(
+            `/api/backup/export/${job.id}/part?table=${encodeURIComponent(table)}&after=${after}`,
+          ),
+        { wait: o.wait },
       );
-      if (!lines.length) lines.push(toCsvLine(part.columns));
+      const lines: string[] = [];
+      // BOM: Excel's "CSV UTF-8", so Urdu names survive a double-click open.
+      if (first) lines.push(`${BOM}${toCsvLine(part.columns)}`);
+      first = false;
       for (const r of part.rows) lines.push(toCsvLine(r));
+      if (lines.length) file.push(utf8(`${lines.join('\r\n')}\r\n`));
       rows += part.rows.length;
       if (part.next === null) break;
       after = part.next;
     }
-    // BOM: Excel's "CSV UTF-8", so Urdu names survive a double-click open.
-    files[`tables/${table}.csv`] = utf8(`${BOM}${lines.join('\r\n')}\r\n`);
+    file.push(new Uint8Array(0), true);
+    files++;
   }
   const at = new Date().toISOString();
-  files['schema.sql'] = utf8(job.schema);
-  files['README.txt'] = utf8(`${BOM}${readmeText({ at, tables: job.tables, rows })}`);
-  // Loaded on demand: the dashboard (which imports this module for the alarm banner) stays light.
-  const { zipSync } = await import('fflate');
-  const zip = zipSync(files, { level: 6, mtime: new Date() });
-  const count = Object.keys(files).length;
-  await sendJson('POST', `/api/backup/export/${job.id}/finish`, { rows, files: count });
-  return { zip, fileName: `maktab-export-${at.slice(0, 10)}.zip`, files: count, rows };
+  open('schema.sql').push(utf8(job.schema), true);
+  open('README.txt').push(utf8(`${BOM}${readmeText({ at, tables: job.tables, rows })}`), true);
+  files += 2;
+  zip.end();
+  if (zipError) throw zipError;
+  await sendJson('POST', `/api/backup/export/${job.id}/finish`, { rows, files });
+  return {
+    blob: new Blob(chunks as BlobPart[], { type: 'application/zip' }),
+    fileName: `maktab-export-${at.slice(0, 10)}.zip`,
+    files,
+    rows,
+  };
 }
 
 /** Hands the bytes to the browser as a file download. */
-export function saveFile(bytes: Uint8Array, name: string, type = 'application/zip'): void {
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
+export function saveFile(data: Blob | Uint8Array, name: string, type = 'application/zip'): void {
+  const blob = data instanceof Blob ? data : new Blob([data as BlobPart], { type });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = name;

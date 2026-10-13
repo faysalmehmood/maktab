@@ -84,6 +84,7 @@ export const backupEn = {
       messages_failed: 'Messages that failed (last 7 days)',
       gate_lockouts: 'Parent-page lockouts (last 24 hours)',
       billing_attention: 'Monthly fees failing for a group',
+      backup_stale: 'Nightly backup not running',
     },
     hints: {
       ledger_consistency:
@@ -93,6 +94,8 @@ export const backupEn = {
       gate_lockouts:
         'Someone gave wrong answers 5 times. If it was not the parent, revoke that link.',
       billing_attention: 'Open fee generation and press Generate for that group to see the error.',
+      backup_stale:
+        'Backups have not run since {{date}}; check GitHub Actions (the nightly-backup workflow) and the Cloudflare API token.',
     },
     banner: '{{count}} alarm(s) need attention',
     open: 'Open alarms',
@@ -120,7 +123,7 @@ export const backupEn = {
   retention: {
     title: 'Data retention',
     accessLog: 'Keep the parent-page access log for (days)',
-    hint: 'Older entries are deleted every night. 7 to 3650 days.',
+    hint: 'Older entries are deleted every night. Minimum 7 days, maximum 3650.',
     saved: 'Retention saved',
   },
   about: {
@@ -199,6 +202,7 @@ export const backupUr: Shape<typeof backupEn> = {
       messages_failed: 'ناکام پیغامات (پچھلے 7 دن)',
       gate_lockouts: 'والدین کے صفحے کی بندشیں (پچھلے 24 گھنٹے)',
       billing_attention: 'کسی گروپ کی ماہانہ فیس بن نہیں رہی',
+      backup_stale: 'رات کا بیک اپ نہیں چل رہا',
     },
     hints: {
       ledger_consistency:
@@ -208,6 +212,8 @@ export const backupUr: Shape<typeof backupEn> = {
       gate_lockouts: 'کسی نے 5 بار غلط جواب دیا۔ اگر یہ والدین نہیں تھے تو وہ لنک منسوخ کریں۔',
       billing_attention:
         'فیس بنانے کا صفحہ کھولیں اور اس گروپ کے لیے "بنائیں" دبا کر خرابی دیکھیں۔',
+      backup_stale:
+        '{{date}} کے بعد سے بیک اپ نہیں بنا؛ GitHub Actions (nightly-backup ورک فلو) اور Cloudflare API ٹوکن جانچیں۔',
     },
     banner: '{{count}} انتباہ توجہ چاہتے ہیں',
     open: 'انتباہات کھولیں',
@@ -235,7 +241,7 @@ export const backupUr: Shape<typeof backupEn> = {
   retention: {
     title: 'ڈیٹا کی مدت',
     accessLog: 'والدین کے صفحے کا رسائی ریکارڈ رکھیں (دن)',
-    hint: 'پرانے اندراج ہر رات حذف ہو جاتے ہیں۔ 7 سے 3650 دن۔',
+    hint: 'پرانے اندراج ہر رات حذف ہو جاتے ہیں۔ کم از کم 7 دن، زیادہ سے زیادہ 3650 دن۔',
     saved: 'مدت محفوظ ہو گئی',
   },
   about: {
@@ -247,7 +253,7 @@ export const backupUr: Shape<typeof backupEn> = {
     contact: 'رابطہ',
     licence: 'لائسنس',
     licenceText:
-      'GNU Affero General Public License v3.0: آپ اسے استعمال کر سکتے ہیں، بدل سکتے ہیں اور بانٹ سکتے ہیں؛ دوسروں کو دی گئی تبدیلیاں بھی کھلی رہیں گی۔',
+      'لائسنس: GNU Affero General Public License v3.0 (جی این یو ایفیرو جنرل پبلک لائسنس، ورژن 3)۔ آپ اسے استعمال کر سکتے ہیں، بدل سکتے ہیں اور بانٹ سکتے ہیں؛ دوسروں کو دی گئی تبدیلیاں بھی کھلی رہیں گی۔',
     issues: 'مسئلہ بتائیں',
   },
 };

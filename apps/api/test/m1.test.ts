@@ -15,7 +15,7 @@ import {
   type StudentListItem,
   type SubjectDto,
 } from '@maktab/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { fakeR2, signedInAs, testApp } from './helpers';
 
@@ -693,6 +693,19 @@ describe('CSV import', () => {
       await post(t, csv([['Bilal', 'Imran', 'm', '5-B', 'Imran', '03001234567', 'yes']]), true)
     ).json()) as ImportReport;
     expect(later.rows[0]?.family).toBe('existing');
+  });
+
+  it('an archived group (recycle bin) is not in the import pool', async () => {
+    const t = await setup();
+    await t.db.run(sql`UPDATE grp SET archived_at = '2026-10-01T00:00:00Z' WHERE id = ${t.g5a.id}`);
+    const res = await post(
+      t,
+      csv([['Ali', 'Imran', 'm', '5-A', 'Imran', '0300-1234567', 'yes']]),
+      true,
+    );
+    const report = (await res.json()) as ImportReport;
+    expect(report.rows[0]?.action).toBe('error');
+    expect(report.rows[0]?.errors.join()).toMatch(/group/);
   });
 
   it('a commit request takes at most 200 rows; a big file goes in resumable chunks', async () => {

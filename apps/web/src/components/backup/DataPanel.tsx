@@ -204,6 +204,9 @@ export function ReceiptSeries() {
   );
 }
 
+/** About links: a 44 px tall hit area (PLAN §15), in either direction. */
+const LINK = 'inline-flex min-h-11 min-w-11 items-center underline underline-offset-4';
+
 /** Settings → About: every role sees it. */
 export function AboutPanel() {
   const { t } = useTranslation();
@@ -212,25 +215,19 @@ export function AboutPanel() {
     [t('backup.about.commit'), <Num key="c">{BUILD.commit}</Num>],
     [
       t('backup.about.source'),
-      <a key="s" href={ABOUT.repo} target="_blank" rel="noreferrer" className="underline">
+      <a key="s" href={ABOUT.repo} target="_blank" rel="noreferrer" className={LINK}>
         <bdi>{ABOUT.repo.replace('https://', '')}</bdi>
       </a>,
     ],
     [
       t('backup.about.issues'),
-      <a
-        key="i"
-        href={`${ABOUT.repo}/issues`}
-        target="_blank"
-        rel="noreferrer"
-        className="underline"
-      >
+      <a key="i" href={`${ABOUT.repo}/issues`} target="_blank" rel="noreferrer" className={LINK}>
         <bdi>{`${ABOUT.repo.replace('https://', '')}/issues`}</bdi>
       </a>,
     ],
     [
       t('backup.about.contact'),
-      <a key="m" href={`mailto:${ABOUT.contact}`} className="underline">
+      <a key="m" href={`mailto:${ABOUT.contact}`} className={LINK}>
         <bdi>{ABOUT.contact}</bdi>
       </a>,
     ],

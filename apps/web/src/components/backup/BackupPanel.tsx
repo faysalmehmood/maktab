@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/sonner';
 import { sendJson } from '@/lib/api';
 import {
+  alarmHint,
   buildExport,
   type ExportProgress,
   saveFile,
@@ -137,7 +138,7 @@ export function DownloadEverything() {
   const run = useMutation({
     mutationFn: () => buildExport(setProgress),
     onSuccess: (r) => {
-      saveFile(r.zip, r.fileName);
+      saveFile(r.blob, r.fileName);
       toast.success(
         t('backup.everything.done', { file: r.fileName, files: r.files, rows: r.rows }),
       );
@@ -213,6 +214,8 @@ function RestoreDrill() {
               checked={!!done[s]}
               onChange={(e) => setDone({ ...done, [s]: e.target.checked })}
               label={t(`backup.drill.steps.${s}`)}
+              // The whole row (≥ 44 px tall, full width) is the touch target, also for wrapped text.
+              className="w-full py-2"
             />
           </li>
         ))}
@@ -258,7 +261,9 @@ export function AlarmList({ alarms }: { alarms: AlarmDto[] }) {
             <TriangleAlert className="size-4 text-destructive" aria-hidden />
             {t(`backup.alarms.kinds.${a.kind}`)} · <Num>{a.count}</Num>
           </p>
-          <p className="text-sm text-muted-foreground">{t(`backup.alarms.hints.${a.kind}`)}</p>
+          <p className="text-sm text-muted-foreground">
+            <Num>{alarmHint(t, a)}</Num>
+          </p>
           {a.sample.length > 0 && (
             <p className="text-xs text-muted-foreground">
               <Num>{a.sample.map((s) => s.label).join(' · ')}</Num>

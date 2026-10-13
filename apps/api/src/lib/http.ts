@@ -20,6 +20,31 @@ export async function jsonBody<S extends z.ZodType>(
   return parsed.data;
 }
 
+/**
+ * jsonBody with a hard size cap: a body over `maxBytes` is refused (400 too_large), never truncated.
+ * The cap is checked on the bytes received, before parsing.
+ */
+export async function boundedJsonBody<S extends z.ZodType>(
+  c: Context<AppEnv>,
+  schema: S,
+  maxBytes: number,
+): Promise<z.output<S>> {
+  const declared = Number(c.req.header('content-length') ?? '0');
+  if (declared > maxBytes) throw new ApiError(400, 'too_large', `Body over ${maxBytes} bytes`);
+  const text = await c.req.text();
+  if (new TextEncoder().encode(text).byteLength > maxBytes)
+    throw new ApiError(400, 'too_large', `Body over ${maxBytes} bytes`);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    raw = undefined;
+  }
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) throw new ApiError(400, 'invalid', describe(parsed.error));
+  return parsed.data;
+}
+
 export function queryParams<S extends z.ZodType>(c: Context<AppEnv>, schema: S): z.output<S> {
   const parsed = schema.safeParse(c.req.query());
   if (!parsed.success) throw new ApiError(400, 'invalid', describe(parsed.error));

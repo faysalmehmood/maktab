@@ -54,6 +54,26 @@ describe('sheet export', () => {
     expect(all).not.toContain('35202-7654321-1');
   });
 
+  it('the students tab skips students of deleted families', async () => {
+    const db = await fixture();
+    await atomic(db, () => [
+      rawStatement(
+        db,
+        sql.raw(
+          `INSERT INTO family (id, name, deleted_at) VALUES ('F2', 'Gone', '2026-09-01T00:00:00Z')`,
+        ),
+      ),
+      rawStatement(
+        db,
+        sql.raw(
+          `INSERT INTO student (id, family_id, admission_no, name, admission_date, status, left_date) VALUES ('S2', 'F2', '2026-0002', 'Bilal', '2026-04-01', 'left', '2026-08-01')`,
+        ),
+      ),
+    ]);
+    const [students] = await buildTabs((q) => db.all<Row>(sql.raw(q)), '2026-10');
+    expect(students?.rows.map((r) => r[1])).toEqual(['Ali']);
+  });
+
   it('chunks rows so no request passes 2 MB', () => {
     const rows = Array.from({ length: 30_000 }, (_, i) => [i, 'x'.repeat(200), null]);
     const parts = chunkRows(rows);

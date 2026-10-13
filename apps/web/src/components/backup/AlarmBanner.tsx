@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import { Num } from '@/components/form';
 import { Button } from '@/components/ui/button';
 import { sendJson } from '@/lib/api';
-import { canManageBackup, useLatestAlarm } from '@/lib/backup';
+import { alarmHint, canManageBackup, useLatestAlarm } from '@/lib/backup';
 import { useRoles } from '@/lib/roles';
 
 /**
@@ -37,6 +37,13 @@ export function AlarmBanner() {
         <span className="text-sm text-muted-foreground">
           {firing.map((a) => t(`backup.alarms.kinds.${a.kind}`)).join(' · ')}
         </span>
+        {firing
+          .filter((a) => a.kind === 'backup_stale')
+          .map((a) => (
+            <span key={a.kind} className="text-sm" id="alarm-backup-stale">
+              <Num>{alarmHint(t, a)}</Num>
+            </span>
+          ))}
       </div>
       <div className="flex gap-2">
         <Button asChild size="sm">

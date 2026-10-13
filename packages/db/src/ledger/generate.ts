@@ -880,7 +880,7 @@ export async function generationCursor(
     WITH g AS (SELECT DISTINCT e.grp_id FROM enrolment e WHERE ${eligible(period)}),
     last AS (
       SELECT k.grp_id, k.done, k.next_student_id, k.status, k.retry_after,
-             row_number() OVER (PARTITION BY k.grp_id ORDER BY k.created_at DESC, k.id DESC) AS rn
+             row_number() OVER (PARTITION BY k.grp_id ORDER BY k.created_at DESC, k.rowid DESC) AS rn
       FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id
       WHERE r.period_key = ${period} AND k.kind = 'fees' AND k.grp_id IS NOT NULL)
     SELECT g.grp_id, l.next_student_id, coalesce(l.status = 'failed', 0) AS failing
@@ -915,7 +915,7 @@ export async function failingGroups(db: AppDb, period: string): Promise<BillingA
     WITH last AS (
       SELECT k.grp_id, k.status, k.fail_streak, k.error_code, k.error_message, k.retry_after,
              k.created_at,
-             row_number() OVER (PARTITION BY k.grp_id ORDER BY k.created_at DESC, k.id DESC) AS rn
+             row_number() OVER (PARTITION BY k.grp_id ORDER BY k.created_at DESC, k.rowid DESC) AS rn
       FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id
       WHERE r.period_key = ${period} AND k.kind = 'fees' AND k.grp_id IS NOT NULL)
     SELECT grp_id, fail_streak, error_code, error_message, retry_after, created_at AS at
@@ -958,7 +958,7 @@ export function failedChunkStatements(o: {
                 SELECT CASE WHEN k.status = 'failed' THEN k.fail_streak ELSE 0 END
                 FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id
                 WHERE r.period_key = ${o.period} AND k.kind = 'fees' AND k.grp_id = ${o.grpId}
-                ORDER BY k.created_at DESC, k.id DESC LIMIT 1), 0) AS streak) n`,
+                ORDER BY k.created_at DESC, k.rowid DESC LIMIT 1), 0) AS streak) n`,
   ];
 }
 
@@ -970,7 +970,7 @@ export async function reopenableGroups(db: AppDb, period: string): Promise<strin
   const rows = await db.all<{ grp_id: string }>(sql`
     WITH k AS (
       SELECT k.grp_id, k.done, k.status, k.fees, k.sponsored,
-             row_number() OVER (PARTITION BY k.grp_id ORDER BY k.created_at DESC, k.id DESC) AS rn
+             row_number() OVER (PARTITION BY k.grp_id ORDER BY k.created_at DESC, k.rowid DESC) AS rn
       FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id
       WHERE r.period_key = ${period} AND k.kind = 'fees' AND k.grp_id IS NOT NULL)
     SELECT grp_id FROM k GROUP BY grp_id

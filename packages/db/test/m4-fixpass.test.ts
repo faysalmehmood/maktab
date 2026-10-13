@@ -367,9 +367,9 @@ describe('C4: re-open a period for a group that finished with no fees', () => {
       /not_reopenable/,
     );
     expect(
-      (
-        await all<{ status: string }>(sql`SELECT status FROM billing_chunk ORDER BY created_at, id`)
-      ).map((k) => k.status),
+      (await all<{ status: string }>(sql`SELECT status FROM billing_chunk ORDER BY rowid`)).map(
+        (k) => k.status,
+      ),
     ).toEqual(['ok', 'reopened', 'ok']);
     await refused(
       () =>

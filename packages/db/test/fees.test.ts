@@ -161,7 +161,7 @@ describe('generation', () => {
     expect(
       await all(
         db,
-        sql`SELECT kind, grp_id, done, fees, sponsored FROM billing_chunk ORDER BY created_at, id`,
+        sql`SELECT kind, grp_id, done, fees, sponsored FROM billing_chunk ORDER BY rowid`,
       ),
     ).toEqual([
       { kind: 'fees', grp_id: 'G5A', done: 1, fees: 2, sponsored: 1 },

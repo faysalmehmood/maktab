@@ -118,7 +118,8 @@ async function main() {
     expectOk(r.status === 200, r);
     const kinds = r.body.alarms.map((a) => a.kind).join(',');
     expectOk(
-      kinds === 'ledger_consistency,messages_stuck,messages_failed,gate_lockouts,billing_attention',
+      kinds ===
+        'ledger_consistency,messages_stuck,messages_failed,gate_lockouts,billing_attention,backup_stale',
       kinds,
     );
     expectOk(

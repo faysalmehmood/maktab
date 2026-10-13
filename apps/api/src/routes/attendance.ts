@@ -111,7 +111,7 @@ async function todayItems(
           (SELECT count(*) FROM enrolment e WHERE e.grp_id = g.id AND ${covers(date)}) AS students
         FROM grp g JOIN programme p ON p.id = g.programme_id
         LEFT JOIN staff s ON s.id = g.class_teacher_id
-        WHERE ${where} AND g.status <> 'closed'
+        WHERE ${where} AND g.status <> 'closed' AND g.archived_at IS NULL
         ORDER BY p.kind, p.seq, g.name`,
   );
   const live = groups.filter((g) => Number(g.students) > 0);

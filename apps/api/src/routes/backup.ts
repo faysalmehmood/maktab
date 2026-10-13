@@ -2,6 +2,7 @@ import { evaluateAlarms } from '@maktab/db';
 import {
   type AlarmDto,
   type AlarmEventDto,
+  BACKUP_REPORT_MAX_BYTES,
   type BackupObjectDto,
   type BackupRunDto,
   type BackupRunKind,
@@ -24,7 +25,7 @@ import { z } from 'zod';
 import type { AppEnv } from '../env';
 import { utf8 } from '../lib/b64';
 import { ApiError } from '../lib/errors';
-import { jsonBody, notFoundError, queryParams, userId } from '../lib/http';
+import { boundedJsonBody, jsonBody, notFoundError, queryParams, userId } from '../lib/http';
 import { auditSql, tx } from '../lib/tx';
 import { defineRoute, publicRoute, type RouteTable, requires } from '../perm/routes';
 
@@ -226,9 +227,10 @@ export function backupRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const given = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
       if (!given || !(await sameSecret(given, expected)))
         throw new ApiError(401, 'unauthenticated', 'Bad or missing backup report token');
-      const input = await jsonBody(c, backupRunInputSchema);
+      const input = await boundedJsonBody(c, backupRunInputSchema, BACKUP_REPORT_MAX_BYTES);
       const id = newId();
-      const details = input.details ? JSON.stringify(input.details).slice(0, 8000) : null;
+      // Whole, never cut: the body limit (8 KB) already bounds it.
+      const details = input.details ? JSON.stringify(input.details) : null;
       await tx(c.get('db'), [
         sql`INSERT INTO backup_run (id, kind, status, started_at, finished_at, object_key, bytes, sha256,
               targets, details, run_url, note)
@@ -294,7 +296,7 @@ export function backupRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     table,
     { method: 'POST', path: '/api/backup/drills', access: manage },
     async (c) => {
-      const input = await jsonBody(c, manualDrillSchema);
+      const input = await boundedJsonBody(c, manualDrillSchema, BACKUP_REPORT_MAX_BYTES);
       const db = c.get('db');
       const id = newId();
       const uid = userId(c);

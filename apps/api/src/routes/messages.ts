@@ -589,7 +589,9 @@ export function messageRoutes(app: Hono<AppEnv>, table: RouteTable): void {
             : sql`SELECT f.id FROM family f WHERE f.deleted_at IS NULL
                   AND f.id IN (SELECT value FROM json_each(${JSON.stringify(a.family_ids)}))`;
       if (a.kind === 'group') {
-        const [g] = await db.all(sql`SELECT id FROM grp WHERE id = ${a.grp_id}`);
+        const [g] = await db.all(
+          sql`SELECT id FROM grp WHERE id = ${a.grp_id} AND archived_at IS NULL`,
+        );
         if (!g) throw notFoundError('Group');
       }
       const [total] = await db.all<{ n: number }>(sql`SELECT count(*) AS n FROM (${audience})`);

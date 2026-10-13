@@ -55,6 +55,17 @@ function counting(db: AppDb) {
 
 const exec = (db: AppDb, q: string) => db.run(sql.raw(q));
 
+/** The database's refusal text (better-sqlite3 throws synchronously, wrapped by drizzle). */
+async function refusal(db: AppDb, q: string): Promise<string> {
+  try {
+    await exec(db, q);
+  } catch (err) {
+    const e = err as Error & { cause?: Error };
+    return `${e.message} ${e.cause?.message ?? ''}`;
+  }
+  return 'no error';
+}
+
 let base: AppDb;
 let counter: ReturnType<typeof counting>;
 let t: ReturnType<typeof testApp>;
@@ -296,12 +307,82 @@ describe('backup runs (GitHub Actions report)', () => {
   });
 });
 
+describe('backup report payloads (strict, 8 KB)', () => {
+  const auth = { authorization: `Bearer ${REPORT_TOKEN}` };
+  const good = {
+    kind: 'nightly',
+    status: 'ok',
+    started_at: '2026-10-13T21:30:00Z',
+    finished_at: '2026-10-13T21:41:07.123Z',
+    object_key: 'daily/2026-10-14.sql.gz.age',
+    bytes: 1000,
+    sha256: 'b'.repeat(64),
+    details: { backup_enabled: true, size_check: 'ok', counts: { students: 3 } },
+  };
+  const post = (body: unknown, h: Record<string, string> = auth) =>
+    client(t.request, null)<{ error?: { code: string } }>('POST', '/api/backup/runs', body, h);
+
+  it('accepts a well-formed run and stores details whole', async () => {
+    expect((await post(good)).status).toBe(201);
+    const [row] = await base.all<{ details: string }>(sql`SELECT details FROM backup_run`);
+    expect(JSON.parse(row?.details ?? 'null')).toEqual(good.details);
+  });
+
+  it('refuses non-ISO datetimes, unknown keys, out-of-range sizes and bad keys', async () => {
+    for (const bad of [
+      { ...good, started_at: '13/10/2026 21:30' },
+      { ...good, finished_at: '2026-10-13' },
+      { ...good, extra: 1 },
+      { ...good, bytes: -1 },
+      { ...good, bytes: 20_000_000_000 },
+      { ...good, bytes: 1.5 },
+      { ...good, object_key: '../etc/passwd x' },
+      { ...good, targets: [{ name: 'r2', ok: true, surprise: 1 }] },
+    ]) {
+      const r = await post(bad);
+      expect(r.status, JSON.stringify(bad)).toBe(400);
+    }
+    expect(await base.all(sql`SELECT id FROM backup_run`)).toEqual([]);
+  });
+
+  it('a body over 8 KB is a 400, never a truncated row', async () => {
+    const big = { ...good, details: { blob: 'x'.repeat(400), more: 'y'.repeat(8000) } };
+    const r = await post(big);
+    expect(r.status).toBe(400);
+    expect(r.body.error?.code).toBe('too_large');
+    expect(await base.all(sql`SELECT id FROM backup_run`)).toEqual([]);
+    // The manual drill too (owner session), and a date that is not on the calendar.
+    expect(
+      (await ownerApi('POST', '/api/backup/drills', { date: '2026-10-01', note: 'n'.repeat(9000) }))
+        .status,
+    ).toBe(400);
+    expect((await ownerApi('POST', '/api/backup/drills', { date: '2026-02-30' })).status).toBe(400);
+  });
+});
+
 describe('alarms endpoints', () => {
+  it('backup_stale shows in the live panel once backups are set up', async () => {
+    const auth = { authorization: `Bearer ${REPORT_TOKEN}` };
+    const old = new Date(Date.now() - 48 * 3_600_000).toISOString();
+    const r = await client(t.request, null)(
+      'POST',
+      '/api/backup/runs',
+      { kind: 'nightly', status: 'ok', finished_at: old, details: { backup_enabled: true } },
+      auth,
+    );
+    expect(r.status).toBe(201);
+    const live = await ownerApi<AlarmsDto>('GET', '/api/alarms');
+    expect(live.body.alarms.find((a) => a.kind === 'backup_stale')).toMatchObject({
+      count: 1,
+      since: old,
+    });
+  });
+
   it('live evaluation, latest daily event and acknowledge', async () => {
     const live = await ownerApi<AlarmsDto>('GET', '/api/alarms');
     expect(live.status).toBe(200);
     expect(live.body.total).toBe(0);
-    expect(live.body.alarms).toHaveLength(5);
+    expect(live.body.alarms).toHaveLength(6);
     expect((await ownerApi<{ event: null }>('GET', '/api/alarms/latest')).body.event).toBeNull();
     await exec(
       base,
@@ -397,6 +478,145 @@ describe('recycle bin', () => {
     expect(
       (await ownerApi('POST', '/api/recycle-bin/restore', { kind: 'fee_head', id: 'H1' })).status,
     ).toBe(404);
+  });
+
+  it('archive race: an enrolment landing after the check makes it a 409, nothing archived', async () => {
+    // Between the "in use?" read and the guarded UPDATE, an admission enrols a student into GA.
+    const racing = new Proxy(base, {
+      get(target, prop, receiver) {
+        if (prop === 'all')
+          return async (...args: Parameters<AppDb['all']>) => {
+            const out = await target.all(...args);
+            const q = JSON.stringify(args[0]);
+            if (q.includes('att_register') && q.includes('count(*)'))
+              await exec(
+                target,
+                `INSERT INTO enrolment (id, student_id, grp_id, is_primary, start_date, status)
+                 VALUES ('E9', 'S1', 'GA', 0, '2026-04-01', 'active')`,
+              );
+            return out;
+          };
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const app = testApp({ db: racing as AppDb });
+    const r = await client(app.request, owner.cookie)<{ error: { code: string } }>(
+      'POST',
+      '/api/groups/GA/archive',
+    );
+    expect(r.status).toBe(409);
+    expect(r.body.error.code).toBe('in_use');
+    const [g] = await base.all<{ archived_at: string | null }>(
+      sql`SELECT archived_at FROM grp WHERE id = 'GA'`,
+    );
+    expect(g?.archived_at).toBeNull();
+    expect(await base.all(sql`SELECT id FROM audit WHERE entity = 'grp'`)).toEqual([]);
+    // The trigger is the backstop for any other writer.
+    expect(
+      await refusal(base, `UPDATE grp SET archived_at = '2026-10-13' WHERE id = 'GA'`),
+    ).toMatch(/group_in_use/);
+  });
+
+  it('an archived group takes no enrolment: API paths, promotion target and the trigger', async () => {
+    // API bodies take ULIDs: a group, a student and an enrolment of our own.
+    const G = '01K0000000000000000000GRPA';
+    const G2 = '01K0000000000000000000GRPB';
+    const ST = '01K00000000000000000000STA';
+    const EN = '01K00000000000000000000ENA';
+    const PR = '01K00000000000000000000PRA';
+    await exec(base, `INSERT INTO programme (id, name, kind) VALUES ('${PR}', 'Class 9', 'grade')`);
+    await exec(
+      base,
+      `INSERT INTO grp (id, programme_id, name) VALUES ('${G}', '${PR}', 'A'), ('${G2}', '${PR}', 'B')`,
+    );
+    await exec(
+      base,
+      `INSERT INTO student (id, family_id, admission_no, name, admission_date) VALUES ('${ST}', 'F1', 'A9', 'Sara', '2026-04-01')`,
+    );
+    await exec(
+      base,
+      `INSERT INTO enrolment (id, student_id, grp_id, is_primary, start_date) VALUES ('${EN}', '${ST}', '${G2}', 1, '2026-04-01')`,
+    );
+    expect((await ownerApi('POST', `/api/groups/${G}/archive`)).status).toBe(200);
+    type Err = { error: { code: string; message: string } };
+    const enrol = await ownerApi<Err>('POST', '/api/enrolments', {
+      student_id: ST,
+      grp_id: G,
+      start_date: '2026-10-01',
+    });
+    expect(enrol.status).toBe(400);
+    expect(enrol.body.error.message).toBe('Unknown group');
+    const transfer = await ownerApi<Err>('POST', `/api/enrolments/${EN}/transfer`, {
+      grp_id: G,
+      date: '2026-10-01',
+      reason: 'section change',
+    });
+    expect(transfer.status, transfer.text).toBe(400);
+    expect(transfer.body.error.message).toBe('Unknown group');
+    const patch = await ownerApi<Err>('PATCH', `/api/groups/${G2}`, { next_grp_id: G });
+    expect(patch.status).toBe(400);
+    expect(patch.body.error.message).toMatch(/archived/);
+    const create = await ownerApi<Err>('POST', '/api/groups', {
+      programme_id: PR,
+      name: 'C',
+      next_grp_id: G,
+    });
+    expect(create.status).toBe(400);
+    expect(create.body.error.message).toMatch(/archived/);
+    expect(
+      await refusal(
+        base,
+        `INSERT INTO enrolment (id, student_id, grp_id, is_primary, start_date) VALUES ('E8', 'S1', '${G}', 0, '2026-10-01')`,
+      ),
+    ).toMatch(/group_archived/);
+    expect(await refusal(base, `UPDATE enrolment SET grp_id = '${G}' WHERE id = 'E1'`)).toMatch(
+      /group_archived/,
+    );
+    // Restored, it takes enrolments and promotions again.
+    expect(
+      (await ownerApi('POST', '/api/recycle-bin/restore', { kind: 'group', id: G })).status,
+    ).toBe(200);
+    expect((await ownerApi('PATCH', `/api/groups/${G2}`, { next_grp_id: G })).status).toBe(200);
+    const moved = await ownerApi('POST', `/api/enrolments/${EN}/transfer`, {
+      grp_id: G,
+      date: '2026-10-01',
+      reason: 'section change',
+    });
+    expect(moved.status, moved.text).toBe(201);
+  });
+
+  it('restoring a fee head or group whose name is now in use is refused (groups per programme)', async () => {
+    await exec(
+      base,
+      `INSERT INTO fee_head (id, name, kind, cadence, archived_at) VALUES ('H1', 'Lab', 'misc', 'once', '2026-10-01')`,
+    );
+    await exec(
+      base,
+      `INSERT INTO fee_head (id, name, kind, cadence) VALUES ('H2', ' lab ', 'misc', 'once')`,
+    );
+    const fh = await ownerApi<{ error: { code: string } }>('POST', '/api/recycle-bin/restore', {
+      kind: 'fee_head',
+      id: 'H1',
+    });
+    expect(fh.status).toBe(409);
+    expect(fh.body.error.code).toBe('name_taken');
+
+    expect((await ownerApi('POST', '/api/groups/GA/archive')).status).toBe(200);
+    await exec(base, `INSERT INTO programme (id, name, kind) VALUES ('P2', 'Class 2', 'grade')`);
+    // Same name in another programme: no clash.
+    await exec(base, `INSERT INTO grp (id, programme_id, name) VALUES ('GC', 'P2', 'A')`);
+    expect(
+      (await ownerApi('POST', '/api/recycle-bin/restore', { kind: 'group', id: 'GA' })).status,
+    ).toBe(200);
+    expect((await ownerApi('POST', '/api/groups/GA/archive')).status).toBe(200);
+    // Same programme (and session): clash.
+    await exec(base, `INSERT INTO grp (id, programme_id, name) VALUES ('GD', 'P1', 'a')`);
+    const g = await ownerApi<{ error: { code: string } }>('POST', '/api/recycle-bin/restore', {
+      kind: 'group',
+      id: 'GA',
+    });
+    expect(g.status).toBe(409);
+    expect(g.body.error.code).toBe('name_taken');
   });
 
   it('lists receipt series with the last number issued', async () => {

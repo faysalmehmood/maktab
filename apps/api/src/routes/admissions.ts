@@ -23,7 +23,7 @@ import { enrolmentDto, guardianValues, nextPrioritySql, validateExtra } from './
 type GroupRow = typeof grp.$inferSelect & { sessionStart: string | null };
 
 /**
- * The group to enrol into: must exist and not be closed. Capacity is a planning number, never
+ * The group to enrol into: must exist, not be archived and not be closed. Capacity is a planning number, never
  * enforced (a school squeezes in one more child); the admission form shows seats left and warns.
  */
 export async function openGroup(db: AppDb, id: string): Promise<GroupRow> {
@@ -32,7 +32,9 @@ export async function openGroup(db: AppDb, id: string): Promise<GroupRow> {
     .from(grp)
     .leftJoin(session, eq(session.id, grp.sessionId))
     .where(eq(grp.id, id));
-  if (!row) throw new ApiError(400, 'invalid', 'Unknown group');
+  // An archived group (recycle bin) is gone as far as enrolling goes; the DB trigger
+  // enrolment_grp_archived refuses it too.
+  if (!row || row.g.archivedAt) throw new ApiError(400, 'invalid', 'Unknown group');
   if (row.g.status === 'closed') throw new ApiError(409, 'group_closed', 'This group is closed');
   return { ...row.g, sessionStart: row.sessionStart };
 }

@@ -63,17 +63,28 @@ export function settingsRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         group: { table: 'grp', col: 'archived_at' },
       };
       const { table: tbl, col } = t[input.kind];
-      const [row] = await db.all<{ name: string; removed: string | null; programme_id?: string }>(
+      const [row] = await db.all<{
+        name: string;
+        removed: string | null;
+        programme_id?: string;
+        session_id?: string | null;
+      }>(
         sql`SELECT name, ${sql.identifier(col)} AS removed
-            ${input.kind === 'group' ? sql`, programme_id` : sql``}
+            ${input.kind === 'group' ? sql`, programme_id, session_id` : sql``}
             FROM ${sql.identifier(tbl)} WHERE id = ${input.id}`,
       );
       if (!row?.removed) throw notFoundError('Item in the recycle bin');
-      if (input.kind === 'programme' || input.kind === 'subject') {
-        // The pickers and the PK seed treat names as unique among live rows.
+      {
+        // The pickers and the PK seed treat names as unique among live rows: programmes, subjects and
+        // fee heads school-wide, groups within their programme and session.
+        const clash =
+          input.kind === 'group'
+            ? sql`archived_at IS NULL AND programme_id = ${row.programme_id ?? ''}
+                  AND session_id IS ${row.session_id ?? null}`
+            : sql`${sql.identifier(col)} IS NULL`;
         const [dup] = await db.all<{ id: string }>(
-          sql`SELECT id FROM ${sql.identifier(tbl)} WHERE deleted_at IS NULL
-              AND lower(name) = lower(${row.name}) LIMIT 1`,
+          sql`SELECT id FROM ${sql.identifier(tbl)} WHERE ${clash} AND id <> ${input.id}
+              AND lower(trim(name)) = lower(trim(${row.name})) LIMIT 1`,
         );
         if (dup)
           throw new ApiError(
@@ -127,19 +138,27 @@ export function settingsRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       if (Number(used?.n ?? 0) > 0)
         throw new ApiError(409, 'in_use', 'This group has enrolments; close it instead');
       const now = new Date().toISOString();
+      // Guarded write: an admission or register that lands between the check above and this batch
+      // makes the UPDATE match nothing (the grp_archive_in_use trigger refuses it too), and the
+      // pointer reset and audit row only follow an archive this batch actually made.
+      const mine = sql`EXISTS (SELECT 1 FROM grp WHERE id = ${id} AND archived_at = ${now})`;
       await tx(db, [
-        sql`UPDATE grp SET archived_at = ${now} WHERE id = ${id} AND archived_at IS NULL`,
+        sql`UPDATE grp SET archived_at = ${now} WHERE id = ${id} AND archived_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM enrolment WHERE grp_id = ${id})
+              AND NOT EXISTS (SELECT 1 FROM att_register WHERE grp_id = ${id})`,
         // Promotion pointers to it would lead nowhere visible.
-        sql`UPDATE grp SET next_grp_id = NULL WHERE next_grp_id = ${id}`,
-        auditSql({
-          id: newId(),
-          userId: userId(c),
-          entity: 'grp',
-          entityId: id,
-          action: 'archive',
-          after: { archived_at: now },
-        }),
+        sql`UPDATE grp SET next_grp_id = NULL WHERE next_grp_id = ${id} AND ${mine}`,
+        sql`INSERT INTO audit (id, user_id, entity, entity_id, action, diff)
+            SELECT ${newId()}, ${userId(c)}, 'grp', ${id}, 'archive',
+              ${JSON.stringify({ before: null, after: { archived_at: now } })}
+            WHERE ${mine}`,
       ]);
+      const [after] = await db.all<{ archived_at: string | null }>(
+        sql`SELECT archived_at FROM grp WHERE id = ${id}`,
+      );
+      // 0 rows changed: still live, so something was enrolled in the meantime.
+      if (!after?.archived_at)
+        throw new ApiError(409, 'in_use', 'This group has enrolments; close it instead');
       return c.json({ ok: true });
     },
   );
