@@ -31,6 +31,15 @@ Pakpattan) and Al-Noor (uploaded logo). They need migration **0024_m7b_school_id
   "<origin>/payslips/<id>/print?lang=en|ur" --expect 1 --wait-for '[data-lang]' --cookie <dev session>`
   gives `pages=1 sizes=420×595` (A5) in both languages.
 
+## M7b part 2 (captured): `docs/design/m7b-2/`
+
+Same local setup as part 1 (smoke data, demo names only). Name pattern:
+`<area>-<screen>-<phone|desktop>-<en|ur>-<light|dark>.png`; phone 390 px at 2×, desktop 1366 px;
+PNGs palette-quantised. Primary screens have all 8 variants, secondary screens 4 (each axis
+covered). Fix pass: the rebuilt Fee register (`fees-register-*`, plus `fees-register-choose-*` for
+the "choose a class" state), Concessions, Advances and Billing in all 8 variants; Sponsors and
+Expenses re-shot in 4; the Urdu receipt result (`fees-receipt-*-ur-*`) re-shot after the date fix.
+
 ## To capture (onboarding guide)
 
 Referenced from `docs/onboarding.md` by id. None captured yet. Use demo data only (seed), never a
