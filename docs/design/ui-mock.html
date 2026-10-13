@@ -1,0 +1,533 @@
+<title>Maktab Interface Mock</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;600&display=swap">
+<style>
+/* Layout: a quiet review bench. Controls on top, one device frame in the middle holding a working mini-app, notes underneath. */
+:root{--pg:#eaf0ee;--pg-fg:#14211f;--pg-muted:#566763;--pg-line:#cfd9d5;--pg-card:#ffffff;--pg-accent:#0f766e;--pg-accent-fg:#ffffff;--pg-bezel:#1b2624;
+  --font:Figtree,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--urdu:"Noto Nastaliq Urdu","Noto Naskh Arabic",serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--pg:#0b1211;--pg-fg:#e6efed;--pg-muted:#93a5a1;--pg-line:#24322f;--pg-card:#141d1c;--pg-accent:#3fb8ab;--pg-accent-fg:#05201d;--pg-bezel:#000000;color-scheme:dark}}
+:root[data-theme="dark"]{--pg:#0b1211;--pg-fg:#e6efed;--pg-muted:#93a5a1;--pg-line:#24322f;--pg-card:#141d1c;--pg-accent:#3fb8ab;--pg-accent-fg:#05201d;--pg-bezel:#000000;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--pg);color:var(--pg-fg);font:15px/1.5 var(--font)}
+.wrap{max-width:1320px;margin-inline:auto;padding-inline:16px;padding-block:20px 40px;display:flex;flex-direction:column;gap:16px}
+.head{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between}
+.head h1{font-size:22px;font-weight:700;margin:0;letter-spacing:-.01em}
+.head p{margin:2px 0 0;color:var(--pg-muted);max-width:62ch}
+.ctl{display:flex;flex-wrap:wrap;gap:10px}
+.seg{display:inline-flex;background:var(--pg-card);border:1px solid var(--pg-line);border-radius:10px;padding:3px}
+.seg button{font:inherit;font-weight:600;border:0;background:none;color:var(--pg-muted);padding:7px 14px;border-radius:7px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--pg-accent);color:var(--pg-accent-fg)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--pg-accent);outline-offset:2px}
+.stage{overflow-x:auto;padding-block:4px}
+.frame{margin-inline:auto;height:780px;overflow:hidden;position:relative;border:1px solid var(--pg-line);border-radius:14px;background:#fff}
+.frame.desktop{min-width:1040px}
+.frame.phone{width:min(390px,100%);border:6px solid var(--pg-bezel);border-radius:30px}
+.frame button{font:inherit;color:inherit;cursor:pointer}
+.frame svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.notes{background:var(--pg-card);border:1px solid var(--pg-line);border-radius:14px;padding:16px 20px}
+.notes h2{font-size:15px;margin:0 0 6px}
+.notes ul{margin:0;padding-inline-start:18px;display:grid;gap:4px;color:var(--pg-muted)}
+.notes li{max-width:90ch}
+.toast{position:absolute;inset-inline:0;bottom:76px;margin-inline:auto;width:max-content;max-width:86%;background:#14211f;color:#fff;padding:9px 16px;border-radius:999px;font-weight:600;font-size:13px;z-index:9;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.num{font-variant-numeric:tabular-nums}
+
+/* ===== TODAY: the app as it is now ===== */
+.t{font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#0a0a0a;background:#fff;display:flex;height:100%}
+.t-side{width:240px;flex:none;border-right:1px solid #e5e5e5;overflow:auto}
+.t-brand{padding:16px 20px;font-size:18px;font-weight:600}
+.t-nav{display:flex;flex-direction:column;gap:4px;padding:8px}
+.t-nav button{display:flex;gap:12px;align-items:center;min-height:44px;padding:0 12px;border:0;background:none;border-radius:6px;font-weight:500;text-align:start}
+.t-nav button:hover,.t-nav .on{background:#f5f5f5}
+.t-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.t-top{height:56px;flex:none;border-bottom:1px solid #e5e5e5;display:flex;align-items:center;gap:8px;padding:0 16px}
+.t-top .sp{margin-inline-start:auto}
+.t-body{flex:1;overflow:auto;padding:24px}
+.t h1{font-size:20px;font-weight:600;margin:0}
+.t h2{font-size:16px;font-weight:600;margin:0}
+.t-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.t-col{display:flex;flex-direction:column;gap:16px}
+.t-card{border:1px solid #e5e5e5;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.1);padding:16px;background:#fff}
+.t-btn{height:44px;padding:0 14px;border:1px solid #e5e5e5;border-radius:8px;background:#fff;font-weight:500;display:inline-flex;align-items:center;gap:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);white-space:nowrap}
+.t-btn.p{background:#0f766e;border-color:#0f766e;color:#fff}
+.t-btn.g{border-color:transparent;box-shadow:none}
+.t-in{height:44px;border:1px solid #e5e5e5;border-radius:8px;padding:0 12px;font:inherit;background:#fff;min-width:0;color:#0a0a0a}
+.t-mut{color:#737373}
+.t-sm{font-size:12px}
+.t-big{font-size:24px;font-weight:600}
+.t-grid{display:grid;gap:12px}
+.t-list{border:1px solid #e5e5e5;border-radius:10px}
+.t-list>*{display:flex;align-items:center;gap:12px;padding:10px 12px;border:0;border-bottom:1px solid #e5e5e5;background:none;width:100%;text-align:start}
+.t-list>*:last-child{border-bottom:0}
+.t-ico{width:40px;height:40px;border-radius:50%;background:#f5f5f5;display:grid;place-items:center;flex:none;font-weight:500}
+.t-badge{font-size:12px;padding:2px 8px;border-radius:6px;background:#f5f5f5;font-weight:500}
+.t-chip{font-size:12px;padding:1px 6px;border-radius:4px;color:#fff;font-weight:500}
+.t-line{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #e5e5e5}
+.t-line:last-child{border-bottom:0}
+.t-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.t-cal div{aspect-ratio:1;border:1px solid #e5e5e5;border-radius:8px;display:grid;place-items:center;font-size:12px}
+.t-ham{display:none}
+.is-phone .t-side{display:none}
+.is-phone .t-ham{display:inline-flex}
+.is-phone .t-body{padding:16px}
+.is-phone .t-top{padding:0 8px}
+.t-drawer{position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:5}
+.t-drawer>div{width:288px;height:100%;background:#fff;overflow:auto}
+
+/* ===== PROPOSED: calm ledger ===== */
+.n{--bg:#f3f6f5;--sf:#ffffff;--ink:#14211f;--mut:#586966;--line:#dde5e2;--brand:#0f766e;--brand-fg:#ffffff;--soft:#e1f0ed;
+  --side:#0d2b28;--side-fg:#c9dfda;--side-mut:#7fa39c;--side-on:#1a443f;
+  --ok:#19704a;--ok-s:#e1f3e8;--bad:#b23a2e;--bad-s:#fbe8e5;--warn:#875800;--warn-s:#fbeed2;--info:#2a5d9c;--info-s:#e5eef9;--h:36px;
+  font:14px/1.45 var(--font);color:var(--ink);background:var(--bg);display:flex;height:100%}
+.n.dark{--bg:#0c1413;--sf:#151f1e;--ink:#e6efed;--mut:#93a5a1;--line:#26342f;--brand:#3fb8ab;--brand-fg:#05201d;--soft:#15332f;
+  --side:#081110;--side-fg:#b9cfca;--side-mut:#6f8d87;--side-on:#17302c;
+  --ok:#5fcf97;--ok-s:#12301f;--bad:#f08a7e;--bad-s:#3a1a16;--warn:#e8b75a;--warn-s:#33270d;--info:#8db8ee;--info-s:#14263d}
+.is-phone .n{--h:44px;flex-direction:column}
+.n-side{width:232px;flex:none;background:var(--side);color:var(--side-fg);display:flex;flex-direction:column;overflow:auto}
+.n-school{display:flex;gap:10px;align-items:center;padding:16px 16px 12px}
+.n-school b{display:block;color:#fff;font-weight:600;line-height:1.2}
+.n-school span{font-size:12px;color:var(--side-mut)}
+.n-mark{width:34px;height:34px;flex:none}
+.n-mark svg{width:100%;height:100%;stroke:none}
+.n-grp{padding:6px 10px}
+.n-grp h3{margin:8px 8px 4px;font-size:12px;font-weight:600;color:var(--side-mut)}
+.n-grp button{display:flex;align-items:center;gap:10px;width:100%;height:34px;padding:0 8px;border:0;background:none;border-radius:8px;text-align:start;font-weight:500}
+.n-grp button:hover{background:var(--side-on)}
+.n-grp .on{background:var(--side-on);color:#fff;box-shadow:inset 3px 0 0 var(--brand)}
+.n.dark .n-grp .on{box-shadow:inset 3px 0 0 var(--brand)}
+.n-cnt{margin-inline-start:auto;background:#f4c95d;color:#3a2a00;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px}
+.n-user{margin-top:auto;border-top:1px solid var(--side-on);padding:10px;position:relative}
+.n-user>button{display:flex;gap:10px;align-items:center;width:100%;border:0;background:none;padding:6px 8px;border-radius:8px;text-align:start}
+.n-user>button:hover{background:var(--side-on)}
+.n-user small{display:block;color:var(--side-mut)}
+.n-pop{position:absolute;bottom:62px;inset-inline:10px;background:var(--sf);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:6}
+.n-pop button{display:flex;gap:10px;align-items:center;width:100%;height:36px;border:0;background:none;border-radius:6px;padding:0 10px;text-align:start}
+.n-pop button:hover{background:var(--soft)}
+.n-main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
+.n-top{flex:none;height:56px;display:flex;align-items:center;gap:12px;padding:0 24px;background:var(--sf);border-bottom:1px solid var(--line)}
+.n-search{position:relative;flex:1;max-width:440px}
+.n-search svg{position:absolute;top:50%;inset-inline-start:11px;transform:translateY(-50%);color:var(--mut)}
+.n-search input{width:100%;height:36px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink);font:inherit;padding-inline:36px 12px}
+.n-res{position:absolute;top:42px;inset-inline:0;background:var(--sf);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);z-index:7;padding:4px}
+.n-res button{display:flex;gap:10px;align-items:center;width:100%;border:0;background:none;padding:7px 8px;border-radius:7px;text-align:start}
+.n-res button:hover{background:var(--soft)}
+.n-sync{margin-inline-start:auto;display:flex;align-items:center;gap:6px;color:var(--mut);font-size:13px;white-space:nowrap}
+.n-sync i{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.n-body{flex:1;min-height:0;overflow:auto;padding:24px}
+.n-page{max-width:1080px;margin-inline:auto;display:flex;flex-direction:column;gap:20px}
+.n-page.narrow{max-width:680px}
+.n-ph{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.n h1{font-size:22px;font-weight:700;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.n h2{font-size:15px;font-weight:600;margin:0}
+.n-sub{color:var(--mut);margin:2px 0 0}
+.n-mut{color:var(--mut)}
+.n-sm{font-size:12.5px}
+.n-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.n-btn{height:var(--h);padding:0 13px;border:1px solid var(--line);border-radius:9px;background:var(--sf);font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap}
+.n-btn:hover{border-color:var(--mut)}
+.n-btn.p{background:var(--brand);border-color:var(--brand);color:var(--brand-fg)}
+.n-btn.q{border-color:transparent;background:none;color:var(--brand)}
+.n-btn.big{height:48px;font-size:15px;width:100%}
+.n-btn.sq{width:var(--h);padding:0}
+.n-back{display:inline-flex;align-items:center;gap:4px;border:0;background:none;color:var(--mut);font-weight:600;padding:0;align-self:flex-start}
+.n-panel{background:var(--sf);border:1px solid var(--line);border-radius:12px}
+.n-panel>header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.n-pad{padding:16px}
+.n-in{height:var(--h);border:1px solid var(--line);border-radius:9px;background:var(--sf);color:var(--ink);font:inherit;padding:0 10px;min-width:0}
+.n-av{width:32px;height:32px;border-radius:50%;background:var(--soft);color:var(--brand);display:grid;place-items:center;font-weight:700;font-size:12px;flex:none}
+.n-av.lg{width:64px;height:64px;font-size:22px;border-radius:16px}
+.n-side .n-av{background:var(--side-on);color:#fff}
+.n-badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap;background:var(--bg);color:var(--mut)}
+.n-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.n-badge.ok{background:var(--ok-s);color:var(--ok)}.n-badge.bad{background:var(--bad-s);color:var(--bad)}
+.n-badge.warn{background:var(--warn-s);color:var(--warn)}.n-badge.info{background:var(--info-s);color:var(--info)}
+.mny{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.mny i{font-style:normal;font-weight:500;font-size:.78em;color:var(--mut);margin-inline-end:2px}
+.n-tbl{width:100%;border-collapse:collapse}
+.n-tbl th{font-size:12.5px;font-weight:600;color:var(--mut);text-align:start;padding:9px 16px;border-bottom:1px solid var(--line);white-space:nowrap}
+.n-tbl td{padding:9px 16px;border-bottom:1px solid var(--line);vertical-align:middle}
+.n-tbl tr:last-child td{border-bottom:0}
+.n-tbl .r{text-align:end}
+.n-tbl tbody tr.go{cursor:pointer}
+.n-tbl tbody tr.go:hover{background:var(--bg)}
+.n-rows>*{display:flex;align-items:center;gap:12px;padding:10px 16px;border:0;border-bottom:1px solid var(--line);background:none;width:100%;text-align:start}
+.n-rows>*:last-child{border-bottom:0}
+.n-rows>button:hover{background:var(--bg)}
+.n-grow{flex:1;min-width:0}
+.n-end{margin-inline-start:auto}
+.n-today{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.n-tc{background:var(--sf);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.n-tc .fig{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.n-tc .n-btn{margin-top:auto;align-self:flex-start}
+.n-pips{display:grid;grid-template-columns:repeat(12,1fr);gap:4px}
+.n-pips button{height:22px;border-radius:5px;border:1.5px dashed var(--mut);background:none;padding:0}
+.n-pips button.done{border:0;background:var(--brand)}
+.n-split{display:flex;height:8px;border-radius:99px;overflow:hidden;gap:2px}
+.n-lg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--mut)}
+.n-lg i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-inline-end:5px}
+.n-stats{display:grid;grid-template-columns:repeat(4,1fr)}
+.n-stats>div{padding:14px 16px;border-inline-end:1px solid var(--line)}
+.n-stats>div:last-child{border-inline-end:0}
+.n-stats b{display:block;font-size:18px;font-weight:700}
+.n-two{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;align-items:start}
+.n-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.n-tabs button{border:0;background:none;padding:9px 12px;font-weight:600;color:var(--mut);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.n-tabs button.on{color:var(--brand);border-bottom-color:var(--brand)}
+.n-seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--sf)}
+.n-seg button{height:calc(var(--h) - 2px);min-width:var(--h);padding:0 10px;border:0;border-inline-end:1px solid var(--line);background:none;font-weight:600;color:var(--mut)}
+.n-seg button:last-child{border-inline-end:0}
+.n-seg .on{background:var(--soft);color:var(--brand)}
+.n-seg .P.on{background:var(--ok-s);color:var(--ok)}.n-seg .A.on{background:var(--bad-s);color:var(--bad)}
+.n-seg .L.on{background:var(--warn-s);color:var(--warn)}.n-seg .E.on{background:var(--info-s);color:var(--info)}
+.n-save{position:sticky;bottom:-24px;margin:0 -24px -24px;padding:12px 24px;background:var(--sf);border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.n-cal{display:grid;grid-template-columns:repeat(7,30px);gap:5px}
+.n-cal span{height:30px;border-radius:7px;display:grid;place-items:center;font-size:12px;background:var(--bg);color:var(--mut)}
+.n-cal .P{background:var(--ok-s);color:var(--ok)}.n-cal .A{background:var(--bad-s);color:var(--bad);font-weight:700}
+.n-cal .L{background:var(--warn-s);color:var(--warn)}.n-cal .E{background:var(--info-s);color:var(--info)}
+.n-urdu{font-family:var(--urdu);direction:rtl;text-align:right;line-height:2.1;white-space:pre-line}
+.n-msg{background:var(--bg);border-radius:10px;padding:12px 16px}
+.n-prog{height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+.n-prog i{display:block;height:100%;background:var(--brand)}
+.n-fld{display:flex;flex-direction:column;gap:6px}
+.n-fld label{font-weight:600;font-size:13px}
+.n-amt{height:52px;font-size:24px;font-weight:700;text-align:end}
+.n-tabbar{flex:none;display:none;background:var(--sf);border-top:1px solid var(--line);padding-bottom:6px}
+.n-tabbar button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 4px;font-size:11px;font-weight:600;color:var(--mut);position:relative}
+.n-tabbar .on{color:var(--brand)}
+.n-tabbar .n-cnt{position:absolute;top:4px;inset-inline-start:calc(50% + 4px)}
+.n-sheet{position:absolute;inset:0;background:rgba(0,0,0,.45);z-index:6;display:flex;align-items:flex-end}
+.n-sheet>div{background:var(--sf);color:var(--ink);width:100%;border-radius:18px 18px 0 0;padding:10px 10px 20px;display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.n-sheet button{display:flex;gap:10px;align-items:center;height:48px;border:0;background:none;border-radius:10px;padding:0 12px;font-weight:600;text-align:start}
+.n-sheet h3{grid-column:1/-1;margin:6px 12px;font-size:13px;color:var(--mut)}
+.is-phone .n-side{display:none}
+.is-phone .n-tabbar{display:flex}
+.is-phone .n-top{padding:0 12px;height:52px}
+.is-phone .n-sync span{display:none}
+.is-phone .n-body{padding:16px}
+.is-phone .n-today,.is-phone .n-two{grid-template-columns:1fr}
+.is-phone .n-stats{grid-template-columns:1fr 1fr}
+.is-phone .n-stats>div:nth-child(2){border-inline-end:0}
+.is-phone .n-stats>div:nth-child(-n+2){border-bottom:1px solid var(--line)}
+.is-phone .n-save{bottom:-16px;margin:0 -16px -16px;padding:10px 16px}
+.is-phone .n h1{font-size:20px}
+.is-phone .hide-ph{display:none}
+.n-foot{display:flex;align-items:center;gap:6px;padding:8px 8px 0;font-size:11.5px;color:var(--side-mut)}
+.n-login{flex:1;display:grid;place-items:center;padding:24px;background:var(--bg)}
+.n-login>div{background:var(--sf);border:1px solid var(--line);border-radius:16px;padding:32px 28px;width:min(380px,100%);display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+.n-login small{display:flex;align-items:center;gap:6px;color:var(--mut);margin-top:18px}
+.n-door{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr}
+.n-door .l{background:var(--side);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:32px;text-align:center;position:relative}
+.n-door .r{background:var(--sf);display:flex;flex-direction:column;justify-content:center;padding:40px;overflow:auto}
+.n-door .r>div{max-width:340px;width:100%;margin-inline:auto;display:flex;flex-direction:column;gap:12px}
+.door-foot{position:absolute;bottom:14px}
+.is-phone .n-door{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+.is-phone .n-door .l{padding:26px 20px 18px}
+.is-phone .n-door .r{padding:24px 20px;justify-content:flex-start}
+.is-phone .door-foot{position:static;margin-top:6px}
+.n-setup{flex:1;min-height:0;display:grid;grid-template-columns:230px 1fr}
+.n-rail{background:var(--side);color:var(--side-fg);padding:20px 16px;display:flex;flex-direction:column;gap:6px}
+.n-rail div{display:flex;gap:10px;align-items:center;padding:7px 8px;border-radius:8px;color:var(--side-mut);font-weight:500}
+.n-rail div.on{background:var(--side-on);color:#fff}
+.n-rail i{font-style:normal;width:22px;height:22px;border-radius:50%;border:1.5px solid currentColor;display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+.n-setup main{overflow:auto;padding:28px;background:var(--bg)}
+.n-setup .cols{display:grid;grid-template-columns:1fr 300px;gap:24px;max-width:860px;align-items:start}
+.n-sw{width:34px;height:34px;border-radius:50%;border:3px solid var(--sf);box-shadow:0 0 0 1.5px var(--line);padding:0}
+.n-sw[aria-pressed="true"]{box-shadow:0 0 0 2.5px var(--ink)}
+.n-prev{display:flex;flex-direction:column;gap:12px;position:sticky;top:0}
+.n-prev .door{background:var(--side);color:#fff;border-radius:12px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
+.n-prev .strip{background:#fff;color:#14211f;border:1px solid var(--line);border-radius:8px;padding:8px 12px;display:flex;gap:10px;align-items:center;font-size:13px;line-height:1.25}
+.n-prev .icon{width:52px;height:52px;border-radius:13px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:16px}
+.is-phone .n-setup{grid-template-columns:1fr}
+.is-phone .n-rail{display:none}
+.is-phone .n-setup main{padding:16px}
+.is-phone .n-setup .cols{grid-template-columns:1fr}
+.brand h3{font-size:13px;margin:14px 0 8px;color:var(--pg-muted);font-weight:600}
+.brand .tiles{display:flex;flex-wrap:wrap;gap:16px 28px}
+.brand figure{margin:0;display:flex;flex-direction:column;gap:8px;max-width:230px}
+.brand figcaption{color:var(--pg-muted);font-size:13px}
+.brand figcaption b{color:var(--pg-fg);display:block}
+.brand .art{height:88px;display:flex;align-items:center;gap:12px}
+.brand .icon{width:68px;height:68px;border-radius:17px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:21px;letter-spacing:.5px}
+.brand .strip{background:#fff;color:#14211f;border:1px solid var(--pg-line);border-radius:8px;padding:8px 12px;display:flex;gap:10px;align-items:center;font-size:13px;line-height:1.25}
+@media (prefers-reduced-motion:no-preference){.n-btn,.n-grp button,.n-seg button{transition:background-color .12s,border-color .12s}}
+</style>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Maktab interface mock</h1>
+      <p>Click around inside the frame. Switch between the app as it is today and the proposed design. Both use the same sample school data.</p>
+    </div>
+    <div class="ctl">
+      <div class="seg" role="group" aria-label="Version">
+        <button id="v-today" data-v="today">Today</button><button id="v-new" data-v="new">Proposed</button>
+      </div>
+      <div class="seg" role="group" aria-label="Screen">
+        <button id="w-app" data-w="app">App</button><button id="w-login" data-w="login">Sign-in</button><button id="w-setup" data-w="setup">First-run setup</button>
+      </div>
+      <div class="seg" role="group" aria-label="School">
+        <button id="s-gsa" data-sch="gsa">GSA Pakpattan</button><button id="s-noor" data-sch="noor">Al-Noor</button>
+      </div>
+      <div class="seg" role="group" aria-label="Screen size">
+        <button id="d-desktop" data-d="desktop">Desktop</button><button id="d-phone" data-d="phone">Phone</button>
+      </div>
+    </div>
+  </div>
+  <div class="stage"><div class="frame" id="frame"></div></div>
+  <div class="notes" id="notes"></div>
+  <div class="notes brand" id="brand"></div>
+</div>
+
+<script>
+const IC={home:"M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",users:"M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 20v-2a4 4 0 0 0-3-3.9M16 2.1a4 4 0 0 1 0 7.8",layers:"M12 3l9 5-9 5-9-5zM3 13l9 5 9-5",check:"M4 5h16v16H4zM4 9h16M8 3v4M16 3v4M9 15l2 2 4-4",wallet:"M3 6h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 6l12-3v3M17 13h.01",cash:"M3 7h18v10H3zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4",receipt:"M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6",coins:"M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12M16.5 9.5a6 6 0 1 1-6 9",chart:"M4 20V4M4 20h16M9 16v-5M13 16V8M17 16v-8",msg:"M4 5h16v11H9l-5 4z",scroll:"M6 3h12v18H6zM9 8h6M9 12h6M9 16h3",gear:"M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1",menu:"M4 7h16M4 12h16M4 17h16",out:"M10 4H5v16h5M15 8l4 4-4 4M19 12H9",search:"M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14M20 20l-4-4",plus:"M12 5v14M5 12h14",chev:"M9 6l6 6-6 6",back:"M15 6l-6 6 6 6",user:"M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M5 20a7 7 0 0 1 14 0",more:"M5 12h.01M12 12h.01M19 12h.01",wa:"M21 12a8 8 0 0 1-12 7l-5 1 1-4.5A8 8 0 1 1 21 12z",skip:"M5 5l9 7-9 7zM18 5v14",moon:"M20 14A8 8 0 1 1 10 4a6 6 0 0 0 10 10z",note:"M5 4h10l4 4v12H5zM14 4v5h5",upload:"M12 16V4M7 9l5-5 5 5M4 20h16",edit:"M4 20h4L19 9l-4-4L4 16z",lang:"M4 6h8M8 4v2M5 12c3-1 5-3 6-6M6 9c1 2 3 3 5 3M13 20l4-9 4 9M14.5 17h5",phone:"M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"};
+const ic=n=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[n]}"/></svg>`;
+const MARK=`<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#0f766e"/><path fill="#fff" d="M256 64a36 36 0 0 1 36 36v36h68a32 32 0 0 1 32 32v248a32 32 0 0 1-32 32H152a32 32 0 0 1-32-32V168a32 32 0 0 1 32-32h68v-36a36 36 0 0 1 36-36z"/><g fill="none" stroke="#0f766e" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><circle cx="304" cy="262" r="48"/><path d="M256 262v54a56 56 0 0 1-56 56h-26"/></g></svg>`;
+
+/* ---------- sample data (invented, same for both versions) ---------- */
+const CLS=[["FSc Pre-Medical","Morning batch","",24],["Class 4","4-A","Ms Rabia",28,[26,1,1,0]],["Class 4","4-B","Ms Hina",27,[25,2,0,0]],["Class 5","5-A","Ms Sadia",10],["Class 5","5-B","Mr Tariq",26,[24,1,0,1]],["Class 6","6-A","Ms Hina",30,[29,1,0,0]],["Class 6","6-B","",29],["Class 7","7-A","Mr Imran",31,[30,0,1,0]],["Class 7","7-B","Ms Amna",28],["Class 8","8-A","Mr Bilal",25,[24,1,0,0]],["Class 9","9-A","Ms Farah",22],["Class 10","10-A","Mr Usman",19]]
+  .map(c=>({prog:c[0],name:c[1],teacher:c[2],n:c[3],cnt:c[4]||null}));
+const STU=[["Ali Khan","2026-001","5-A","Mr Khan","0300 1234500",5700,92],["Sara Khan","2026-002","5-A","Mr Khan","0300 1234500",0,96],["Omar Khan","2026-003","5-A","Mr Khan","0300 1234500",0,88],["Ayesha Ahmed","2026-004","5-A","Mr Ahmed","0300 1234501",0,100],["Bilal Ahmed","2026-005","5-A","Mr Ahmed","0300 1234501",0,95],["Zainab Hussain","2026-006","5-A","Mr Hussain","0300 1234502",11400,71],["Hamza Hussain","2026-007","5-A","Mr Hussain","0300 1234502",5700,84],["Fatima Malik","2026-008","5-A","Mr Malik","0300 1234503",0,98],["Usman Qureshi","2026-009","5-A","Mr Qureshi","0300 1234504",2850,90],["Maryam Siddiqui","2026-010","5-A","Mr Siddiqui","0300 1234505",0,97],["Hira Aslam","2026-011","4-A","Imran Aslam","0300 6495083",0,93],["Danish Raza","2026-012","4-B","Kamran Raza","0300 5545344",2850,86]]
+  .map(s=>({name:s[0],adm:s[1],cls:s[2],father:s[3],phone:s[4],dues:s[5],att:s[6]}));
+const ABS=[["Hira Aslam","4-A","Imran Aslam","0300 6495083",1],["Danish Raza","4-B","Kamran Raza","0300 5545344",1],["Noor Raza","4-B","Kamran Raza","0300 5545344",1],["Saad Iqbal","5-B","Nasir Iqbal","0300 9510223",1],["Iman Tariq","6-A","Tariq Mehmood","0300 1261398",1],["Zain Abbas","8-A","Abbas Ali","051 4433221",0]];
+const urAbs=c=>`السلام علیکم۔ آج 13/10/2026 کو ${c} اسکول میں غیر حاضر تھے۔ اگر یہ غلطی ہے تو ہمیں بتائیں۔\n— {schur}\nتفصیل:\n{link}`;
+const urRec=(c,r)=>`السلام علیکم۔ ${c} کی فیس Rs 5,000 موصول ہو گئی (رسید ${r})۔ جزاک اللہ۔\n— {schur}\nرسید:\n{link}`;
+const enNot=c=>`Assalamu alaikum.\nParents meeting on Saturday for ${c}.\n— {sch}\n{link}`;
+const urNot=c=>`السلام علیکم۔\nہفتہ کو ${c} کے والدین کی میٹنگ ہے۔\n— {schur}\n{link}`;
+const MSG=[["absence","Imran Aslam","0300 6495083","ur","Hira Aslam","4-A",urAbs("Hira Aslam")],["absence","Kamran Raza","0300 5545344","ur","Danish and Noor Raza","4-B",urAbs("Danish Raza اور Noor Raza")],["absence","Nasir Iqbal","0300 9510223","ur","Saad Iqbal","5-B",urAbs("Saad Iqbal")],["absence","Tariq Mehmood","0300 1261398","ur","Iman Tariq","6-A",urAbs("Iman Tariq")],["receipt","Mr Ahmed","0300 1234501","ur","Ayesha Ahmed","5-A",urRec("Ayesha Ahmed","R-2026-00039")],["receipt","Mr Malik","0300 1234503","ur","Fatima Malik","5-A",urRec("Fatima Malik","R-2026-00040")],["notice","Mr Khan","0300 1234500","ur","Ali, Sara and Omar Khan","5-A",urNot("Ali، Sara اور Omar Khan")],["notice","Mr Qureshi","0300 1234504","en","Usman Qureshi","5-A",enNot("Usman Qureshi")],["notice","Mr Siddiqui","0300 1234505","en","Maryam Siddiqui","5-A",enNot("Maryam Siddiqui")],["notice","Mr Hussain","0300 1234502","ur","Zainab and Hamza Hussain","5-A",urNot("Zainab اور Hamza Hussain")]]
+  .map(m=>({type:m[0],to:m[1],phone:m[2],lang:m[3],child:m[4],cls:m[5],text:m[6],done:null,opened:false}));
+const SCHOOLS={gsa:{name:"Global Science Academy",city:"Pakpattan",short:"GSA",ur:"گلوبل سائنس اکیڈمی",col:"#1e40af",c:{brand:"#1e40af",fg:"#fff",soft:"#e3eafc",side:"#0f1c3f",on:"#1d3167",mut:"#8a9cc9"},d:{brand:"#93b4ff",fg:"#07153a",soft:"#17254a",side:"#070d1d",on:"#152346",mut:"#6f81ad"}},
+  noor:{name:"Al-Noor Community School",city:"Lahore",short:"AN",ur:"النور کمیونٹی اسکول",col:"#0f766e"}};
+const PAL=[{col:"#0f766e"},{col:"#1e40af",c:SCHOOLS.gsa.c,d:SCHOOLS.gsa.d},{col:"#8a1c2b",c:{brand:"#8a1c2b",fg:"#fff",soft:"#f8e6e8",side:"#2e0c12",on:"#4d1620",mut:"#c59aa1"},d:{brand:"#f2a0aa",fg:"#33070d",soft:"#3a151b",side:"#16070a",on:"#3a1219",mut:"#a37980"}},{col:"#5b3aa8",c:{brand:"#5b3aa8",fg:"#fff",soft:"#ece6f8",side:"#1d1338",on:"#32225c",mut:"#a99bcf"},d:{brand:"#c0a9f5",fg:"#1a0d3a",soft:"#261b45",side:"#0e091c",on:"#281c4a",mut:"#8778ad"}},{col:"#166534",c:{brand:"#166534",fg:"#fff",soft:"#e2f2e7",side:"#0b2415",on:"#153b24",mut:"#8fb59c"},d:{brand:"#7fd6a0",fg:"#062111",soft:"#143120",side:"#06130b",on:"#12301d",mut:"#6f957c"}}];
+const SC=()=>SCHOOLS[S.school];
+const tx=x=>x.text.replace("{schur}",SC().ur).replace("{sch}",SC().name);
+const crest=(z,k)=>{const c=SCHOOLS[k||S.school];return `<svg viewBox="0 0 64 64" style="width:${z}px;height:${z}px;stroke:none;flex:none" role="img" aria-label="${c.name} badge"><circle cx="32" cy="32" r="31" fill="#fff"/><circle cx="32" cy="32" r="26.5" fill="none" stroke="${c.col}" stroke-width="2.5"/><text x="32" y="33" text-anchor="middle" dominant-baseline="central" font-family="Figtree,system-ui,sans-serif" font-weight="700" font-size="${c.short.length>2?18:23}" fill="${c.col}" stroke="none">${c.short}</text></svg>`};
+const vars=()=>{const c=SC()[S.dark?"d":"c"];return c?`--brand:${c.brand};--brand-fg:${c.fg};--soft:${c.soft};--side:${c.side};--side-on:${c.on};--side-mut:${c.mut}`:""};
+const TYPE={absence:"Absent today",receipt:"Payment received",notice:"Notice"};
+const pk=n=>"PKR "+n.toLocaleString("en-US");
+const m=n=>`<span class="mny"><i>PKR</i>${n.toLocaleString("en-US")}</span>`;
+const ini=s=>s.split(" ").map(w=>w[0]).slice(0,2).join("");
+const pend=()=>MSG.filter(x=>!x.done);
+const taken=()=>CLS.filter(c=>c.cnt).length;
+const roster=()=>STU.slice(0,10);
+
+const S={school:"gsa",w:"app",st:false,v:"new",dev:innerWidth<760?"phone":"desktop",route:"home",dark:false,drawer:false,menu:false,more:false,stu:0,cls:3,att:{},tab:"overview",mtab:"all",focus:false,ftab:"counter",amount:"",method:"Cash",paid:null,fclass:"",sent:2,skipped:2};
+const attOf=i=>S.att[i]||(S.att[i]=roster().map(()=>"P"));
+const cntOf=a=>["P","A","L","E"].map(k=>a.filter(x=>x===k).length);
+
+/* ================= TODAY ================= */
+const T_NAV=[["home","Dashboard","home"],["students","Students","users"],["groups","Groups","layers"],["attendance","Attendance","check"],["fees","Fees","wallet"],["cash","Cash","cash"],["expenses","Expenses","receipt"],["salary","Salary","coins"],["advances","Advances","coins"],["reports","Reports","chart"],["messages","Send queue","msg"],["audit","Audit log","scroll"],["settings","Settings","gear"]];
+const alias={student:"students",register:"attendance",classes:"groups",payroll:"salary"};
+function tNav(){const on=alias[S.route]||S.route;return `<div class="t-nav">${T_NAV.map(([r,l,i])=>`<button data-go="${r}" class="${on===r?"on":""}">${ic(i)}${l}</button>`).join("")}</div>`}
+const chips=c=>`<span class="t-chip" style="background:#059669">P ${c[0]}</span><span class="t-chip" style="background:#dc2626">A ${c[1]}</span><span class="t-chip" style="background:#f59e0b">L ${c[2]}</span><span class="t-chip" style="background:#0284c7">E ${c[3]}</span>`;
+const T={
+home(){const ph=S.dev==="phone",g=n=>`style="grid-template-columns:repeat(${ph?1:n},1fr)"`,g2=n=>`style="grid-template-columns:repeat(${ph?2:n},1fr)"`;
+  const tile=(l,v,x="")=>`<div class="t-card"><div class="t-mut">${l}</div><div class="t-big num" style="margin-top:12px">${v}</div>${x}</div>`;
+  const not=CLS.filter(c=>!c.cnt);
+  return `<div class="t-col" style="max-width:896px"><div><h1>${SC().name}</h1><p style="margin:14px 0 0">Welcome, Faysal Mehmood</p></div>
+  <button class="t-card t-row" data-go="messages" style="justify-content:space-between;text-align:start">${ic("msg")}<span style="flex:1;font-size:16px;font-weight:500">Messages waiting</span><span class="t-big num">${pend().length}</span></button>
+  <div class="t-grid" ${g(3)}>${tile("Collected today",pk(60200),`<div class="t-row" style="justify-content:space-between"><span>Cash · 9</span><span>${pk(41200)}</span></div>`)}${tile("Dues outstanding",pk(184500))}${tile("Defaulters",14)}${tile("Billing alerts",0)}${tile("Fee messages waiting",2)}</div>
+  <h2>This month · 2026-10</h2>
+  <div class="t-grid" ${g2(4)}>${[["Income",pk(412300)],["Expenses + salaries",pk(298000)],["Net",pk(114300)],["Dues outstanding",pk(184500)],["Defaulters",14],["New admissions",4],["Left",0]].map(([l,v])=>`<div class="t-card"><div class="t-mut">${l}</div><div class="num" style="font-size:20px;font-weight:600;margin-top:8px">${v}</div></div>`).join("")}</div>
+  <div class="t-grid" ${g(2)}><div class="t-card"><h2 style="margin-bottom:8px">Registers not taken · ${not.length}/12</h2>${not.map(c=>`<div class="t-line"><span style="font-size:16px">${c.prog} · ${c.name}</span><span class="t-mut">${c.teacher||"—"}</span></div>`).join("")}</div>
+  <div class="t-card"><h2 style="margin-bottom:8px">Absent today · 6</h2>${ABS.map(a=>`<div class="t-line" style="flex-wrap:wrap"><span><span style="font-size:16px">${a[0]}</span> <span class="t-mut">${a[1]}</span></span><span>${a[2]} &nbsp;<u class="num">${a[3]}</u></span></div>`).join("")}</div></div>
+  <div class="t-card" style="max-width:${ph?"100%":"440px"}"><h2>Absence messages queued</h2><div class="t-row" style="justify-content:space-between;margin-top:10px"><span class="num" style="font-size:30px;font-weight:600">4</span><button class="t-btn" data-go="messages">${ic("msg")}Open send queue</button></div></div></div>`},
+students(){return `<div class="t-col"><div class="t-row" style="justify-content:space-between"><h1>Students</h1><span class="t-row"><button class="t-btn" data-toast="Import is not part of this mock">${ic("upload")}Import CSV</button><button class="t-btn p" data-toast="Admission form is not part of this mock">${ic("plus")}Admit</button></span></div>
+  <div class="t-row" style="flex-wrap:nowrap"><input class="t-in" id="t-q" style="flex:1" placeholder="Name, admission no. or phone"><button class="t-btn p" aria-label="Search">${ic("search")}</button></div>
+  <div class="t-row" style="flex-wrap:nowrap"><select class="t-in" id="t-g" style="flex:1"><option>All groups</option></select><select class="t-in" id="t-s" style="flex:1"><option>Active</option></select></div>
+  <div class="t-list">${STU.map((s,i)=>`<button data-go="student" data-i="${i}"><span class="t-ico">${ic("user")}</span><span style="flex:1"><span style="font-size:16px;display:block">${s.name}</span><span class="t-mut t-sm">${s.father} · ${s.cls} · ${s.phone}</span></span><span class="num" style="font-size:16px">${s.adm}</span></button>`).join("")}</div><span class="t-mut t-sm">${STU.length} in total</span></div>`},
+student(){const s=STU[S.stu],sib=STU.filter(x=>x.father===s.father&&x!==s),ph=S.dev==="phone";
+  return `<div class="t-col" style="max-width:768px"><div class="t-row" style="justify-content:space-between"><h1>${s.name}</h1><span class="t-row"><button class="t-btn">${ic("edit")}Edit</button><button class="t-btn">Mark left / graduated</button></span></div>
+  <div class="t-card t-row" style="align-items:flex-start;gap:16px"><div><div style="width:112px;height:112px;background:#f5f5f5;border-radius:8px;display:grid;place-items:center;font-size:28px;font-weight:600;color:#737373;margin:0 auto 10px">${ini(s.name)}</div><button class="t-btn">Take or choose photo</button></div><div style="flex:1;min-width:200px">${[["Admission no.",s.adm],["Status",'<span class="t-badge">Active</span>'],["Father name",s.father],["Admission date","2026-04-01"],["Family",s.father.replace("Mr ","")+" family"]].map(([a,b])=>`<div class="t-line"><span class="t-mut">${a}</span><span>${b}</span></div>`).join("")}</div></div>
+  <div class="t-card"><div class="t-row" style="justify-content:space-between"><h2>Guardians</h2><button class="t-btn">${ic("plus")}Add guardian</button></div><p style="margin:14px 0 6px;font-size:16px">${s.father} <span class="t-mut">· father</span></p><span style="color:#0f766e" class="num">${s.phone}</span> <span class="t-badge" style="background:#fff;border:1px solid #e5e5e5">WhatsApp</span><p style="margin:16px 0 0">Parent page link ⌄</p></div>
+  <div class="t-card"><h2>Class history</h2><div class="t-row" style="justify-content:space-between;margin-top:14px"><span>Class 5·${s.cls} <span class="t-badge">Active</span></span><span class="t-row"><button class="t-btn">Transfer</button><button class="t-btn">End</button></span></div><p class="t-mut" style="margin:6px 0 0">2026-04-01 · Roll no. ${S.stu+1}</p></div>
+  <div class="t-card"><div class="t-row" style="justify-content:space-between"><h2>Siblings</h2><button class="t-btn">${ic("plus")}Admit a sibling</button></div>${sib.map(x=>`<div class="t-line"><span style="font-size:16px">${x.name}</span><span class="t-mut num">${x.adm}</span></div>`).join("")||'<p class="t-mut">No siblings.</p>'}</div>
+  <div class="t-card"><div class="t-row" style="justify-content:space-between"><h2>Attendance</h2><span>‹ &nbsp;2026-10&nbsp; ›</span></div><p>No attendance recorded for this month.</p><div class="t-cal">${"<span></span>".repeat(3)}${Array.from({length:31},(_,i)=>`<div>${i+1}</div>`).join("")}</div><div class="t-row" style="margin-top:12px">${chips([0,0,0,0]).replace("P ","Present ").replace("A ","Absent ").replace("L ","Late ").replace("E ","Leave ")}</div></div>
+  <div class="t-card"><div class="t-row" style="justify-content:space-between"><h2>Fees</h2><span class="t-row"><button class="t-btn p" data-go="fees">Collect</button><button class="t-btn">Family statement</button></span></div><button class="t-btn" style="margin:12px 0">Bill this month</button>
+  <div class="t-grid" style="grid-template-columns:repeat(${ph?1:3},1fr)"><div><div class="t-mut t-sm">This child owes</div><b style="font-size:18px" class="num">${pk(s.dues)}</b></div><div><div class="t-mut t-sm">Family owes (after advance)</div><span class="num">${pk(s.dues)}</span></div><div><div class="t-mut t-sm">Family advance</div><span class="num">PKR 0</span></div></div>
+  <div class="t-row" style="margin:12px 0"><button class="t-btn">Reduce fee</button><button class="t-btn">Add sponsorship</button><button class="t-btn g">Opening balance</button></div><b>Fees</b><div style="overflow-x:auto"><div class="t-row" style="gap:28px;padding:8px;border-bottom:1px solid #e5e5e5;font-weight:500;flex-wrap:nowrap;white-space:nowrap"><span>Month</span><span>Fee</span><span>Fee</span><span>Concession</span><span>Fine</span><span>Net</span><span>Paid</span><span>Due</span><span>Status</span></div></div><p style="margin:10px 0 0"><b>Concessions</b><br><span class="t-mut">No concessions.</span></p></div></div>`},
+attendance(){return `<div class="t-col" style="max-width:672px"><div class="t-row" style="justify-content:space-between"><h1>Attendance</h1><button class="t-btn">${ic("note")}Monthly register</button></div><div><div style="font-weight:500;margin-bottom:6px">Date</div><input class="t-in" id="t-d" value="13/10/2026" style="width:220px"></div>
+  ${CLS.map((c,i)=>`<button class="t-card t-row" data-go="register" data-i="${i}" style="padding:12px;text-align:start"><span style="flex:1"><span style="font-size:16px;font-weight:500;display:block">${c.prog} · ${c.name}</span><span class="t-mut">${c.n} students${c.teacher?" · "+c.teacher:""}</span>${c.cnt?`<span class="t-row" style="gap:6px;margin-top:4px">${chips(c.cnt)}<span class="t-mut t-sm">Faysal Mehmood 08:4${i}</span></span>`:""}</span><span class="t-badge" ${c.cnt?"":'style="background:#fee2e2;color:#b91c1c"'}>${c.cnt?"Taken":"Not taken"}</span>${ic("chev")}</button>`).join("")}</div>`},
+register(){const c=CLS[S.cls],a=attOf(S.cls),col={P:"#059669",A:"#dc2626",L:"#f59e0b",E:"#0284c7"};
+  return `<div class="t-col" style="max-width:672px;gap:10px"><div class="t-row" style="justify-content:space-between"><h1>${c.prog} · ${c.name}</h1><button class="t-btn">History</button></div><div class="t-row"><span class="t-mut">2026-10-13</span><span class="t-badge" ${c.cnt?"":'style="background:#fee2e2;color:#b91c1c"'}>${c.cnt?"Taken":"Not taken"}</span></div><p class="t-mut" style="margin:0">Everyone starts present. Tap a student to change: present → absent → late → leave.</p>
+  <div class="t-list">${roster().map((s,i)=>`<div style="padding:8px 12px"><span class="t-ico">${ini(s.name)}</span><span class="t-mut" style="width:20px">${i+1}</span><span style="flex:1;font-size:16px">${s.name}</span><button data-cycle="${i}" style="width:48px;height:48px;border-radius:8px;border:0;background:${col[a[i]]};color:#fff;font-weight:700;font-size:16px">${a[i]}</button><span style="width:44px;display:grid;place-items:center">${ic("note")}</span></div>`).join("")}</div>
+  <div class="t-row" style="justify-content:space-between;position:sticky;bottom:-24px;background:#fff;padding:12px 0;border-top:1px solid #e5e5e5"><span class="t-row" style="gap:6px">${chips(cntOf(a))}</span><button class="t-btn p" data-save style="height:48px;padding:0 24px">Save attendance</button></div></div>`},
+fees(){const L=[["Fee counter","Take a payment and print the receipt"],["Defaulters","Who owes past the due date; remind families"],["Monthly billing","Generate the month’s fees and late fines"],["Cash","Today’s drawer, closing and handovers"],["Concessions","Every fee reduction, active and ended"],["Sponsors","Donors who pay a share of a student’s fee"],["Fee register","One class, one month: who paid what"],["Collection report","Money in by collector and method"]];
+  return `<div class="t-col" style="max-width:768px"><h1>Fees</h1><div class="t-grid" style="grid-template-columns:repeat(${S.dev==="phone"?1:2},1fr);gap:8px">${L.map(([a,b])=>`<button class="t-row" data-toast="Open the Proposed version to try the fee counter" style="border:1px solid #e5e5e5;border-radius:10px;padding:12px;background:#fff;text-align:start;align-items:flex-start;flex-wrap:nowrap">${ic("wallet")}<span><span style="font-size:16px;font-weight:500;display:block">${a}</span><span class="t-mut">${b}</span></span></button>`).join("")}</div></div>`},
+messages(){const p=pend(),grp=["absence","receipt","notice"];
+  return `<div class="t-col" style="max-width:768px;gap:12px"><div class="t-row" style="justify-content:space-between"><h1>Send queue</h1><button class="t-btn">Compose notice</button></div><p class="t-mut" style="margin:0">Tap Open WhatsApp, send the message in WhatsApp, come back and tap Sent. Nothing is marked sent until you tap it.</p>
+  <div class="t-grid" style="grid-template-columns:repeat(3,1fr)">${[["Pending",p.length],["Sent today",S.sent],["Skipped today",S.skipped]].map(([l,v])=>`<div class="t-card" style="padding:10px 14px"><div class="t-mut t-sm">${l}</div><b class="num" style="font-size:22px">${v}</b></div>`).join("")}</div>
+  <div class="t-grid" style="grid-template-columns:repeat(${S.dev==="phone"?1:3},1fr)">${["Status|Pending","Type|All types","Class|All classes"].map((x,i)=>`<div><div style="font-weight:500">${x.split("|")[0]}</div><select class="t-in" id="t-f${i}" style="width:100%"><option>${x.split("|")[1]}</option></select></div>`).join("")}</div>
+  ${grp.map(g=>{const r=p.filter(x=>x.type===g);return r.length?`<h2>${TYPE[g]} · ${r.length}</h2><div class="t-list" style="border-radius:8px">${r.map(x=>`<div style="flex-direction:column;align-items:stretch;gap:8px"><span><b style="font-size:16px;font-weight:500">${x.to}</b> &nbsp;<span class="t-mut num">${x.phone}</span> &nbsp;<span class="t-badge" style="background:#fff;border:1px solid #e5e5e5">${x.lang==="ur"?"Urdu":"English"}</span> &nbsp;<span class="t-mut">${x.cls}</span></span><span style="background:#f5f5f5;border-radius:6px;padding:8px 10px;white-space:pre-line;font-size:13px" dir="ltr">${tx(x)}</span><span class="t-row">${x.opened?`<button class="t-btn p" data-msg="sent" data-i="${MSG.indexOf(x)}">Sent &amp; Next</button>`:`<button class="t-btn p" data-msg="open" data-i="${MSG.indexOf(x)}">${ic("wa")}Open WhatsApp</button>`}<button class="t-btn g" data-msg="skip" data-i="${MSG.indexOf(x)}">${ic("skip")}Skip</button></span></div>`).join("")}</div>`:""}).join("")||'<p class="t-mut">Nothing waiting.</p>'}</div>`},
+stub(){return `<h1>${(T_NAV.find(x=>x[0]===S.route)||["","Screen"])[1]}</h1><p class="t-mut">This screen is not part of the mock. Try Dashboard, Students, Attendance, Fees or Send queue.</p>`}};
+function renderToday(){const body=(T[S.route]||T.stub)();
+  return `<div class="t"><aside class="t-side"><div class="t-brand">Maktab</div>${tNav()}</aside><div class="t-main"><div class="t-top"><button class="t-btn g t-ham" data-act="drawer" aria-label="Menu">${ic("menu")}</button><b class="t-ham" style="font-weight:600">Maktab</b><span class="sp"></span><button class="t-btn">${ic("lang")}اردو</button><button class="t-btn g">${ic("out")}${S.dev==="phone"?"":"Sign out"}</button></div><div class="t-body scroll">${body}</div></div>
+  ${S.drawer?`<div class="t-drawer" data-act="drawer"><div><div class="t-brand">Maktab<div class="t-mut t-sm" style="font-weight:400">School and academy management</div></div>${tNav()}</div></div>`:""}</div>`}
+
+/* ================= PROPOSED ================= */
+const N_NAV=[["",[["home","Home","home"]]],["People",[["students","Students","users"],["classes","Classes","layers"]]],["Daily work",[["attendance","Attendance","check"],["messages","Messages","msg",1]]],["Money",[["fees","Fees","wallet"],["expenses","Expenses","receipt"],["payroll","Payroll","coins"],["reports","Reports","chart"]]],["School",[["settings","Settings","gear"],["audit","Audit log","scroll"]]]];
+const nOn=()=>({student:"students",register:"attendance"}[S.route]||S.route);
+const badge=(t,k="")=>`<span class="n-badge ${k}">${t}</span>`;
+const av=(n,c="")=>`<span class="n-av ${c}">${ini(n)}</span>`;
+const duesCell=d=>d?m(d):`<span class="n-mut">Clear</span>`;
+const attBadge=p=>badge(p+"%",p>=90?"ok":p>=80?"warn":"bad");
+const N={
+home(){const tk=taken(),next=CLS.findIndex(c=>!c.cnt),p=pend(),by=t=>p.filter(x=>x.type===t).length;
+  return `<div class="n-page"><div class="n-ph"><div><h1>Good morning, Faysal</h1><p class="n-sub">Tuesday, 13 Oct 2026</p></div><button class="n-btn p" data-go="fees">${ic("wallet")}Collect a fee</button></div>
+  <div class="n-today">
+    <div class="n-tc"><h2>Attendance registers</h2><div class="fig num">${tk} of 12 taken</div><div class="n-pips" aria-label="Registers">${CLS.map((c,i)=>`<button class="${c.cnt?"done":""}" data-go="register" data-i="${i}" title="${c.prog} ${c.name}${c.cnt?", taken":", not taken"}" aria-label="${c.prog} ${c.name}${c.cnt?", taken":", not taken"}"></button>`).join("")}</div><span class="n-mut n-sm">Each block is one class. Dashed blocks still need a register.</span>${next>=0?`<button class="n-btn p" data-go="register" data-i="${next}">Take ${CLS[next].prog} ${CLS[next].name}</button>`:`<span>${badge("All taken","ok")}</span>`}</div>
+    <div class="n-tc"><h2>Collected today</h2><div class="fig">${m(60200)}</div><div class="n-split"><i style="flex:412;background:var(--brand)"></i><i style="flex:140;background:var(--info)"></i><i style="flex:50;background:var(--warn)"></i></div><div class="n-lg"><span><i style="background:var(--brand)"></i>Cash 41,200</span><span><i style="background:var(--info)"></i>JazzCash 14,000</span><span><i style="background:var(--warn)"></i>Bank 5,000</span></div><span class="n-mut n-sm">9 receipts. Cash drawer is open.</span><button class="n-btn" data-go="fees">Open fee counter</button></div>
+    <div class="n-tc"><h2>Messages to send</h2><div class="fig num">${p.length} waiting</div><div class="n-row">${by("absence")?badge(by("absence")+" absence","bad"):""}${by("receipt")?badge(by("receipt")+" receipts","ok"):""}${by("notice")?badge(by("notice")+" notices","info"):""}</div><span class="n-mut n-sm">${p.length?"About 2 minutes from the school phone.":"The queue is clear."}</span><button class="n-btn" data-act="focus" ${p.length?"":"disabled"}>${ic("wa")}Start sending</button></div>
+  </div>
+  <div class="n-panel"><header><h2>Needs attention</h2></header><div class="n-rows">
+    ${12-tk?`<button data-go="attendance">${badge("Attendance","warn")}<span class="n-grow">${12-tk} registers not taken yet</span><span class="n-mut hide-ph">Take them</span>${ic("chev")}</button>`:""}
+    <button data-go="fees" data-ftab="defaulters">${badge("Fees","bad")}<span class="n-grow">14 families are past the due date, ${m(184500)} outstanding</span><span class="n-mut hide-ph">See defaulters</span>${ic("chev")}</button>
+    <button data-go="fees" data-ftab="cash">${badge("Cash","info")}<span class="n-grow">Drawer open since 08:05, expecting ${m(41200)}</span><span class="n-mut hide-ph">Close drawer</span>${ic("chev")}</button></div></div>
+  <div class="n-panel"><header><h2>October so far</h2><span class="n-mut n-sm">compared with September</span></header><div class="n-stats">${[["Income",412300,"+6%","ok"],["Spending",298000,"−1%","ok"],["Net",114300,"+31%","ok"],["Dues outstanding",184500,"+8%","bad"]].map(([l,v,d,k])=>`<div><span class="n-mut n-sm">${l}</span><b>${m(v)}</b><span class="n-sm" style="color:var(--${k});font-weight:600">${d}</span></div>`).join("")}</div></div>
+  <div class="n-two"><div class="n-panel"><header><h2>Absent today</h2><span class="n-mut n-sm">6 students</span></header><div class="n-rows">${ABS.map(a=>`<div>${av(a[0])}<span class="n-grow"><b style="font-weight:600">${a[0]}</b> <span class="n-mut">${a[1]}</span><br><span class="n-mut n-sm">${a[2]}, <span class="num">${a[3]}</span></span></span>${a[4]?badge("Message queued","info"):badge("Call, landline","warn")}</div>`).join("")}</div></div>
+  <div class="n-panel"><header><h2>Registers to take</h2><button class="n-btn q" data-go="attendance">All classes</button></header><div class="n-rows">${CLS.map((c,i)=>c.cnt?"":`<button data-go="register" data-i="${i}"><span class="n-grow"><b style="font-weight:600">${c.prog} ${c.name}</b><br><span class="n-mut n-sm">${c.teacher||"No class teacher"}, ${c.n} students</span></span>${ic("chev")}</button>`).join("")||'<div class="n-mut">Every register is taken.</div>'}</div></div></div></div>`},
+students(){const list=STU.map((s,i)=>[s,i]).filter(([s])=>!S.fclass||s.cls===S.fclass),ph=S.dev==="phone";
+  return `<div class="n-page"><div class="n-ph"><div><h1>Students</h1><p class="n-sub">${list.length} active students</p></div><div class="n-row"><button class="n-btn hide-ph" data-toast="Import is not part of this mock">${ic("upload")}Import CSV</button><button class="n-btn p" data-toast="Admission form is not part of this mock">${ic("plus")}Admit student</button></div></div>
+  <div class="n-row"><select class="n-in" id="n-fc" data-filter><option value="">All classes</option>${["4-A","4-B","5-A"].map(c=>`<option ${S.fclass===c?"selected":""}>${c}</option>`).join("")}</select><div class="n-seg"><button class="on">Active</button><button>Left</button><button>All</button></div></div>
+  <div class="n-panel">${ph?`<div class="n-rows">${list.map(([s,i])=>`<button data-go="student" data-i="${i}">${av(s.name)}<span class="n-grow"><b style="font-weight:600">${s.name}</b><br><span class="n-mut n-sm">Class ${s.cls}, <span class="num">${s.adm}</span></span></span>${s.dues?badge(pk(s.dues),"bad"):badge("Clear","ok")}</button>`).join("")}</div>`
+  :`<table class="n-tbl"><thead><tr><th>Student</th><th>Class</th><th>Guardian</th><th>Phone</th><th class="r">Dues</th><th class="r">Attendance</th></tr></thead><tbody>${list.map(([s,i])=>`<tr class="go" data-go="student" data-i="${i}" tabindex="0"><td><div class="n-row" style="flex-wrap:nowrap">${av(s.name)}<span><b style="font-weight:600">${s.name}</b><br><span class="n-mut n-sm num">${s.adm}</span></span></div></td><td>${s.cls}</td><td>${s.father}</td><td class="num">${s.phone}</td><td class="r">${duesCell(s.dues)}</td><td class="r">${attBadge(s.att)}</td></tr>`).join("")}</tbody></table>`}</div></div>`},
+student(){const s=STU[S.stu],sib=STU.map((x,i)=>[x,i]).filter(([x])=>x.father===s.father&&x!==s),mo=Math.round(s.dues/2850);
+  const pat="PPPPAPPPPLPPP",cal=Array.from({length:31},(_,i)=>{const d=i+1,wd=(i+3)%7;if(wd===6||d>13)return`<span>${d}</span>`;const k=s.att<80&&d%4===0?"A":pat[i%pat.length];return`<span class="${k}">${d}</span>`}).join("");
+  const tabs={overview:`<div class="n-two"><div class="n-panel"><header><h2>Guardians</h2><button class="n-btn q">${ic("plus")}Add</button></header><div class="n-rows"><div>${av(s.father)}<span class="n-grow"><b style="font-weight:600">${s.father}</b> <span class="n-mut">father</span><br><span class="num">${s.phone}</span></span>${badge("WhatsApp","ok")}</div><div><span class="n-grow n-mut">Parent page link is active. Last opened 11 Oct.</span><button class="n-btn">Manage link</button></div></div></div>
+    <div class="n-panel"><header><h2>Siblings</h2><button class="n-btn q">${ic("plus")}Admit sibling</button></header><div class="n-rows">${sib.map(([x,i])=>`<button data-go="student" data-i="${i}">${av(x.name)}<span class="n-grow"><b style="font-weight:600">${x.name}</b><br><span class="n-mut n-sm">Class ${x.cls}</span></span>${ic("chev")}</button>`).join("")||'<div class="n-mut">No brothers or sisters enrolled.</div>'}</div></div></div>
+    <div class="n-panel"><header><h2>Class history</h2><div class="n-row"><button class="n-btn">Transfer</button></div></header><div class="n-rows"><div><span class="n-grow"><b style="font-weight:600">Class ${s.cls}</b>, roll no. ${S.stu+1}<br><span class="n-mut n-sm">Since 1 Apr 2026</span></span>${badge("Current","ok")}</div></div></div>`,
+   fees:`<div class="n-panel"><header><h2>Fee months</h2><div class="n-row"><button class="n-btn">Reduce fee</button><button class="n-btn hide-ph">Add sponsorship</button></div></header><div style="overflow-x:auto"><table class="n-tbl"><thead><tr><th>Month</th><th>Fee</th><th class="r">Amount</th><th class="r">Paid</th><th class="r">Due</th><th>Status</th></tr></thead><tbody>${["Oct 2026","Sep 2026","Aug 2026","Jul 2026"].map((mth,i)=>{const due=i<mo;return`<tr><td>${mth}</td><td>Tuition</td><td class="r">${m(2850)}</td><td class="r">${m(due?0:2850)}</td><td class="r">${due?m(2850):'<span class="n-mut">0</span>'}</td><td>${due?badge(i===0&&mo===1?"Due":"Overdue",i===0&&mo===1?"warn":"bad"):badge("Paid","ok")}</td></tr>`}).join("")}</tbody></table></div></div>`,
+   attendance:`<div class="n-panel"><header><h2>October 2026</h2><div class="n-row">${badge("Present","ok")}${badge("Absent","bad")}${badge("Late","warn")}${badge("Leave","info")}</div></header><div class="n-pad"><div class="n-cal"><span style="visibility:hidden"></span><span style="visibility:hidden"></span><span style="visibility:hidden"></span>${cal}</div><p class="n-mut n-sm" style="margin:12px 0 0">Grey days are weekends or have no register yet.</p></div></div>`,
+   family:`<div class="n-panel"><header><h2>${s.father.replace("Mr ","")} family</h2><button class="n-btn">Family statement</button></header><div class="n-stats"><div><span class="n-mut n-sm">Family owes</span><b>${m(s.dues+sib.reduce((a,[x])=>a+x.dues,0))}</b></div><div><span class="n-mut n-sm">Advance held</span><b>${m(0)}</b></div><div><span class="n-mut n-sm">Children here</span><b>${sib.length+1}</b></div><div><span class="n-mut n-sm">Last payment</span><b>2 Sep 2026</b></div></div></div>`};
+  return `<div class="n-page"><button class="n-back" data-go="students">${ic("back")}Students</button>
+  <div class="n-ph" style="align-items:flex-start"><div class="n-row" style="gap:14px;flex-wrap:nowrap">${av(s.name,"lg")}<div><h1>${s.name}</h1><p class="n-sub">Class ${s.cls} <span class="num">· ${s.adm}</span></p><div style="margin-top:6px">${badge("Active","ok")}</div></div></div><div class="n-row"><button class="n-btn p" data-go="fees">${ic("wallet")}Collect fee</button><button class="n-btn" data-toast="Message added to the queue">${ic("msg")}Message</button><button class="n-btn sq" aria-label="More actions" data-toast="Edit, mark left, change photo">${ic("more")}</button></div></div>
+  <div class="n-panel"><div class="n-stats"><div><span class="n-mut n-sm">This child owes</span><b>${s.dues?m(s.dues):"Nothing"}</b><span class="n-sm n-mut">${mo?mo+" month"+(mo>1?"s":"")+" unpaid":"All paid"}</span></div><div><span class="n-mut n-sm">Attendance this month</span><b class="num">${s.att}%</b><span class="n-sm n-mut">${s.att>=90?"Regular":"Below 90%"}</span></div><div><span class="n-mut n-sm">Guardian</span><b style="font-size:15px">${s.father}</b><span class="n-sm n-mut num">${s.phone}</span></div><div><span class="n-mut n-sm">Admitted</span><b style="font-size:15px">1 Apr 2026</b><span class="n-sm n-mut">${sib.length} sibling${sib.length===1?"":"s"}</span></div></div></div>
+  <div class="n-tabs" role="tablist">${[["overview","Overview"],["fees","Fees"],["attendance","Attendance"],["family","Family"]].map(([k,l])=>`<button role="tab" data-tab="${k}" class="${S.tab===k?"on":""}">${l}</button>`).join("")}</div>${tabs[S.tab]}</div>`},
+attendance(){const tk=taken(),row=(c,i)=>`<button data-go="register" data-i="${i}"><span class="n-grow"><b style="font-weight:600">${c.prog} ${c.name}</b><br><span class="n-mut n-sm">${c.teacher||"No class teacher"}, ${c.n} students</span></span>${c.cnt?`<span class="n-sm n-mut num hide-ph">${c.cnt[0]} present</span>${c.cnt[1]?badge(c.cnt[1]+" absent","bad"):badge("All present","ok")}`:badge("Not taken","warn")}${ic("chev")}</button>`;
+  return `<div class="n-page narrow" style="max-width:760px"><div class="n-ph"><div><h1>Attendance</h1><p class="n-sub">Tuesday, 13 Oct 2026</p></div><div class="n-row"><input class="n-in" id="n-date" type="date" value="2026-10-13" aria-label="Date"><button class="n-btn">${ic("note")}Monthly register</button></div></div>
+  <div class="n-panel n-pad"><div class="n-row" style="justify-content:space-between"><b class="num">${tk} of 12 registers taken</b><span class="n-mut n-sm">6 absent so far</span></div><div class="n-prog" style="margin-top:8px"><i style="width:${tk/12*100}%"></i></div></div>
+  ${tk<12?`<div class="n-panel"><header><h2>To take</h2><span class="n-mut n-sm">${12-tk} classes</span></header><div class="n-rows">${CLS.map((c,i)=>c.cnt?"":row(c,i)).join("")}</div></div>`:""}
+  <div class="n-panel"><header><h2>Taken</h2><span class="n-mut n-sm">${tk} classes</span></header><div class="n-rows">${CLS.map((c,i)=>c.cnt?row(c,i):"").join("")}</div></div></div>`},
+register(){const c=CLS[S.cls],a=attOf(S.cls),n=cntOf(a),ph=S.dev==="phone",lab={P:"Present",A:"Absent",L:"Late",E:"Leave"};
+  return `<div class="n-page narrow" style="max-width:760px"><button class="n-back" data-go="attendance">${ic("back")}Attendance</button><div class="n-ph"><div><h1>${c.prog} ${c.name}</h1><p class="n-sub">Tuesday, 13 Oct 2026${c.teacher?", "+c.teacher:""}</p></div>${c.cnt?badge("Taken","ok"):badge("Not taken","warn")}</div>
+  <p class="n-mut" style="margin:0">Everyone starts present. Change only the students who are not.</p>
+  <div class="n-panel"><div class="n-rows">${roster().map((s,i)=>`<div style="padding-block:8px"><span class="n-mut num" style="width:18px">${i+1}</span>${ph?"":av(s.name)}<span class="n-grow" style="font-weight:600">${s.name}</span><div class="n-seg" role="group" aria-label="${s.name}">${"PALE".split("").map(k=>`<button class="${k} ${a[i]===k?"on":""}" data-set="${i}" data-s="${k}" title="${lab[k]}" aria-pressed="${a[i]===k}">${ph?k:lab[k]}</button>`).join("")}</div></div>`).join("")}</div></div>
+  <div class="n-save"><div class="n-row n-grow">${badge(n[0]+" present","ok")}${n[1]?badge(n[1]+" absent","bad"):""}${n[2]?badge(n[2]+" late","warn"):""}${n[3]?badge(n[3]+" leave","info"):""}</div><button class="n-btn p" data-save style="height:44px;padding:0 22px">Save attendance</button></div></div>`},
+fees(){const tabs=[["counter","Counter"],["defaulters","Defaulters"],["billing","Monthly billing"],["cash","Cash drawer"]];
+  const due=5700,amt=+S.amount||0;
+  const counter=S.paid?`<div class="n-panel n-pad" style="display:flex;flex-direction:column;gap:12px;align-items:flex-start"><div class="n-row" style="flex-wrap:nowrap;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--line);align-self:stretch">${crest(40)}<div><b>${SC().name}</b><br><span class="n-mut n-sm">${SC().city}, fee receipt</span></div></div>${badge("Receipt issued","ok")}<div><div class="n-mut">Receipt R-2026-00042, ${S.paid.method}</div><div style="font-size:30px;font-weight:700">${m(S.paid.amt)}</div></div><div class="n-mut">The family now owes ${m(Math.max(0,due-S.paid.amt))}${S.paid.amt>due?", and "+pk(S.paid.amt-due)+" is held as advance":""}.</div><div class="n-row"><button class="n-btn p" data-toast="Printing opens in the real app">Print receipt</button><button class="n-btn" data-toast="Receipt message added to the queue">${ic("wa")}Send on WhatsApp</button><button class="n-btn q" data-act="newpay">New payment</button></div></div>`
+  :`<div class="n-two"><div class="n-panel"><header><div class="n-row" style="flex-wrap:nowrap">${av("Khan family")}<div><h2>Khan family</h2><span class="n-mut n-sm">Ali, Sara and Omar, Class 5-A</span></div></div><button class="n-btn q" data-toast="Family search is not part of this mock">Change</button></header>
+    <table class="n-tbl"><thead><tr><th>What is due</th><th class="r">Amount</th></tr></thead><tbody><tr><td>Ali Khan, tuition Sep 2026 ${badge("Overdue","bad")}</td><td class="r">${m(2850)}</td></tr><tr><td>Ali Khan, tuition Oct 2026 ${badge("Due","warn")}</td><td class="r">${m(2850)}</td></tr><tr><td><b>Total due</b></td><td class="r" style="font-size:16px">${m(due)}</td></tr></tbody></table></div>
+    <div class="n-panel n-pad" style="display:flex;flex-direction:column;gap:14px"><div class="n-fld"><label for="n-amt">Amount received</label><input class="n-in n-amt num" id="n-amt" inputmode="numeric" placeholder="0" value="${S.amount}"><div class="n-row"><button class="n-btn" data-amt="5700">Full due 5,700</button><button class="n-btn" data-amt="2850">One month 2,850</button></div></div>
+    <div class="n-fld"><label>Paid by</label><div class="n-seg" style="align-self:flex-start;flex-wrap:wrap">${["Cash","Bank","JazzCash","EasyPaisa"].map(x=>`<button data-method="${x}" class="${S.method===x?"on":""}">${x}</button>`).join("")}</div><span class="n-mut n-sm">${S.method==="Cash"?"Cash goes into today’s drawer, 13 Oct 2026.":"Choose the account on the next step."}</span></div>
+    <div class="n-msg n-sm">${amt?`Pays ${amt>=due?"both months in full":amt>=2850?"September in full"+(amt>2850?" and part of October":""):"part of September"}. ${amt>due?pk(amt-due)+" is kept as advance.":"Oldest dues are paid first."}`:"Oldest dues are paid first. You can choose lines instead."}</div>
+    <button class="n-btn p big" data-act="pay">Confirm and issue receipt</button></div></div>`;
+  const fam=[["Hussain family","Zainab, Hamza","5-A",4,17100],["Khan family","Ali","5-A",2,5700],["Qureshi family","Usman","5-A",1,2850],["Raza family","Danish, Noor","4-B",1,2850]];
+  const def=`<div class="n-panel"><header><h2>Past the due date</h2><button class="n-btn" data-toast="4 reminders added to Messages">Remind all 4</button></header><div style="overflow-x:auto"><table class="n-tbl"><thead><tr><th>Family</th><th>Children</th><th>Unpaid</th><th class="r">Amount</th><th></th></tr></thead><tbody>${fam.map(f=>`<tr><td><b style="font-weight:600">${f[0]}</b></td><td>${f[1]} <span class="n-mut">${f[2]}</span></td><td>${badge(f[3]+" month"+(f[3]>1?"s":""),f[3]>1?"bad":"warn")}</td><td class="r">${m(f[4])}</td><td class="r"><button class="n-btn" data-toast="Reminder added to Messages">Remind</button></td></tr>`).join("")}</tbody></table></div></div><p class="n-mut n-sm" style="margin:0">Showing 4 of 14 families in this mock.</p>`;
+  const stub=t=>`<div class="n-panel n-pad n-mut">${t} keeps its current content and moves into this tab. It is not drawn in this mock.</div>`;
+  return `<div class="n-page"><div class="n-ph"><h1>Fees</h1></div><div class="n-tabs">${tabs.map(([k,l])=>`<button data-ftabset="${k}" class="${S.ftab===k?"on":""}">${l}</button>`).join("")}</div>${{counter,defaulters:def,billing:stub("Monthly billing"),cash:stub("The cash drawer")}[S.ftab]}</div>`},
+messages(){const p=pend(),cur=p[0];
+  if(S.focus)return `<div class="n-page narrow"><button class="n-back" data-act="unfocus">${ic("back")}Back to the list</button>${cur?`<div><div class="n-row" style="justify-content:space-between"><b class="num">${10-p.length+1} of 10</b><span class="n-mut n-sm">${p.length} left</span></div><div class="n-prog" style="margin-top:8px"><i style="width:${(10-p.length)/10*100}%"></i></div></div>
+    <div class="n-panel"><header><div class="n-row" style="flex-wrap:nowrap">${av(cur.to)}<div><h2>${cur.to}</h2><span class="n-mut n-sm num">${cur.phone}</span></div></div>${badge(TYPE[cur.type],cur.type==="absence"?"bad":cur.type==="receipt"?"ok":"info")}</header><div class="n-pad"><div class="n-mut n-sm" style="margin-bottom:8px">About ${cur.child}, Class ${cur.cls}</div><div class="n-msg ${cur.lang==="ur"?"n-urdu":""}" style="white-space:pre-line">${tx(cur)}</div></div></div>
+    ${cur.opened?`<button class="n-btn p big" data-msg="sent" data-i="${MSG.indexOf(cur)}">Sent, show the next one</button>`:`<button class="n-btn p big" data-msg="open" data-i="${MSG.indexOf(cur)}">${ic("wa")}Open WhatsApp</button>`}<button class="n-btn big" data-msg="skip" data-i="${MSG.indexOf(cur)}">${ic("skip")}Skip this family</button><p class="n-mut n-sm" style="margin:0;text-align:center">Nothing is marked sent until you tap Sent.</p>`:`<div class="n-panel n-pad" style="text-align:center"><h2>The queue is clear</h2><p class="n-mut">${S.sent} sent and ${S.skipped} skipped today.</p></div>`}</div>`;
+  const list=p.filter(x=>S.mtab==="all"||x.type===S.mtab),by=t=>p.filter(x=>x.type===t).length;
+  return `<div class="n-page"><div class="n-ph"><div><h1>Messages</h1><p class="n-sub"><span class="num">${p.length}</span> waiting, <span class="num">${S.sent}</span> sent and <span class="num">${S.skipped}</span> skipped today</p></div><div class="n-row"><button class="n-btn">Compose notice</button><button class="n-btn p" data-act="focus" ${p.length?"":"disabled"}>${ic("wa")}Start sending</button></div></div>
+  <div class="n-tabs">${[["all","All",p.length],["absence","Absence",by("absence")],["receipt","Receipts",by("receipt")],["notice","Notices",by("notice")]].map(([k,l,c])=>`<button data-mtab="${k}" class="${S.mtab===k?"on":""}">${l} <span class="num">${c}</span></button>`).join("")}</div>
+  <div class="n-panel"><div class="n-rows">${list.map(x=>`<div>${av(x.to)}<span class="n-grow"><b style="font-weight:600">${x.to}</b> <span class="n-mut num">${x.phone}</span><br><span class="n-mut n-sm">${TYPE[x.type]}, ${x.child}, Class ${x.cls}</span></span><span class="hide-ph">${badge(x.lang==="ur"?"Urdu":"English")}</span><button class="n-btn" data-msg="skip" data-i="${MSG.indexOf(x)}">Skip</button></div>`).join("")||'<div class="n-mut">Nothing waiting here.</div>'}</div></div></div>`},
+stub(){const l={classes:"Classes",expenses:"Expenses",payroll:"Payroll",reports:"Reports",settings:"Settings",audit:"Audit log"}[S.route]||"Screen";
+  return `<div class="n-page narrow"><h1>${l}</h1><div class="n-panel n-pad n-mut">${l} is not drawn in this mock. It would use the same page header, table and filter parts as Students and Fees. ${S.route==="payroll"?"Payroll combines today’s Salary and Advances.":S.route==="classes"?"Classes is today’s Groups.":""}</div></div>`}};
+const foot=c=>`<div class="n-foot ${c||""}"><span class="n-mark" style="width:14px;height:14px">${MARK}</span>Runs on Maktab</div>`;
+function nLogin(){const c=SC();return `<div class="n ${S.dark?"dark":""}" style="${vars()}"><div class="n-door"><div class="l">${crest(S.dev==="phone"?76:108)}<h1 style="color:#fff;margin-top:8px">${c.name}</h1><div class="n-urdu" style="text-align:center;font-size:19px;color:var(--side-fg)">${c.ur}</div><span style="color:var(--side-mut)">${c.city}</span>${foot("door-foot")}</div>
+  <div class="r"><div><h2 style="font-size:20px">Staff sign-in</h2><button class="n-btn big" data-act="signin">Sign in with Google</button><span class="n-mut n-sm">Only staff invited by the school can sign in.</span><div class="n-msg" style="margin-top:10px"><b>Are you a parent?</b><br><span class="n-mut">Parents do not sign in here. Open the link the school sent you on WhatsApp, or call the office on <span class="num">0457 123456</span>.</span></div><button class="n-btn q" style="align-self:flex-start" data-toast="Urdu is not drawn in this mock">${ic("lang")}اردو</button></div></div></div></div>`}
+const prevHTML=()=>{const c=SC();return `<b class="n-sm n-mut">How it will look</b><div class="door">${crest(56)}<b>${c.name||"Your school"}</b><span class="n-sm" style="color:var(--side-mut)">${c.city||"City"}</span></div><div class="strip">${crest(32)}<div><b>${c.name||"Your school"}</b><br>${c.city||"City"}, fee receipt</div></div><div class="n-row"><div class="icon" style="background:${c.col}">${c.short}</div><span class="n-sm n-mut">Icon on staff phones</span></div>`};
+function nSetup(){const c=SC(),steps=["Your school","School or academy","Classes and sections","Fees","Staff"];
+  return `<div class="n ${S.dark?"dark":""}" style="${vars()}"><div class="n-setup"><aside class="n-rail"><div style="color:#fff;font-weight:700;padding-bottom:10px">Set up your school</div>${steps.map((x,i)=>`<div class="${i?"":"on"}"><i>${i+1}</i>${x}</div>`).join("")}<span style="margin-top:auto">${foot()}</span></aside>
+  <main class="scroll"><div class="cols"><div style="display:flex;flex-direction:column;gap:16px"><div><span class="n-mut n-sm">Step 1 of 5</span><h1>Your school</h1><p class="n-sub">This is what staff and parents will see. You can change it later in Settings.</p></div>
+    <div class="n-fld"><label for="n-sn">School or academy name</label><input class="n-in" id="n-sn" style="height:44px" value="${c.name}"></div>
+    <div class="n-row" style="align-items:flex-start;flex-wrap:nowrap"><div class="n-fld n-grow"><label for="n-sc">City</label><input class="n-in" id="n-sc" style="height:44px" value="${c.city}"></div><div class="n-fld" style="width:120px"><label for="n-ss">Short name</label><input class="n-in" id="n-ss" style="height:44px" maxlength="4" value="${c.short}"></div></div>
+    <div class="n-fld"><label>Logo</label><div class="n-row" style="flex-wrap:nowrap" id="n-logo">${crest(56)}<div><button class="n-btn" data-toast="In the real app this opens the camera or gallery, then a crop step">${ic("upload")}Upload a logo</button><div class="n-mut n-sm" style="margin-top:4px">No logo yet? This badge is used until you add one.</div></div></div></div>
+    <div class="n-fld"><label>School colour</label><div class="n-row">${PAL.map((x,i)=>`<button class="n-sw" data-pal="${i}" style="background:${x.col}" aria-pressed="${x.col===c.col}" aria-label="Colour ${i+1}"></button>`).join("")}</div></div>
+    <div class="n-row"><button class="n-btn p" style="height:44px;padding:0 22px" data-toast="The other four steps are not drawn in this mock">Continue</button></div></div>
+    <div class="n-prev" id="n-prev">${prevHTML()}</div></div></main></div></div>`}
+function tLogin(){return `<div class="t" style="display:grid;place-items:center;position:relative"><button class="t-btn" style="position:absolute;right:16px;top:${S.dev==="phone"?"16px":"44%"}">${ic("lang")}اردو</button><div class="t-card" style="width:min(384px,88%);padding:24px"><span class="n-mark" style="width:56px;height:56px;display:block">${MARK}</span><h1 style="font-size:24px;margin-top:16px">Maktab</h1><p class="t-mut" style="margin:4px 0 20px">School and academy management</p><button class="t-btn" style="width:100%;justify-content:center" data-act="signin">Sign in with Google</button><p class="t-mut" style="margin:20px 0 0">Only staff invited by the school can sign in.</p></div></div>`}
+function tSetup(){const f=(l,h="",r="")=>`<div><div style="font-weight:500;margin-bottom:6px">${l}${r}</div><div class="t-in" style="width:100%"></div>${h}</div>`;
+  return `<div class="t"><div class="t-body scroll"><div class="t-col" style="max-width:672px;margin:0 auto"><div class="t-row" style="justify-content:space-between"><h1>School setup</h1><button class="t-btn">${ic("lang")}اردو</button></div><div style="display:flex;gap:4px">${[1,0,0,0,0,0,0].map(x=>`<span style="flex:1;height:6px;border-radius:9px;background:${x?"#0f766e":"#f5f5f5"}"></span>`).join("")}</div><span class="t-mut">Step 1 of 7</span>
+  <div class="t-card t-col" style="padding:24px"><h2>School</h2><span class="t-mut">A few steps to get your school ready. You can change everything later in Settings.</span>${f("School name",""," <span style='color:#dc2626'>*</span>")}${f("Name in Urdu")}${f("Address")}${f("Phone")}${f("Default language")}${f("Receipt prefix",'<span class="t-mut t-sm">Letters printed before receipt numbers, e.g. ANS.</span>')}</div>
+  <div class="t-row" style="justify-content:space-between;position:sticky;bottom:-24px;background:#fff;padding:12px 0"><button class="t-btn" disabled style="opacity:.5">Back</button><button class="t-btn p" data-toast="Six more steps follow: Type, Session, Classes, Groups, Staff, Done">Next</button></div></div></div></div>`}
+function nNav(){const on=nOn(),p=pend().length;return N_NAV.map(([g,items])=>`<div class="n-grp">${g?`<h3>${g}</h3>`:""}${items.map(([r,l,i,c])=>`<button data-go="${r}" class="${on===r?"on":""}">${ic(i)}${l}${c&&p?`<span class="n-cnt num">${p}</span>`:""}</button>`).join("")}</div>`).join("")}
+function renderNew(){const on=nOn(),p=pend().length,body=(N[S.route]||N.stub)();
+  return `<div class="n ${S.dark?"dark":""}" style="${vars()}"><aside class="n-side"><div class="n-school">${crest(40)}<div><b>${SC().name}</b><span>${SC().city}</span></div></div>${nNav()}
+    <div class="n-user">${S.menu?`<div class="n-pop"><button data-toast="Urdu is not drawn in this mock">${ic("lang")}اردو</button><button data-act="dark">${ic("moon")}${S.dark?"Light":"Dark"} theme</button><button data-act="signout">${ic("out")}Sign out</button></div>`:""}<button data-act="menu" aria-label="Account menu">${av("Faysal Mehmood")}<span><span style="color:#fff;font-weight:600">Faysal Mehmood</span><small>Owner</small></span></button>${foot()}</div></aside>
+  <div class="n-main"><div class="n-top">${S.dev==="phone"?crest(32):""}<div class="n-search">${ic("search")}<input id="n-q" placeholder="${S.dev==="phone"?"Search students":"Search students, admission no. or phone"}" autocomplete="off" aria-label="Search students"><div class="n-res" id="n-res" hidden></div></div><div class="n-sync"><i></i><span>All changes saved</span></div>${S.dev==="phone"?`<button class="n-btn sq" style="border:0;background:none" data-act="dark" aria-label="Switch theme">${ic("moon")}</button>`:""}</div>
+  <div class="n-body scroll">${body}</div>
+  <nav class="n-tabbar">${[["home","Home","home"],["attendance","Attendance","check"],["fees","Fees","wallet"],["messages","Messages","msg"]].map(([r,l,i])=>`<button data-go="${r}" class="${on===r?"on":""}">${ic(i)}${l}${r==="messages"&&p?`<span class="n-cnt num">${p}</span>`:""}</button>`).join("")}<button data-act="more" class="${["students","classes","expenses","payroll","reports","settings","audit"].includes(on)?"on":""}">${ic("more")}More</button></nav></div>
+  ${S.more?`<div class="n-sheet" data-act="more"><div><h3>People</h3><button data-go="students">${ic("users")}Students</button><button data-go="classes">${ic("layers")}Classes</button><h3>Money</h3><button data-go="expenses">${ic("receipt")}Expenses</button><button data-go="payroll">${ic("coins")}Payroll</button><button data-go="reports">${ic("chart")}Reports</button><h3>School</h3><button data-go="settings">${ic("gear")}Settings</button><button data-go="audit">${ic("scroll")}Audit log</button><button data-act="signout">${ic("out")}Sign out</button></div></div>`:""}</div>`}
+
+/* ================= notes ================= */
+const NOTES={today:{login:["The sign-in page shows only Maktab. Nothing tells staff which school this is.","A parent who lands here by mistake gets no guidance."],setup:["Seven steps. The first screen asks for a receipt prefix before the school has a single class.","The logo upload is missing on the first visit. It only appears if you go to the next step and come back.","You can reach “Your school is ready” with no classes and no sections. Fees are not part of setup, and the last screen still says fees come in a later update."],home:["Thirteen tiles carry the same weight, so nothing stands out. Dues outstanding and Defaulters each appear twice.","Zero values take as much room as the real numbers.","The registers list does not look tappable, and it sits below two rows of totals."],students:["A phone-style list stretched across the desktop. Class, dues and attendance are not visible without opening each student.","Every row has the same generic icon."],student:["One long page. Dues and attendance, the two things staff look for, are at the bottom.","The attendance calendar is mostly empty boxes. The fee table repeats the Fee column header."],attendance:["Twelve cards with coloured P, A, L, E chips each. There is no summary of how many are left.","Not taken is shown in alarm red."],register:["One button cycles through four states, so marking leave takes three taps."],fees:["A hub of eight links. Cash also has its own sidebar entry."],messages:["Ten full message cards make a long page. Urdu text is laid out left to right, so the full stop lands on the wrong side.","There is no way to work through the queue one family at a time."],_:["The sidebar lists 13 items with no grouping. On the phone everything is behind one menu button."]},
+new:{login:["The school’s badge, its name in both scripts and its city fill half the page, so staff know they are in the right place.","Parents get one clear line telling them where to go instead.","It still has one job, signing in. There is no news, photo or public data to keep up to date."],setup:["Five steps instead of seven. Session dates and sections fold into the classes step, and fees are added.","The first step is about identity. Change the name, short name or colour and watch the badge, sign-in page, receipt header and phone icon update.","Every school gets a badge from the first minute, with or without a logo file."],home:["Three cards for the work of the day, each with one action. The row of blocks is the school’s 12 registers; click a dashed one to take it.","Needs attention lists only what is not zero.","Month totals are one strip, compared with last month."],students:["A real table on desktop: class, guardian, dues and attendance at a glance. It becomes a list of cards on the phone.","Search in the top bar works from every screen. Try typing a name."],student:["Dues, attendance and guardian are at the top. The rest is split into four tabs.","Collect fee is the one primary action. Rare actions sit behind the more button."],attendance:["Progress first, then classes split into To take and Taken."],register:["Each student has four direct choices, so any status is one tap. The counts update as you go. Save to see the home page change."],fees:["Counter, Defaulters, Monthly billing and Cash drawer are tabs of one Fees area. Try a payment: use a quick amount, then confirm."],messages:["A compact list, plus Start sending, which shows one family at a time in large type with correct right-to-left Urdu.","Open WhatsApp, then Sent. The counter on the menu goes down."],_:["The school’s own badge and name lead the sidebar, sign-in screen and receipt. Switch School at the top to see another school’s identity and colour. Sign out from the account menu to see the sign-in screen.","Navigation is grouped under five headings. The phone gets a bottom bar for the daily tasks.","Open the account menu at the bottom of the sidebar to try the dark theme. On the phone, use the moon button."]}};
+
+/* ================= engine ================= */
+const frame=document.getElementById("frame");let toastT;
+function render(keep){const sc=frame.querySelector(".scroll"),y=keep&&sc?sc.scrollTop:0;
+  frame.className="frame "+S.dev+(S.dev==="phone"?" is-phone":"");
+  frame.innerHTML=S.v==="today"?(S.w==="login"?tLogin():S.w==="setup"?tSetup():renderToday()):(S.w==="login"?nLogin():S.w==="setup"?nSetup():renderNew());
+  for(const k of["app","login","setup"])document.getElementById("w-"+k).setAttribute("aria-pressed",S.w===k);
+  const ns=frame.querySelector(".scroll");if(ns)ns.scrollTop=y;
+  for(const k of["today","new"])document.getElementById("v-"+k).setAttribute("aria-pressed",S.v===k);
+  for(const k of["gsa","noor"])document.getElementById("s-"+k).setAttribute("aria-pressed",S.school===k);
+  renderBrand();
+  for(const k of["desktop","phone"])document.getElementById("d-"+k).setAttribute("aria-pressed",S.dev===k);
+  const r=alias[S.route]&&S.v==="today"?S.route:S.route,nn=NOTES[S.v];
+  document.getElementById("notes").innerHTML=`<h2>${S.v==="today"?"What you are looking at: the app today":"What changed on this screen"}</h2><ul>${(S.w==="app"?[...(nn[r]||[]),...nn._]:nn[S.w]).map(x=>`<li>${x}</li>`).join("")}</ul>`}
+function renderBrand(){const c=SC(),T="#0f766e",U='font-family="Noto Nastaliq Urdu,serif"';
+  document.getElementById("brand").innerHTML=`<h2>Branding idea: the school in front, Maktab behind</h2>
+  <h3>What ${c.name} would get</h3><div class="tiles">
+    <figure><div class="art">${crest(84)}</div><figcaption><b>School badge</b>Made automatically from the short name and colour until the school uploads its own logo.</figcaption></figure>
+    <figure><div class="art"><div style="text-align:center"><div class="icon" style="background:${c.col}">${c.short}</div><div style="font-size:12px;margin-top:4px">${c.short}</div></div></div><figcaption><b>Phone home-screen icon</b>The installed app carries the school’s name and badge, not Maktab’s.</figcaption></figure>
+    <figure><div class="art"><div class="strip">${crest(34)}<div><b>${c.name}</b><br>${c.city}</div></div></div><figcaption><b>Receipts, payslips, parent page</b>The same header on everything a parent or teacher sees.</figcaption></figure></div>
+  <h3>Default Maktab mark: three rough sketches to choose a direction</h3><div class="tiles">
+    <figure><div class="art"><svg viewBox="0 0 72 72" width="72" height="72" role="img" aria-label="Sketch A"><rect width="72" height="72" rx="16" fill="${T}"/><path fill="#fff" d="M30 9h12a5 5 0 0 1 5 5v9h7a5 5 0 0 1 5 5v30a5 5 0 0 1-5 5H18a5 5 0 0 1-5-5V28a5 5 0 0 1 5-5h7v-9a5 5 0 0 1 5-5z"/><circle cx="36" cy="16" r="3" fill="${T}"/><text x="36" y="44" text-anchor="middle" ${U} font-size="24" fill="${T}">م</text><path d="M20 55h32" stroke="${T}" stroke-width="1.5" opacity=".45"/></svg></div><figcaption><b>A. Takhti, redrawn</b>Keeps today’s idea. Adds the handle hole and a real written meem so it stops reading as a clipboard.</figcaption></figure>
+    <figure><div class="art"><svg viewBox="0 0 72 72" width="72" height="72" role="img" aria-label="Sketch B"><circle cx="36" cy="36" r="36" fill="${T}"/><circle cx="36" cy="36" r="30" fill="none" stroke="#fff" stroke-width="1.5" opacity=".5"/><text x="36" y="38" text-anchor="middle" ${U} font-size="34" fill="#fff">م</text></svg></div><figcaption><b>B. Meem seal</b>A small round maker’s stamp. Quiet enough to sit under any school’s badge.</figcaption></figure>
+    <figure><div class="art"><svg viewBox="0 0 150 88" width="150" height="88" role="img" aria-label="Sketch C"><text x="146" y="54" text-anchor="end" ${U} font-size="34" fill="var(--pg-accent)">مکتب</text><text x="4" y="84" font-family="Figtree,system-ui,sans-serif" font-weight="600" font-size="13" letter-spacing="3" fill="var(--pg-muted)">MAKTAB</text></svg></div><figcaption><b>C. Written wordmark</b>The Urdu word itself, in Nastaliq, is the logo. No symbol.</figcaption></figure></div>`}
+function toast(t){clearTimeout(toastT);frame.querySelector(".toast")?.remove();const d=document.createElement("div");d.className="toast";d.setAttribute("role","status");d.textContent=t;frame.appendChild(d);toastT=setTimeout(()=>d.remove(),2200)}
+document.querySelector(".ctl").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+  if(b.dataset.v){S.v=b.dataset.v;S.drawer=S.menu=S.more=false;if(S.v==="today"&&["classes","payroll"].includes(S.route))S.route=alias[S.route]}
+  if(b.dataset.sch)S.school=b.dataset.sch;
+  if(b.dataset.w)S.w=b.dataset.w;
+  if(b.dataset.d)S.dev=b.dataset.d;render()});
+frame.addEventListener("click",e=>{const el=e.target.closest("[data-go],[data-act],[data-cycle],[data-set],[data-save],[data-tab],[data-mtab],[data-msg],[data-amt],[data-method],[data-ftabset],[data-toast],[data-pal]");
+  if(!el){if(S.menu){S.menu=false;render(true)}return}
+  const d=el.dataset;let keep=true,msg="";
+  if(d.toast!==undefined){toast(d.toast);return}
+  if(d.go){if(d.go==="student"){S.stu=+d.i;S.tab="overview"}if(d.go==="register")S.cls=+d.i;if(d.go==="fees")S.ftab=d.ftab||"counter";S.route=d.go;S.focus=false;S.drawer=S.menu=S.more=false;keep=false}
+  else if(d.act==="drawer"){if(el.classList.contains("t-drawer")&&e.target!==el)return;S.drawer=!S.drawer}
+  else if(d.act==="menu")S.menu=!S.menu;
+  else if(d.act==="more"){if(el.classList.contains("n-sheet")&&e.target!==el)return;S.more=!S.more}
+  else if(d.act==="dark"){S.dark=!S.dark;S.menu=false}
+  else if(d.act==="signout"){S.w="login";S.menu=S.more=false}
+  else if(d.act==="signin"){S.w="app";S.route="home";keep=false}
+  else if(d.pal!==undefined){const x=PAL[+d.pal],c=SC();c.col=x.col;c.c=x.c;c.d=x.d}
+  else if(d.act==="focus"){S.route="messages";S.focus=true;keep=false}
+  else if(d.act==="unfocus")S.focus=false;
+  else if(d.act==="pay"){const v=+(document.getElementById("n-amt").value.replace(/[^\d]/g,""))||0;if(!v){toast("Enter the amount received first");return}S.paid={amt:v,method:S.method};S.amount="";keep=false}
+  else if(d.act==="newpay")S.paid=null;
+  else if(d.cycle!==undefined){const a=attOf(S.cls),i=+d.cycle;a[i]="PALE"[("PALE".indexOf(a[i])+1)%4]}
+  else if(d.set!==undefined)attOf(S.cls)[+d.set]=d.s;
+  else if(d.save!==undefined){CLS[S.cls].cnt=cntOf(attOf(S.cls));S.route="attendance";keep=false;msg="Attendance saved for "+CLS[S.cls].prog+" "+CLS[S.cls].name}
+  else if(d.tab)S.tab=d.tab;
+  else if(d.mtab)S.mtab=d.mtab;
+  else if(d.ftabset)S.ftab=d.ftabset;
+  else if(d.amt){S.amount=(+d.amt).toLocaleString("en-US")}
+  else if(d.method){const i=document.getElementById("n-amt");if(i)S.amount=i.value;S.method=d.method}
+  else if(d.msg){const x=MSG[+d.i];if(d.msg==="open"){x.opened=true;msg="WhatsApp opens here in the real app"}else if(d.msg==="sent"){x.done="sent";S.sent++;msg="Marked sent"}else{x.done="skipped";S.skipped++;msg="Skipped"}}
+  render(keep);if(msg)toast(msg)});
+frame.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches("tr.go"))e.target.click()});
+frame.addEventListener("change",e=>{if(e.target.matches("[data-filter]")){S.fclass=e.target.value;render(true)}});
+frame.addEventListener("input",e=>{if(e.target.id==="n-amt"){S.amount=e.target.value;return}
+  if(["n-sn","n-sc","n-ss"].includes(e.target.id)){const c=SC(),v=e.target.value;
+    if(e.target.id==="n-sn"){c.name=v;if(!S.st){c.short=v.split(/\s+/).filter(Boolean).map(w=>w[0].toUpperCase()).slice(0,4).join("")||"?";document.getElementById("n-ss").value=c.short}}
+    else if(e.target.id==="n-sc")c.city=v;else{S.st=true;c.short=v.toUpperCase()||"?"}
+    document.getElementById("n-prev").innerHTML=prevHTML();document.querySelector("#n-logo svg").outerHTML=crest(56);renderBrand();return}if(e.target.id!=="n-q")return;const q=e.target.value.trim().toLowerCase(),box=document.getElementById("n-res");
+  if(!q){box.hidden=true;return}
+  const hit=STU.map((s,i)=>[s,i]).filter(([s])=>(s.name+s.adm+s.phone+s.father).toLowerCase().includes(q)).slice(0,5);
+  box.hidden=false;box.innerHTML=hit.map(([s,i])=>`<button data-go="student" data-i="${i}">${av(s.name)}<span><b style="font-weight:600">${s.name}</b><br><span class="n-mut n-sm">Class ${s.cls}, ${s.adm}</span></span></button>`).join("")||'<div class="n-mut" style="padding:8px">No student matches.</div>'});
+render();
+</script>
