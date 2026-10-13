@@ -49,7 +49,7 @@ photos, bill photos) are capped at 200 KB and 10 an hour per IP. Everything else
 - Any successful write by a visitor marks the demo **dirty**. Sign-in and the parent page do not
   count.
 - The demo's cron runs **every minute**. At **02:00 Asia/Karachi**, if the demo is dirty, it starts
-  a reset. Each tick then advances it by about 40 database calls, and the fee cron and daily pass
+  a reset. Each tick then runs up to 12 step calls (more hits the free plan's CPU limit, error 1102), and the fee cron and daily pass
   wait until the reset is done. A night nobody touched the demo costs nothing.
 - The owner (`OWNER_EMAIL` only, not the demo principal) can reset by hand:
   `POST /api/demo/reset`, rate limited to 2 an hour. This signs everyone out.
@@ -84,7 +84,7 @@ npm run db:verify -- --remote --env demo               # from the repo root
 To re-seed now, either:
 
 - sign in as the owner and `POST /api/demo/reset`, or
-- drive it from a terminal (the cron does the same, about 40 calls a minute):
+- drive it from a terminal (the cron does the same, once a minute):
 
   ```sh
   until curl -s -X POST https://maktab.conceptlix.com/api/demo/step \

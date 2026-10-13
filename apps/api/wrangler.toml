@@ -69,7 +69,7 @@ crons = ["*/30 * * * *"]
 name = "maktab"
 routes = [{ pattern = "maktab.conceptlix.com", custom_domain = true }]
 
-# Every minute: a running reset advances ~40 D1 calls a tick; otherwise one read, plus the usual
+# Every minute: a running reset advances up to 12 step calls a tick; otherwise one read, plus the usual
 # fee cron and daily pass (apps/api/src/index.ts). Two of the account's five free cron triggers
 # are in use (this and env gsap).
 [env.demo.triggers]

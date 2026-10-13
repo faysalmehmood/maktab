@@ -21,7 +21,7 @@ import { world } from './world';
 
 export const DEMO_STATE_TABLE = '_demo_state';
 const KEEP = ['d1_migrations', '__drizzle_migrations', DEMO_STATE_TABLE];
-const LEASE_MS = 90_000;
+const LEASE_MS = 45_000;
 export const DEMO_SCHOOL_NAME = 'Al-Noor Community School';
 
 type SchemaRow = { type: string; name: string; tbl_name: string; sql: string };

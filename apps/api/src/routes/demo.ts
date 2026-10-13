@@ -104,7 +104,9 @@ export function demoGuard(): MiddlewareHandler<AppEnv> {
 const signInSchema = z.object({ as: z.enum(['principal', 'accountant', 'teacher']) });
 
 /** Advances a running reset within one request's budget (D1 calls, wall time). */
-export const advanceOnce = (db: AppDb, env: Bindings, ms = 20_000, maxCalls = 40) =>
+// 12 step calls stay well inside the free plan's per-invocation CPU (measured 2026-10-13: ~20 calls
+// sometimes ended in error 1102, CPU exceeded, which also leaves the lease to expire).
+export const advanceOnce = (db: AppDb, env: Bindings, ms = 15_000, maxCalls = 12) =>
   advanceDemoSeed(db, {
     deadline: Date.now() + ms,
     maxCalls,
@@ -218,6 +220,6 @@ export async function demoTick(db: AppDb, env: Bindings, nowMs = Date.now()): Pr
       now: new Date(nowMs),
     });
   }
-  await advanceOnce(db, env, 20_000, 40);
+  await advanceOnce(db, env);
   return true;
 }
