@@ -1,5 +1,7 @@
 version: 2
 updates:
+  # Minor and patch updates arrive as one grouped PR; a major gets its own PR so one breaking
+  # package cannot hold the safe ones hostage (PR #3: @types/node 26 broke the grouped bump).
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -7,6 +9,12 @@ updates:
     groups:
       npm-all:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # Tracks the runtime in .nvmrc (Node 22); a newer major's URL types also clash with
+      # @cloudflare/workers-types in the Worker build. Bump together with .nvmrc, by hand.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
