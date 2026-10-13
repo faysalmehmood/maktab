@@ -109,7 +109,7 @@ function AuditEntry({ row }: { row: AuditRowDto }) {
                       <td className="p-1 text-destructive">
                         <bdi className="break-all">{show(r.before)}</bdi>
                       </td>
-                      <td className="p-1 text-emerald-700 dark:text-emerald-400">
+                      <td className="p-1 text-ok">
                         <bdi className="break-all">{show(r.after)}</bdi>
                       </td>
                     </tr>

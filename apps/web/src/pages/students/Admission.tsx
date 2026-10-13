@@ -97,7 +97,7 @@ function GroupPicker({
       required
       hint={
         full && (
-          <span role="status" className="text-amber-700">
+          <span role="status" className="text-warn">
             {t('admission.groupFullWarning')}
           </span>
         )

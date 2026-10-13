@@ -404,14 +404,14 @@ export function RegisterPage() {
       {saved?.kind === 'offline' && (
         <p
           role="status"
-          className="flex items-center gap-2 rounded-md bg-amber-100 p-3 text-sm text-amber-950"
+          className="flex items-center gap-2 rounded-md bg-warn-soft p-3 text-sm text-warn"
         >
           <CloudOff className="size-4 shrink-0" aria-hidden />
           {t('attendance.savedOffline')}
         </p>
       )}
       {saved?.kind === 'paused' && (
-        <p role="alert" className="rounded-md bg-amber-100 p-3 text-sm text-amber-950">
+        <p role="alert" className="rounded-md bg-warn-soft p-3 text-sm text-warn">
           {t('attendance.signInAgain')}{' '}
           <Link to="/login" className="underline">
             {t('attendance.signIn')}
@@ -464,7 +464,7 @@ export function RegisterPage() {
                 aria-label={`${row.name}: ${t(`attendance.status.${d.status}`)}`}
                 className={cn(
                   'flex min-h-16 min-w-0 flex-1 items-center gap-3 px-3 text-start hover:bg-accent disabled:opacity-60',
-                  d.status !== 'P' && 'bg-red-50/60 dark:bg-red-950/30',
+                  d.status !== 'P' && 'bg-bad-soft/60',
                 )}
               >
                 <Avatar id={row.student_id} name={row.name} hasPhoto={row.has_photo} />

@@ -33,10 +33,10 @@ export const nextStatus = (s: MarkStatus): MarkStatus =>
 
 /** Colour + letter, never colour alone (colour-blind teachers, sunlight on a cheap screen). */
 export const STATUS_CLASS: Record<MarkStatus, string> = {
-  P: 'bg-emerald-600 text-white',
-  A: 'bg-red-600 text-white',
-  L: 'bg-amber-500 text-black',
-  E: 'bg-sky-600 text-white',
+  P: 'bg-ok-soft text-ok ring-1 ring-ok/40',
+  A: 'bg-bad-soft text-bad ring-1 ring-bad/40',
+  L: 'bg-warn-soft0 text-black',
+  E: 'bg-info-soft text-info ring-1 ring-info/40',
 };
 
 export const canMark = (r: readonly StaffRole[]) => hasGrant(r, 'attendance', 'mark');

@@ -204,9 +204,9 @@ function QueueRow({
 
       {actionable && (
         <div className="flex flex-col gap-2">
-          {isCall && <p className="text-sm text-amber-800">{t('msg.queue.callInstead')}</p>}
+          {isCall && <p className="text-sm text-warn">{t('msg.queue.callInstead')}</p>}
           {noNumber && (
-            <p className="text-sm text-amber-800" id={`msg-fix-${m.id}`}>
+            <p className="text-sm text-warn" id={`msg-fix-${m.id}`}>
               <strong>{t('msg.queue.fixNumber')}</strong> · {t('msg.queue.fixNumberHint')}
             </p>
           )}

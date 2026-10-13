@@ -1,7 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+/* Dark theme: `.dark` on <html> (lib/theme.ts: the system setting, or the account menu's choice). */
+@custom-variant dark (&:where(.dark, .dark *));
 
 /*
  * Self-hosted Noto Nastaliq Urdu subset (OFL 1.1). See public/fonts/README.md for how the file is
@@ -16,47 +17,182 @@
   unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F;
 }
 
+/*
+ * "Calm ledger" tokens (M7b, UI plan §5.1–5.2). Neutrals lean toward Maktab's teal; one accent, the
+ * school's colour (`--brand*`, set by `html[data-brand]`); status colours are fixed for every school
+ * and never follow the accent. Each status has a soft background and a strong text tone.
+ */
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.511 0.096 186.391);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* Control height: 44 px on touch (and when unknown), 36 px under a mouse (PLAN §15, 2026-10-13). */
+  --h: 44px;
+
+  /* School colour: Maktab teal by default; html[data-brand] below swaps the set. */
+  --brand: #0f766e;
+  --brand-fg: #ffffff;
+  --brand-soft: #e1f0ed;
+  --side: #0d2b28;
+  --side-on: #1a443f;
+  --side-mut: #7fa39c;
+  --side-fg: #c9dfda;
+
+  /* Neutrals (light). */
+  --background: #f3f6f5;
+  --foreground: #14211f;
+  --card: #ffffff;
+  --card-foreground: #14211f;
+  --popover: #ffffff;
+  --popover-foreground: #14211f;
+  --secondary: #e9efed;
+  --secondary-foreground: #14211f;
+  --muted: #e9efed;
+  --muted-foreground: #586966;
+  --accent: #e9efed;
+  --accent-foreground: #14211f;
+  --border: #dde5e2;
+  --input: #cfd9d5;
+
+  /* Status (light): strong text tone + soft background. */
+  --ok: #19704a;
+  --ok-soft: #e1f3e8;
+  --bad: #b23a2e;
+  --bad-soft: #fbe8e5;
+  --warn: #875800;
+  --warn-soft: #fbeed2;
+  --info: #2a5d9c;
+  --info-soft: #e5eef9;
+
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-fg);
+  --destructive: var(--bad);
+  --ring: var(--brand);
+  --chart-in: var(--brand);
+  --chart-out: #c2780a;
+  color-scheme: light;
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.704 0.14 182.503);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+@media (pointer: fine) {
+  :root {
+    --h: 36px;
+  }
+}
+@media (pointer: coarse) {
+  :root {
+    --h: 44px;
+  }
+}
+
+/* The curated school colours (BRAND_COLORS in @maktab/shared; brand.test pins them equal). */
+html[data-brand="blue"] {
+  --brand: #1e40af;
+  --brand-fg: #ffffff;
+  --brand-soft: #e3eafc;
+  --side: #0f1c3f;
+  --side-on: #1d3167;
+  --side-mut: #8a9cc9;
+  --side-fg: #cdd7ef;
+}
+html[data-brand="maroon"] {
+  --brand: #8a1c2b;
+  --brand-fg: #ffffff;
+  --brand-soft: #f8e6e8;
+  --side: #2e0c12;
+  --side-on: #4d1620;
+  --side-mut: #c59aa1;
+  --side-fg: #ecd3d7;
+}
+html[data-brand="purple"] {
+  --brand: #5b3aa8;
+  --brand-fg: #ffffff;
+  --brand-soft: #ece6f8;
+  --side: #1d1338;
+  --side-on: #32225c;
+  --side-mut: #a99bcf;
+  --side-fg: #ddd5f0;
+}
+html[data-brand="green"] {
+  --brand: #166534;
+  --brand-fg: #ffffff;
+  --brand-soft: #e2f2e7;
+  --side: #0b2415;
+  --side-on: #153b24;
+  --side-mut: #8fb59c;
+  --side-fg: #cfe3d5;
+}
+
+/* Dark: screen only, so a printout from a dark phone is still black on white paper. */
+@media screen {
+  html.dark {
+    --brand: #3fb8ab;
+    --brand-fg: #05201d;
+    --brand-soft: #15332f;
+    --side: #081110;
+    --side-on: #17302c;
+    --side-mut: #6f8d87;
+    --side-fg: #b9cfca;
+
+    --background: #0c1413;
+    --foreground: #e6efed;
+    --card: #151f1e;
+    --card-foreground: #e6efed;
+    --popover: #151f1e;
+    --popover-foreground: #e6efed;
+    --secondary: #1d2a28;
+    --secondary-foreground: #e6efed;
+    --muted: #1d2a28;
+    --muted-foreground: #93a5a1;
+    --accent: #1d2a28;
+    --accent-foreground: #e6efed;
+    --border: #26342f;
+    --input: #33443f;
+
+    --ok: #5fcf97;
+    --ok-soft: #12301f;
+    --bad: #f08a7e;
+    --bad-soft: #3a1a16;
+    --warn: #e8b75a;
+    --warn-soft: #33270d;
+    --info: #8db8ee;
+    --info-soft: #14263d;
+    --chart-out: #e8b75a;
+    color-scheme: dark;
+  }
+  html.dark[data-brand="blue"] {
+    --brand: #93b4ff;
+    --brand-fg: #07153a;
+    --brand-soft: #17254a;
+    --side: #070d1d;
+    --side-on: #152346;
+    --side-mut: #6f81ad;
+    --side-fg: #b9c5e3;
+  }
+  html.dark[data-brand="maroon"] {
+    --brand: #f2a0aa;
+    --brand-fg: #33070d;
+    --brand-soft: #3a151b;
+    --side: #16070a;
+    --side-on: #3a1219;
+    --side-mut: #a37980;
+    --side-fg: #e3c4c9;
+  }
+  html.dark[data-brand="purple"] {
+    --brand: #c0a9f5;
+    --brand-fg: #1a0d3a;
+    --brand-soft: #261b45;
+    --side: #0e091c;
+    --side-on: #281c4a;
+    --side-mut: #8778ad;
+    --side-fg: #cfc5ea;
+  }
+  html.dark[data-brand="green"] {
+    --brand: #7fd6a0;
+    --brand-fg: #062111;
+    --brand-soft: #143120;
+    --side: #06130b;
+    --side-on: #12301d;
+    --side-mut: #6f957c;
+    --side-fg: #bcd8c6;
+  }
 }
 
 @theme inline {
@@ -66,6 +202,16 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /* `h-ctl`, `size-ctl`, `min-h-ctl`: the density token. */
+  --spacing-ctl: var(--h);
+  /* Type scale (UI plan §5.2): page title, section title, meta. Body is 14 px (15 px on touch). */
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.25;
+  --text-title--font-weight: 700;
+  --text-section: 0.9375rem;
+  --text-section--line-height: 1.35;
+  --text-meta: 0.78125rem;
+  --text-meta--line-height: 1.4;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -84,6 +230,23 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand-soft: var(--brand-soft);
+  --color-side: var(--side);
+  --color-side-on: var(--side-on);
+  --color-side-mut: var(--side-mut);
+  --color-side-fg: var(--side-fg);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-chart-in: var(--chart-in);
+  --color-chart-out: var(--chart-out);
 }
 
 @layer base {
@@ -92,11 +255,30 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    font-size: 0.9375rem;
+    line-height: 1.5;
   }
-  /* Nastaliq needs extra line height or diacritics clip (exp3: 2.0 is safe). */
+  @media (pointer: fine) {
+    body {
+      font-size: 0.875rem;
+      line-height: 1.45;
+    }
+  }
+  /* Nastaliq needs extra line height or diacritics clip (exp3: 2.0 is safe), and 16 px to read. */
   html:lang(ur) body {
     font-family: var(--font-urdu);
+    font-size: 1rem;
     line-height: 2;
+  }
+  /* …and the size utilities (text-sm etc.) carry their own Latin line heights: lift them in Urdu. */
+  html:lang(ur) {
+    --text-xs--line-height: 1.9;
+    --text-sm--line-height: 1.9;
+    --text-base--line-height: 2;
+    --text-lg--line-height: 1.9;
+    --text-meta--line-height: 1.9;
+    --text-section--line-height: 1.9;
+    --text-title--line-height: 1.8;
   }
 }
 
@@ -112,6 +294,24 @@ bdi {
   unicode-bidi: isolate;
   direction: ltr;
   font-family: var(--font-sans);
+}
+/* On screen, digits line up in columns (receipts keep their own tuned figures). */
+.num:not(.receipt *),
+.mny {
+  font-variant-numeric: tabular-nums;
+}
+/* Money on screen (M7b): a small muted "PKR", then the amount; one isolated LTR run. */
+.mny {
+  unicode-bidi: isolate;
+  direction: ltr;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mny-cur {
+  font-weight: 500;
+  font-size: 0.78em;
+  color: var(--muted-foreground);
 }
 
 /*
@@ -206,6 +406,13 @@ bdi {
 }
 .receipt-logo {
   max-height: 14mm;
+  margin-inline: auto;
+}
+/* The generated badge (M7b) takes the logo's box when there is no logo. */
+.receipt-badge {
+  display: block;
+  width: 14mm;
+  height: 14mm;
   margin-inline: auto;
 }
 .receipt-sub {
@@ -333,6 +540,10 @@ bdi {
 }
 .receipt-a5[lang="ur"] .receipt-logo {
   max-height: 12mm;
+}
+.receipt-a5[lang="ur"] .receipt-badge {
+  width: 12mm;
+  height: 12mm;
 }
 @media print {
   .receipt-a5[lang="ur"] {

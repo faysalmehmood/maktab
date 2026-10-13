@@ -140,6 +140,7 @@ export function ReportPage() {
                         className={cn(
                           'p-0.5 text-center font-sans',
                           r.days[i]?.day_off && 'bg-muted-foreground/10',
+                          // Printed register (A4): fixed ink colours on paper, not theme tokens.
                           c === 'A' && 'font-bold text-red-700',
                           c === 'L' && 'text-amber-700',
                           c === 'E' && 'text-sky-700',

@@ -26,7 +26,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
         {outbox.pending > 0 && (
           <p
             role="status"
-            className="flex items-center gap-2 rounded-md bg-amber-100 p-3 text-sm text-amber-950"
+            className="flex items-center gap-2 rounded-md bg-warn-soft p-3 text-sm text-warn"
           >
             <CloudOff className="size-4 shrink-0" aria-hidden />
             {t('attendance.safeOnPhone', { n: outbox.pending })}

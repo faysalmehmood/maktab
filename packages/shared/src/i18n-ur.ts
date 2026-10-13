@@ -7,6 +7,7 @@ import type { backupEn, backupErrorsEn } from './i18n-backup';
 import type { feeEn, feeErrorsEn } from './i18n-fees';
 import type { msgEn, msgErrorsEn } from './i18n-messages';
 import type { moneyEn, moneyErrorsEn } from './i18n-money';
+import type { brandEn, doorEn, homeEn, shellEn, wizardEn } from './i18n-ui';
 
 type Shape<T> = { readonly [K in keyof T]: T[K] extends string ? string : Shape<T[K]> };
 
@@ -1228,6 +1229,153 @@ export const moneyUr: Shape<typeof moneyEn> = {
   },
 };
 
+export const shellUr: Shape<typeof shellEn> = {
+  skip: 'مواد پر جائیں',
+  groups: { people: 'لوگ', daily: 'روزانہ کا کام', money: 'رقم', school: 'اسکول' },
+  nav: {
+    home: 'ہوم',
+    classes: 'کلاسیں',
+    messages: 'پیغامات',
+    payroll: 'تنخواہیں',
+    more: 'مزید',
+    moreTitle: 'باقی سب',
+  },
+  search: {
+    label: 'طلبہ تلاش کریں',
+    placeholder: 'نام، داخلہ نمبر یا فون سے طالب علم تلاش کریں',
+    short: 'طلبہ تلاش کریں',
+    none: 'اس تلاش سے کوئی طالب علم نہیں ملا۔',
+    all: 'تمام نتائج دیکھیں',
+    searching: 'تلاش جاری ہے…',
+  },
+  sync: {
+    saved: 'تمام تبدیلیاں محفوظ ہیں',
+    waiting: '{{n}} بھیجنے کے منتظر',
+    offline: 'آف لائن',
+  },
+  account: {
+    menu: 'اکاؤنٹ مینو',
+    theme: 'رنگ و روپ',
+    themes: { system: 'فون کے مطابق', light: 'روشن', dark: 'گہرا' },
+  },
+};
+
+export const brandUr: Shape<typeof brandEn> = {
+  runsOn: 'Maktab پر چلتا ہے',
+  badgeOf: '{{name}} کا نشان',
+  shortName: 'مختصر نام',
+  shortNameHelp: 'زیادہ سے زیادہ 4 حروف، نشان میں دکھائے جاتے ہیں۔',
+  city: 'شہر',
+  colour: 'اسکول کا رنگ',
+  colours: { teal: 'فیروزی', blue: 'نیلا', maroon: 'عنابی', purple: 'جامنی', green: 'سبز' },
+  logoOrBadge: 'لوگو',
+  badgeNote: 'ابھی لوگو نہیں؟ لوگو لگانے تک یہ نشان استعمال ہوگا۔',
+  uploadLogo: 'لوگو اپ لوڈ کریں',
+  changeLogo: 'لوگو تبدیل کریں',
+};
+
+export const doorUr: Shape<typeof doorEn> = {
+  staffTitle: 'عملے کا سائن اِن',
+  parentTitle: 'کیا آپ والدین ہیں؟',
+  parentBody:
+    'والدین یہاں سائن اِن نہیں کرتے۔ اسکول کا واٹس ایپ پر بھیجا ہوا لنک کھولیں، یا دفتر فون کریں۔',
+  parentCall: 'دفتر کا فون',
+};
+
+export const wizardUr: Shape<typeof wizardEn> = {
+  title: 'اپنا اسکول ترتیب دیں',
+  stepOf: 'مرحلہ {{n}} از {{total}}',
+  partOf: 'حصہ {{n}} از {{total}}',
+  stages: {
+    identity: 'آپ کا اسکول',
+    classes: 'کلاسیں اور سیکشن',
+    fees: 'فیس',
+    people: 'عملہ',
+    done: 'مکمل',
+  },
+  identityHelp: 'عملہ اور والدین یہی دیکھیں گے۔ آپ اسے بعد میں ترتیبات میں بدل سکتے ہیں۔',
+  preview: 'یہ کیسا دکھے گا',
+  previewReceipt: 'فیس کی رسید',
+  previewIcon: 'عملے کے فون پر آئیکن',
+  continue: 'جاری رکھیں',
+  summary: {
+    title: 'آپ نے کیا ترتیب دیا',
+    classes: 'کلاسیں اور سیکشن',
+    rates: 'فیس کی شرحیں',
+    staff: 'مدعو عملہ',
+  },
+};
+
+export const homeUr: Shape<typeof homeEn> = {
+  greeting: {
+    morning: 'صبح بخیر، {{name}}',
+    afternoon: 'سہ پہر بخیر، {{name}}',
+    evening: 'شام بخیر، {{name}}',
+  },
+  collect: 'فیس وصول کریں',
+  registers: {
+    title: 'حاضری رجسٹر',
+    takenOf: '{{total}} میں سے {{taken}} مکمل',
+    help: 'ہر خانہ ایک کلاس ہے۔ نقطہ دار خانوں کا رجسٹر ابھی باقی ہے۔',
+    take: '{{name}} کا رجسٹر لیں',
+    allTaken: 'تمام رجسٹر مکمل ہیں۔',
+    none: 'آج کسی کلاس کا رجسٹر نہیں ہے۔',
+  },
+  collected: {
+    title: 'آج کی وصولی',
+    receipts: 'طریقۂ ادائیگی کے لحاظ سے',
+    nothing: 'آج ابھی تک کچھ وصول نہیں ہوا۔',
+    open: 'فیس کاؤنٹر کھولیں',
+  },
+  messages: {
+    title: 'بھیجنے والے پیغامات',
+    waiting: '{{n}} منتظر',
+    none: 'کوئی پیغام بھیجنے کا منتظر نہیں۔',
+    start: 'بھیجنا شروع کریں',
+  },
+  attention: {
+    title: 'توجہ طلب',
+    clear: 'ابھی کسی چیز پر توجہ کی ضرورت نہیں۔',
+    tags: {
+      attendance: 'حاضری',
+      fees: 'فیس',
+      cash: 'نقدی',
+      billing: 'بلنگ',
+      system: 'نظام',
+    },
+    registers: '{{n}} رجسٹر ابھی باقی ہیں',
+    registersGo: 'رجسٹر لیں',
+    defaulters: '{{n}} طلبہ کی فیس کی آخری تاریخ گزر چکی ہے',
+    defaultersGo: 'نادہندگان دیکھیں',
+    drawer: 'آپ کا کیش دراز کھلا ہے',
+    drawerGo: 'دراز کھولیں',
+    billing: '{{n}} گروپوں کی ماہانہ بلنگ بار بار ناکام ہو رہی ہے',
+    billingGo: 'بلنگ کھولیں',
+    alarm: '{{kind}}: {{n}}',
+    alarmGo: 'بیک اپ کھولیں',
+  },
+  month: {
+    title: 'یہ مہینہ',
+    dues: 'بقایا واجبات',
+  },
+  absent: {
+    title: 'آج غیر حاضر',
+    none: 'آج کوئی غیر حاضر نہیں۔',
+  },
+  teacher: {
+    registers: 'آج آپ کے رجسٹر',
+    messages: 'پیغامات',
+    messagesBody: 'آپ کی کلاسوں کے غیر حاضری کے پیغامات قطار میں منتظر ہیں۔',
+    openQueue: 'پیغامات کھولیں',
+  },
+  accountant: {
+    drawer: 'آپ کا کیش دراز',
+    drawerOpen: 'دراز کھلا ہے، متوقع رقم',
+    drawerClosed: 'آج نہیں کھولا گیا۔',
+    openDrawer: 'کیش دراز کھولیں',
+  },
+};
+
 export const ur: Messages = {
   app: { name: 'مکتب', tagline: 'اسکول اور اکیڈمی کا انتظام' },
   nav: {
@@ -1308,6 +1456,11 @@ export const ur: Messages = {
   money: moneyUr,
   msg: msgUr,
   backup: backupUr,
+  shell: shellUr,
+  brand: brandUr,
+  door: doorUr,
+  wizard: wizardUr,
+  home: homeUr,
   errors: {
     ...feeErrorsUr,
     ...backupErrorsUr,

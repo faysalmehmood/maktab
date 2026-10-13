@@ -73,7 +73,7 @@ export function ErrorNote({ error }: { error: unknown }) {
 export function PageTitle({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <h1 className="text-xl font-semibold">{children}</h1>
+      <h1 className="text-title">{children}</h1>
       {actions && <div className="ms-auto flex flex-wrap gap-2">{actions}</div>}
     </div>
   );

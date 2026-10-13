@@ -7,6 +7,7 @@ import { App } from './App';
 import { Toaster } from './components/ui/sonner';
 import { initI18n } from './i18n';
 import { createQueryClient } from './lib/query-client';
+import { initTheme } from './lib/theme';
 import { startLogoutFlush } from './offline/logout';
 
 const queryClient = createQueryClient();
@@ -14,6 +15,8 @@ const queryClient = createQueryClient();
 const root = document.getElementById('root');
 if (!root) throw new Error('#root missing from index.html');
 
+// Theme and school colour before the first paint (no light flash on a dark phone).
+initTheme();
 startLogoutFlush();
 await initI18n();
 

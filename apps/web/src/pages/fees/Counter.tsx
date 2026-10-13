@@ -692,7 +692,7 @@ function CollectForm({
         <div
           role="alert"
           id="counter-pending"
-          className="flex flex-col gap-2 rounded-md border border-amber-500 bg-amber-50 p-3 text-sm dark:bg-amber-950"
+          className="flex flex-col gap-2 rounded-md border border-warn bg-warn-soft p-3 text-sm"
         >
           <p className="flex items-center gap-2 font-semibold">
             <AlertTriangle className="size-4 shrink-0" aria-hidden />
@@ -756,7 +756,7 @@ function CollectForm({
                   <p
                     role="status"
                     id="counter-amount-high"
-                    className="text-sm font-medium text-amber-700 dark:text-amber-400"
+                    className="text-sm font-medium text-warn"
                   >
                     {t('fee.counter.amountHigh', { due: `⁨${money(payer.net_due)}⁩` })}
                   </p>
@@ -933,11 +933,7 @@ function CollectForm({
 
       <ErrorNote error={confirming ? null : networkError} />
       {offline && !pending && (
-        <p
-          id="counter-offline"
-          role="status"
-          className="text-sm text-amber-700 dark:text-amber-300"
-        >
+        <p id="counter-offline" role="status" className="text-sm text-warn">
           {t('fee.counter.offlineReadOnly')}
         </p>
       )}

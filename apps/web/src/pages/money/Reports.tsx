@@ -91,8 +91,9 @@ export function ReportsHub() {
 
 /**
  * Income vs spending (expenses + salaries) per month as plain SVG bars (no chart library). Two
- * series, one axis; the table below is the accessible view. Colours pass the CVD validator in light
- * (#2563eb / #d97706) and dark (#3b82f6 / #d97706).
+ * series, one axis; the table below is the accessible view. Colours are tokens (M7b): income in the
+ * school colour (`--chart-in`), spending in amber (`--chart-out`), a pair that stays apart for
+ * colour-blind readers whichever curated school colour is picked.
  */
 export function MonthBars({ months }: { months: IncomeExpenseDto['months'] }) {
   const { t } = useTranslation();
@@ -106,14 +107,11 @@ export function MonthBars({ months }: { months: IncomeExpenseDto['months'] }) {
       <figcaption className="flex flex-wrap items-center gap-4 text-sm">
         <span className="font-medium">{t('money.reports.chart')}</span>
         <span className="flex items-center gap-1">
-          <span
-            className="inline-block size-3 rounded-sm bg-[#2563eb] dark:bg-[#3b82f6]"
-            aria-hidden
-          />
+          <span className="inline-block size-3 rounded-sm bg-chart-in" aria-hidden />
           {t('money.reports.income')}
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block size-3 rounded-sm bg-[#d97706]" aria-hidden />
+          <span className="inline-block size-3 rounded-sm bg-chart-out" aria-hidden />
           {t('money.dash.spending')}
         </span>
       </figcaption>
@@ -134,14 +132,7 @@ export function MonthBars({ months }: { months: IncomeExpenseDto['months'] }) {
             const x = i * W + (W - 2 * bar - 2) / 2;
             return (
               <g key={m.period} data-period={m.period}>
-                <rect
-                  x={x}
-                  y={H - hi}
-                  width={bar}
-                  height={hi}
-                  rx={3}
-                  className="fill-[#2563eb] dark:fill-[#3b82f6]"
-                >
+                <rect x={x} y={H - hi} width={bar} height={hi} rx={3} className="fill-chart-in">
                   <title>{`${m.period} · ${t('money.reports.income')}: ${(m.income / 100).toLocaleString('en-PK')}`}</title>
                 </rect>
                 <rect
@@ -150,7 +141,7 @@ export function MonthBars({ months }: { months: IncomeExpenseDto['months'] }) {
                   width={bar}
                   height={hs}
                   rx={3}
-                  className="fill-[#d97706]"
+                  className="fill-chart-out"
                 >
                   <title>{`${m.period} · ${t('money.dash.spending')}: ${(spend / 100).toLocaleString('en-PK')}`}</title>
                 </rect>

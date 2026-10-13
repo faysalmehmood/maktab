@@ -142,7 +142,7 @@ export function SyncBanner() {
   const others = roles.some((r) => r === 'owner' || r === 'admin') ? s.others : 0;
   if (!s.pending && !s.failed && !s.paused && !s.offline && !others) return null;
   return (
-    <div className="flex flex-col gap-1 border-b bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-50 print:hidden">
+    <div className="flex flex-col gap-1 border-b bg-warn-soft px-3 py-2 text-sm text-warn print:hidden">
       {(s.offline || s.pending > 0) && (
         <p className="flex min-h-11 items-center gap-2" role="status">
           <CloudOff className="size-4 shrink-0" aria-hidden />

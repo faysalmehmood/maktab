@@ -2,6 +2,7 @@ import { backupEn, backupErrorsEn } from './i18n-backup';
 import { feeEn, feeErrorsEn } from './i18n-fees';
 import { msgEn, msgErrorsEn } from './i18n-messages';
 import { moneyEn, moneyErrorsEn } from './i18n-money';
+import { brandEn, doorEn, homeEn, shellEn, wizardEn } from './i18n-ui';
 
 export const LANGUAGES = ['en', 'ur'] as const;
 export type Language = (typeof LANGUAGES)[number];
@@ -89,6 +90,11 @@ export const en = {
   money: moneyEn,
   msg: msgEn,
   backup: backupEn,
+  shell: shellEn,
+  brand: brandEn,
+  door: doorEn,
+  wizard: wizardEn,
+  home: homeEn,
   errors: {
     ...feeErrorsEn,
     ...backupErrorsEn,
