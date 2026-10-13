@@ -36,6 +36,7 @@ import { API_CACHE } from '@/offline/api-cache';
 import { queueLogout } from '@/offline/logout';
 import { resumeAfterSignIn, startAutoSync, useOutboxStatus } from '@/offline/sync';
 import { SyncBanner } from './attendance/common';
+import { InstallBanner } from './InstallBanner';
 import { LanguageToggle } from './LanguageToggle';
 
 type NavItem = {
@@ -211,6 +212,7 @@ export function AppShell() {
             </Button>
           </div>
         </header>
+        <InstallBanner />
         <SyncBanner />
         <main className="flex-1 p-4 md:p-6 print:p-0">
           <Outlet />

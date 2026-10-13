@@ -6,5 +6,5 @@
     "types": ["vite/client", "vite-plugin-pwa/client", "node"],
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src", "vite.config.ts", "pure-schemas.ts", "vitest.config.ts"]
+  "include": ["src", "vite.config.ts", "pure-schemas.ts", "pwa-manifest.ts", "vitest.config.ts"]
 }

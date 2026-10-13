@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/table';
 import { getJson } from '@/lib/api';
 import { canConcession, karachiToday } from '@/lib/fees';
+import { printWhenReady } from '@/lib/print';
 import { useGroups } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
 
@@ -53,7 +54,11 @@ export function FeeRegisterPage() {
                   {t('fee.cash.csv')}
                 </a>
               </Button>
-              <Button variant="outline" onClick={() => window.print()} className="print:hidden">
+              <Button
+                variant="outline"
+                onClick={() => void printWhenReady()}
+                className="print:hidden"
+              >
                 <Printer aria-hidden />
                 {t('fee.receipt.print')}
               </Button>

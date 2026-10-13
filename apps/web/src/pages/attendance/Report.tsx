@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { reportUrl, STATUS_CLASS, useReport } from '@/lib/attendance';
+import { printWhenReady } from '@/lib/print';
 import { useGroups, useSchool } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
@@ -39,7 +40,7 @@ export function ReportPage() {
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-2 print:hidden">
         <h1 className="me-auto text-xl font-semibold">{t('attendance.report')}</h1>
-        <Button variant="outline" size="sm" onClick={() => window.print()} disabled={!r}>
+        <Button variant="outline" size="sm" onClick={() => void printWhenReady()} disabled={!r}>
           <Printer aria-hidden />
           {t('attendance.print')}
         </Button>

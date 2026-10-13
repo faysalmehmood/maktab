@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/select';
 import { ApiError } from '@/lib/api';
 import type { Account } from '@/lib/fees';
 import { accountKindKey } from '@/lib/money';
+import { printWhenReady } from '@/lib/print';
 
 /**
  * Error sentence for the money-out screens: codes shared with the fee screens but worded
@@ -111,7 +112,7 @@ export function ReportActions({ csv, id }: { csv?: string | null; id: string }) 
       )}
       <Button
         variant="outline"
-        onClick={() => window.print()}
+        onClick={() => void printWhenReady()}
         className="print:hidden"
         id={`${id}-print`}
       >

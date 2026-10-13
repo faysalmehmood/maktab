@@ -204,6 +204,30 @@ describe('fee counter', () => {
     expect(document.querySelector('[data-line="C-ALI-08"]')).toBeNull();
   });
 
+  it('offline: the family view is a read-only copy; Collect waits for the connection (M7)', async () => {
+    const { startAutoSync } = await import('@/offline/sync');
+    const stop = startAutoSync();
+    const api = setupCounter({ 'POST /api/receipts': () => ok() });
+    await screen.findByText('Raza family');
+    await act(async () => {
+      Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+      window.dispatchEvent(new Event('offline'));
+    });
+    await typeAmount('7000');
+    const confirm = document.getElementById('counter-confirm') as HTMLButtonElement;
+    await waitFor(() => expect(confirm.disabled).toBe(true));
+    expect(document.getElementById('counter-offline')?.textContent).toMatch(/Offline/);
+    fireEvent.click(confirm);
+    expect(posts(api.calls)).toEqual([]);
+    await act(async () => {
+      Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+      window.dispatchEvent(new Event('online'));
+    });
+    await waitFor(() => expect(confirm.disabled).toBe(false));
+    expect(document.getElementById('counter-offline')).toBeNull();
+    stop();
+  });
+
   it('previews the allocation and collects cash today with the dues hash; success opens the receipt', async () => {
     const api = setupCounter({ 'POST /api/receipts': () => ok() });
     await typeAmount('7000');

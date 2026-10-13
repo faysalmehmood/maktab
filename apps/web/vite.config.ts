@@ -4,32 +4,11 @@ import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
-import { type ManifestOptions, VitePWA } from 'vite-plugin-pwa';
+import { VitePWA } from 'vite-plugin-pwa';
 import { markSchemasPure } from './pure-schemas';
+import { manifest } from './pwa-manifest';
 import { API_CACHE, isOfflineApi } from './src/offline/api-cache';
 
-// `translations` is the W3C manifest-localization proposal; browsers without it ignore the key.
-const manifest: Partial<ManifestOptions> & {
-  translations: Record<string, { name: string; short_name: string }>;
-} = {
-  name: 'Maktab',
-  short_name: 'Maktab',
-  description: 'School and academy management — مکتب',
-  translations: { ur: { name: 'مکتب', short_name: 'مکتب' } },
-  lang: 'en',
-  dir: 'ltr',
-  start_url: '/',
-  scope: '/',
-  display: 'standalone',
-  background_color: '#ffffff',
-  theme_color: '#0f766e',
-  icons: [
-    { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-    { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-    { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-    { src: '/icons/favicon.svg', sizes: 'any', type: 'image/svg+xml' },
-  ],
-};
 
 /** Build-only: tests and the API read the shared files untouched (see pure-schemas.ts). */
 function pureZodSchemas(): Plugin {
@@ -86,7 +65,7 @@ export default defineConfig({
             method: 'GET',
             options: {
               cacheName: API_CACHE,
-              expiration: { maxEntries: 40, maxAgeSeconds: 24 * 60 * 60 },
+              expiration: { maxEntries: 80, maxAgeSeconds: 24 * 60 * 60 },
               cacheableResponse: { statuses: [200] },
             },
           },

@@ -6,6 +6,9 @@
  *   /api/school               so SetupGate and the shell have the school
  *   /api/attendance/today     the teacher's list
  *   /api/attendance/register  each roster opened today (the URL carries group, date, subject)
+ *   /api/groups/<id>          a class roster the teacher opened (M7)
+ *   /api/fees/family/<id>     the counter's family view, read-only offline: the counter disables
+ *                             Collect while offline (M7); writes never come from here
  * Chosen over a persisted react-query cache: the SW sees every fetch whichever screen made it, the
  * outbox (IndexedDB) stays the only place that holds writes, and nothing else changes in the app.
  * Queries use networkMode 'offlineFirst' (lib/query-client.ts) so they still call fetch — and so
@@ -22,4 +25,6 @@ export const isOfflineApi = ({ url, sameOrigin }: { url: URL; sameOrigin?: boole
   (url.pathname === '/api/me' ||
     url.pathname === '/api/school' ||
     url.pathname === '/api/attendance/today' ||
-    url.pathname === '/api/attendance/register');
+    url.pathname === '/api/attendance/register' ||
+    /^\/api\/groups\/[0-9A-Za-z]{26}$/.test(url.pathname) ||
+    /^\/api\/fees\/family\/[0-9A-Za-z]{26}$/.test(url.pathname));

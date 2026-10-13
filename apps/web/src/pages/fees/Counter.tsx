@@ -57,6 +57,7 @@ import {
 } from '@/lib/fees';
 import { canManageSettings, useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
+import { useOutboxStatus } from '@/offline/sync';
 
 /** What the counter collects against: a family (normal) or a sponsor (their billed share). */
 export type Payer = {
@@ -663,6 +664,7 @@ function CollectForm({
   };
   const networkError =
     collect.error && !(collect.error instanceof ApiError) ? new Error('network') : collect.error;
+  const offline = useOutboxStatus().offline;
 
   // What the confirm dialog shows: the frozen attempt when one is pending, else the form.
   const shown: { a: Attempt; view: PreviewSnapshot } | null = pending
@@ -930,11 +932,22 @@ function CollectForm({
       </Card>
 
       <ErrorNote error={confirming ? null : networkError} />
+      {offline && !pending && (
+        <p
+          id="counter-offline"
+          role="status"
+          className="text-sm text-amber-700 dark:text-amber-300"
+        >
+          {t('fee.counter.offlineReadOnly')}
+        </p>
+      )}
       <Button
         type="submit"
         size="lg"
         id="counter-confirm"
-        disabled={collect.isPending || (!locked && directEmpty)}
+        // Offline the family view is a read-only copy (M7): no new collection until the phone is
+        // back online. An attempt already made keeps its own retry (same idempotency key).
+        disabled={collect.isPending || (!locked && directEmpty) || (offline && !pending)}
       >
         {t('fee.counter.confirm')}
       </Button>

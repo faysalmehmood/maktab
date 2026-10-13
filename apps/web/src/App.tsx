@@ -12,6 +12,7 @@ import { Placeholder } from '@/pages/Placeholder';
 // Office screens are split out so the teacher's phone does not download them up front; the dashboard
 // too (M7: it pulls the fee and attendance widgets, which the login screen never needs).
 const Dashboard = lazy(() => import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const DiagPage = lazy(() => import('@/pages/Diag').then((m) => ({ default: m.DiagPage })));
 const SetupWizard = lazy(() => import('@/pages/Setup').then((m) => ({ default: m.SetupWizard })));
 const SettingsPage = lazy(() =>
   import('@/pages/Settings').then((m) => ({ default: m.SettingsPage })),
@@ -274,6 +275,17 @@ export function App() {
             }
           />
         ))}
+        {/* Hidden device-check page (docs/android-checks.md): owner only, not in the nav. */}
+        <Route
+          path="diag"
+          element={
+            <RequireGrant grant={['role', 'manage']}>
+              <Loading>
+                <DiagPage />
+              </Loading>
+            </RequireGrant>
+          }
+        />
         <Route
           path="settings"
           element={

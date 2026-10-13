@@ -22,6 +22,19 @@ export const en = {
     sendQueue: 'Send queue',
     menu: 'Menu',
   },
+  diag: {
+    title: 'Device check',
+    help: 'What this phone supports, for the Android checks. Copy the report and send it to the maintainer.',
+    copy: 'Copy report',
+    copied: 'Report copied',
+  },
+  pwa: {
+    installTitle: 'Install Maktab on this phone',
+    installBody:
+      'It opens like an app from the home screen, and the attendance register works without internet.',
+    install: 'Install',
+    notNow: 'Not now',
+  },
   auth: {
     signIn: 'Sign in',
     signInWithGoogle: 'Sign in with Google',

@@ -44,6 +44,7 @@ import {
   usePayslip,
   usePayslips,
 } from '@/lib/money';
+import { printWhenReady } from '@/lib/print';
 import { useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 
@@ -507,7 +508,7 @@ export function PayslipPrintPage() {
         >
           English
         </button>
-        <Button id="slip-print-now" onClick={() => window.print()}>
+        <Button id="slip-print-now" onClick={() => void printWhenReady()}>
           <Printer aria-hidden />
           {t('money.common.print')}
         </Button>

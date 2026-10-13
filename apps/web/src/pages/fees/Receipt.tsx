@@ -12,16 +12,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson } from '@/lib/api';
 import { canCollect, canReverse, money, type PaymentMethod, rupeesToPaisa } from '@/lib/fees';
+import { printWhenReady } from '@/lib/print';
 import { useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 
 export const receiptPrintKey = (id: string | undefined) => ['receipt-print', id] as const;
 
-/** Wait for fonts (Nastaliq) before the print dialog, or the first page prints in a fallback font. */
-export async function printWhenReady(): Promise<void> {
-  if (typeof document !== 'undefined' && document.fonts?.ready) await document.fonts.ready;
-  window.print();
-}
+/** Wait for fonts (Nastaliq) before the print dialog (lib/print.ts; re-exported for tests). */
+export { printWhenReady };
 
 type ShareMode = 'text' | 'copy';
 

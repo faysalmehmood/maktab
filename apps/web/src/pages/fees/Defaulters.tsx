@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/table';
 import { getJson, sendJson } from '@/lib/api';
 import { canReadMoney, karachiToday, rupeesToPaisa, useFeeSettings } from '@/lib/fees';
+import { printWhenReady } from '@/lib/print';
 import { useGroups } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
 
@@ -83,7 +84,7 @@ export function DefaultersPage() {
           <Button
             variant="outline"
             id="defaulters-print"
-            onClick={() => window.print()}
+            onClick={() => void printWhenReady()}
             className="print:hidden"
           >
             <Printer aria-hidden />

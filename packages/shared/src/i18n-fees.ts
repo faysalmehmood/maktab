@@ -112,6 +112,8 @@ export const feeEn = {
   },
   kinds: { payment: 'Payment', reversal: 'Reversal', refund: 'Refund', opening: 'Opening' },
   counter: {
+    offlineReadOnly:
+      'Offline: this is the last copy of the family view. Collect once the phone is back online.',
     title: 'Fee counter',
     search: 'Search',
     searchLabel: 'Student, family or guardian name, admission no. or phone',

@@ -33,6 +33,7 @@ import { Label } from '@/components/ui/label';
 import { currentLanguage, setLanguage } from '@/i18n';
 import { ApiError, apiFetch } from '@/lib/api';
 import { money } from '@/lib/fees';
+import { printWhenReady } from '@/lib/print';
 import { cn } from '@/lib/utils';
 
 /**
@@ -524,7 +525,7 @@ function ReceiptView({
           {t('msg.parent.back')}
         </Button>
         {q.data && (
-          <Button onClick={() => window.print()}>
+          <Button onClick={() => void printWhenReady()}>
             <Printer aria-hidden />
             {t('msg.parent.print')}
           </Button>
