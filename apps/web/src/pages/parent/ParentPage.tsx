@@ -20,12 +20,13 @@ import type { TFunction } from 'i18next';
 import { ArrowLeft, Lock, Phone, Printer, Square, Volume2 } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Avatar } from '@/components/avatar';
 import { ReceiptPrint } from '@/components/fees/ReceiptPrint';
 import { ErrorNote, Num } from '@/components/form';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { MARK, MessageText, WithValue } from '@/components/messages/common';
+import { StatusBadge } from '@/components/page';
 import { Turnstile } from '@/components/Turnstile';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -323,14 +324,17 @@ function Section({ title, children, id }: { title: string; children: ReactNode; 
 function ChildCard({ c }: { c: ParentChildDto }) {
   const { t } = useTranslation();
   return (
-    <li className="flex flex-col gap-2 rounded-md border p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <bdi className="text-lg font-semibold">{c.first_name}</bdi>
-        {c.group && (
-          <span className="text-sm text-muted-foreground">
-            <bdi>{c.group}</bdi>
-          </span>
-        )}
+    <li className="flex flex-col gap-2 rounded-xl border bg-card p-4">
+      <div className="flex items-center gap-3">
+        <Avatar name={c.first_name} size="lg" />
+        <span className="flex min-w-0 flex-col">
+          <bdi className="text-lg leading-tight font-semibold">{c.first_name}</bdi>
+          {c.group && (
+            <span className="text-sm text-muted-foreground">
+              <bdi>{c.group}</bdi>
+            </span>
+          )}
+        </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted-foreground">{t('msg.parent.today')}</span>
@@ -385,9 +389,11 @@ function Dues({ dues, lang }: { dues: NonNullable<ParentPageDto['dues']>; lang: 
               <Num>{money(dues.total)}</Num>
             </span>
             {dues.overdue > 0 && (
-              <Badge variant="destructive">
-                {t('msg.parent.overdue')} <Num>{money(dues.overdue)}</Num>
-              </Badge>
+              <StatusBadge tone="bad">
+                <span>
+                  {t('msg.parent.overdue')} <Num>{money(dues.overdue)}</Num>
+                </span>
+              </StatusBadge>
             )}
           </div>
           <details className="rounded-md border">
