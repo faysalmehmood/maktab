@@ -59,7 +59,7 @@ function StartHere({ task }: { task: GuideTask }) {
         <div className="flex min-w-0 flex-1 basis-64 flex-col gap-0.5">
           <p className="text-meta font-semibold text-brand">{say(GUIDE_UI.startHere, lang)}</p>
           <h2 id="guide-start-title" className="text-title">
-            <Link to={`/guide/${task.id}`} className="hover:underline">
+            <Link to={`/guide/${task.id}`} className="inline-flex min-h-11 items-center hover:underline">
               <Rich text={task.title[lang]} />
             </Link>
           </h2>

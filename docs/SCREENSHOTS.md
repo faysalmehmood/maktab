@@ -136,3 +136,14 @@ real family. Phone = 360 px wide (Chrome device mode or a real Android); laptop 
 | onb-23-reports-hub | `/reports` | en | laptop | list of reports |
 | onb-24-payslip | `/salary/:id` | en | laptop | lines, Approve, Pay, Print slip |
 | onb-25-settings-backup | `/settings?section=backup` | en | laptop | nightly status, Download everything, restore drill checklist, alarms |
+
+### `docs/design/guide/` (Help & guide)
+
+- `guide-home`: desktop-en-light, desktop-ur-dark, phone-en-dark, phone-ur-light (owner)
+- `guide-home-teacher`: phone-en-light, phone-ur-dark (the teacher's trimmed list)
+- `guide-task-collect-fee`: desktop-en-light, desktop-ur-dark, phone-en-dark, phone-ur-light
+- `help-sheet-counter`: desktop-en-light, phone-ur-dark (the "?" on the fee counter)
+- `tour-register-step3`: phone-ur-dark; `tour-register-step4`: desktop-en-dark;
+  `tour-register-step5`: phone-en-light (card above the sticky save bar)
+- `tour-counter-step4`: desktop-en-light, desktop-ur-dark, phone-ur-light
+- `home-first-week`: desktop-en-light (each open step links to its guide step)
