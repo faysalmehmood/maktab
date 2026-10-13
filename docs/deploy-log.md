@@ -130,3 +130,27 @@ Commits `eb6d3f3`, `179e4e1` (pushed to main). From apps/api:
   a session 401; `POST /api/backup/runs` without a token 401; `/` 200.
 - GitHub variable `BACKUP_ENABLED` left untouched (currently `false` until the API token exists). The
   new `backup_stale` alarm stays silent until a successful nightly run reports `backup_enabled: true`.
+
+# Deploy log: M7a hardening, code side (2026-10-13)
+
+Commits `b33048d`…`0a30f93` (pushed to main). No migration in this milestone. From apps/api:
+
+    npx wrangler d1 migrations list DB --remote --env production   # ✅ No migrations to apply
+    npm run db:verify -- --remote --env production                 # repo root
+    npm run build && npx wrangler deploy --env production
+
+- `db:verify --remote`: 97 triggers (expected 97), 8 views (expected 8).
+- Worker version `21929e52-8d81-4ab0-9bae-61bfe2cec2aa`. No new binding or secret; Turnstile is
+  **off** (no `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET` yet — docs/deploy.md §8).
+- Checks (curl --resolve, 172.67.187.153): `/api/health` 200; `GET /api/auth/google/start` 302 to
+  Google with `ratelimit-limit: 20`, `ratelimit-remaining: 19`; `/api/p` and `/api/p/logo` without a
+  token 404; `POST /api/receipts/x/parent-link` without a session 401; `/p` 200 with the SPA CSP (no
+  Turnstile origin while off); `/diag` 200 (SPA; the page itself is owner-only);
+  `manifest.webmanifest` has `id`, `start_url: /`, `display: standalone`.
+
+## Pending (user) — dashboard items for M7
+
+1. WAF rate-limiting rules (docs/deploy.md §7).
+2. Turnstile widget → `TURNSTILE_SITE_KEY` in wrangler.toml + `TURNSTILE_SECRET` secret, deploy (§8).
+3. The M6 items above (API token → first nightly run → restore drill, R2 lifecycle rule, key escrow,
+   B2), now tracked in docs/pilot-checklist.md.
