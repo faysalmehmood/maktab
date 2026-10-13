@@ -30,10 +30,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { logout } from '@/lib/api';
 import { type GrantRef, holds, isTeacherOnly, useRoles } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 import { API_CACHE } from '@/offline/api-cache';
+import { queueLogout } from '@/offline/logout';
 import { resumeAfterSignIn, startAutoSync, useOutboxStatus } from '@/offline/sync';
 import { SyncBanner } from './attendance/common';
 import { LanguageToggle } from './LanguageToggle';
@@ -166,7 +166,8 @@ export function AppShell() {
   }, []);
 
   const signOut = async () => {
-    await logout().catch(() => undefined);
+    // Offline too: local state goes now, the server revocation waits in a queue (offline/logout.ts).
+    void queueLogout();
     queryClient.clear();
     // The offline API copy (who I am, rosters) must not outlive the session on a shared phone.
     if (typeof caches !== 'undefined') await caches.delete(API_CACHE).catch(() => false);

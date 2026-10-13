@@ -1,5 +1,6 @@
 import { type MeResponse, STAFF_ROLES, USER_STATUSES } from '@maktab/shared';
 import { useQuery } from '@tanstack/react-query';
+import { flushLogout, logoutPending } from '@/offline/logout';
 
 export class ApiError extends Error {
   constructor(
@@ -25,7 +26,12 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<un
   return body;
 }
 
-export const fetchMe = async (): Promise<MeResponse> => parseMe(await apiFetch('/api/me'));
+export async function fetchMe(): Promise<MeResponse> {
+  // Signed out while offline and the revocation not sent yet: signed out, whatever the cookie says.
+  if (logoutPending() && (await flushLogout()) === 'queued')
+    throw new ApiError(401, 'unauthenticated', 'Signed out');
+  return parseMe(await apiFetch('/api/me'));
+}
 
 // Hand-written guards instead of the zod schemas in @maktab/shared: the shell is the only web code
 // that validated responses, and zod alone was ~55 KB gzip of the first load (M7 bundle work).
@@ -72,8 +78,6 @@ export function useMe() {
       count < 2,
   });
 }
-
-export const logout = () => apiFetch('/api/auth/logout', { method: 'POST' });
 
 /** Typed GET; the shapes are the hand-written contract in @maktab/shared (dto.ts). */
 export const getJson = <T>(path: string): Promise<T> => apiFetch(path) as Promise<T>;

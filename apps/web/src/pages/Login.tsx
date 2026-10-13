@@ -1,8 +1,10 @@
+import type { MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { flushLogout, logoutPending } from '@/offline/logout';
 
 function GoogleMark() {
   return (
@@ -32,6 +34,13 @@ export function Login() {
   const [params] = useSearchParams();
   const failed = params.has('error');
   const turnstile = params.get('error') === 'turnstile_failed';
+  // A sign-out queued offline is sent before a new sign-in, so it can never end the new session.
+  const signInClick = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (!logoutPending()) return;
+    e.preventDefault();
+    const href = e.currentTarget.href;
+    void flushLogout().then(() => window.location.assign(href));
+  };
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4 p-4">
@@ -53,7 +62,7 @@ export function Login() {
           )}
           {/* A full navigation, not fetch: the OAuth flow is a chain of redirects. */}
           <Button asChild size="lg" variant="outline">
-            <a href="/api/auth/google/start">
+            <a href="/api/auth/google/start" onClick={signInClick}>
               <GoogleMark />
               {t('auth.signInWithGoogle')}
             </a>
