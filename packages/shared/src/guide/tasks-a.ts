@@ -105,6 +105,14 @@ export const TASKS_A: readonly GuideTask[] = [
       {
         path: '/',
         target: 'home-first-week',
+        optional: true,
+        vacant: {
+          title: { en: 'Your first week is done', ur: 'آپ کا پہلا ہفتہ مکمل ہو گیا' },
+          body: {
+            en: 'All five first jobs are done, so the checklist has gone from Home. This is where it lived.',
+            ur: 'پانچوں پہلے کام ہو چکے، اس لیے ہوم سے فہرست ہٹ گئی ہے۔ یہ وہ جگہ ہے جہاں وہ ہوتی تھی۔',
+          },
+        },
         title: { en: 'Your checklist', ur: 'آپ کی فہرست' },
         body: {
           en: 'Home keeps this list until each first job is done. Tap a line to go there.',

@@ -33,6 +33,10 @@ export default function TourRunner({ task }: { task: string }) {
     () =>
       (def?.tour ?? []).map((s) => ({
         ...s,
+        vacant: s.vacant && {
+          title: <Rich text={s.vacant.title[lang]} />,
+          body: <Rich text={s.vacant.body[lang]} />,
+        },
         title: <Rich text={s.title[lang]} />,
         body: <Rich text={s.body[lang]} />,
       })),

@@ -12,6 +12,7 @@ import {
   keysBelongElsewhere,
   matchPath,
   place,
+  safeArea,
   TourEngine,
 } from '@/guide/engine';
 import TourRunner, { isolateNumbers } from '@/guide/TourRunner';
@@ -176,6 +177,53 @@ describe('tour engine', () => {
     // Step 3 lives on /b: the engine asks the router to go there.
     await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/b'));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('first-week shape: a fresh school shows the checklist; a completed school shows the vacant card, then goes on to the next screen', async () => {
+    layout();
+    const tour: EngineStep[] = [
+      {
+        path: '/a',
+        target: 'checklist',
+        optional: true,
+        vacant: { title: 'Your first week is done', body: 'Where the checklist lived' },
+        title: 'Your checklist',
+        body: '',
+      },
+      { path: '/b', target: 'three', title: 'Settings', body: '' },
+    ];
+    // Fresh school: the card is there.
+    const fresh = render(
+      <TourApp steps={tour} onClose={vi.fn()} extra={<p data-tour="checklist">list</p>} />,
+    );
+    await shownStep(0);
+    expect(within(card()).getByRole('heading', { name: 'Your checklist' })).toBeTruthy();
+    fresh.unmount();
+    // Completed school: no card. Step 1 shows the vacant card (not skipped), Next reaches /b.
+    render(<TourApp steps={tour} onClose={vi.fn()} />);
+    await waitFor(() => expect(card().dataset.phase).toBe('vacant'));
+    expect(within(card()).getByRole('heading', { name: 'Your first week is done' })).toBeTruthy();
+    expect(screen.queryByText('A step was skipped')).toBeNull();
+    fireEvent.click(within(card()).getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/b'));
+    await shownStep(1);
+  });
+
+  it("a skipped step still navigates to the next step's screen", async () => {
+    layout();
+    const onClose = vi.fn();
+    render(
+      <TourApp
+        steps={[
+          { path: '/a', target: 'gone', title: 'Gone', body: '' },
+          { path: '/b', target: 'three', title: 'Third', body: '' },
+        ]}
+        onClose={onClose}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/b'));
+    await shownStep(1);
+    expect(within(card()).getByText('A step was skipped')).toBeTruthy();
   });
 
   it('Esc closes without completing; Finish on the last step completes', async () => {
@@ -443,6 +491,41 @@ describe('tour engine', () => {
       top: 72,
     });
     expect(place(null, 180, view, safe, false).mode).toBe('center');
+  });
+
+  it('places beside the target on a wide screen when above and below do not fit', () => {
+    const view = { w: 1280, h: 800 };
+    const t = { top: 300, left: 300, width: 400, height: 380 };
+    const p = place(t, 220, view, { top: 56, bottom: 800 }, false);
+    expect(p.mode).toBe('side');
+    expect(p.left).toBe(712);
+    // Urdu prefers the start (left) side.
+    expect(place({ ...t, left: 700 }, 220, view, { top: 56, bottom: 800 }, true).mode).toBe('side');
+    // No room on either side: falls back (phone-width screens never use sides).
+    expect(
+      place({ ...t, left: 20, width: 1240 }, 220, view, { top: 56, bottom: 800 }, false).mode,
+    ).toBe('below');
+  });
+
+  it('safeArea: only a fixed/sticky bar at the viewport bottom is a bottom bar; a mid-page bar is content', () => {
+    const bar = (attr: string, pos: string, top: number, h: number) => {
+      const el = document.createElement('div');
+      el.setAttribute(attr, '');
+      el.style.position = pos;
+      el.getBoundingClientRect = () =>
+        ({ top, bottom: top + h, left: 0, right: 100, width: 100, height: h }) as DOMRect;
+      document.body.append(el);
+      return el;
+    };
+    const mid = bar('data-action-bar', 'sticky', 400, 70);
+    expect(safeArea(800)).toEqual({ top: 0, bottom: 800 });
+    mid.remove();
+    const stuck = bar('data-action-bar', 'sticky', 700, 70);
+    expect(safeArea(800).bottom).toBe(700);
+    stuck.remove();
+    const static_ = bar('data-action-bar', 'static', 700, 70);
+    expect(safeArea(800).bottom).toBe(800);
+    static_.remove();
   });
 
   it('matches route patterns', () => {

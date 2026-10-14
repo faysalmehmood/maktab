@@ -39,6 +39,9 @@ export type TourStep = {
   readonly target: string;
   readonly click?: boolean;
   readonly wait?: boolean;
+  /** The target may be absent (e.g. a card that goes away when done): `vacant` is shown instead of skipping. */
+  readonly optional?: boolean;
+  readonly vacant?: { readonly title: L; readonly body: L };
   readonly title: L;
   readonly body: L;
 };

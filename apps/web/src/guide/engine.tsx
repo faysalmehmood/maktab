@@ -22,6 +22,9 @@ export type EngineStep = {
   target: string;
   click?: boolean;
   wait?: boolean;
+  /** The target may legitimately be absent: show `vacant` (if any) instead of skipping. */
+  optional?: boolean;
+  vacant?: { title: ReactNode; body: ReactNode };
   title: ReactNode;
   body: ReactNode;
 };
@@ -45,7 +48,7 @@ export type Placement = {
   top: number;
   left: number;
   width: number;
-  mode: 'below' | 'above' | 'sheet-top' | 'sheet-bottom' | 'center';
+  mode: 'below' | 'above' | 'side' | 'sheet-top' | 'sheet-bottom' | 'center';
 };
 
 /** Does a route pattern ("/students/:id") match a pathname? */
@@ -104,6 +107,15 @@ export function place(
   if (below + cardH <= safe.bottom - M) return { top: below, left, width, mode: 'below' };
   const above = t.top - GAP - cardH;
   if (above >= safe.top + M) return { top: above, left, width, mode: 'above' };
+  // Wide screens: beside the target (its end side first, then the other) before overlapping it.
+  if (view.w >= 1024) {
+    const sideTop = clamp(t.top, safe.top + M, safe.bottom - cardH - M);
+    const endX = t.left + t.width + GAP;
+    const startX = t.left - GAP - width;
+    const order = rtl ? [startX, endX] : [endX, startX];
+    for (const x of order)
+      if (x >= M && x + width <= view.w - M) return { top: sideTop, left: x, width, mode: 'side' };
+  }
   return { top: clamp(below, safe.top + M, safe.bottom - cardH - M), left, width, mode: 'below' };
 }
 
@@ -117,7 +129,10 @@ export function safeArea(viewH: number): { top: number; bottom: number } {
     const r = el.getBoundingClientRect();
     if (!r.height || r.bottom <= 0 || r.top >= viewH) continue;
     if (r.top < viewH / 2) top = Math.max(top, r.bottom);
-    else bottom = Math.min(bottom, r.top);
+    // A bottom bar is fixed or sticky and sits at the bottom of the viewport (above the tab bar at
+    // most); a bar in the middle of the page (not stuck yet) is just content.
+    else if (/^(fixed|sticky)$/.test(getComputedStyle(el).position) && r.bottom > viewH - 140)
+      bottom = Math.min(bottom, r.top);
   }
   return { top, bottom };
 }
@@ -169,7 +184,9 @@ export function TourEngine({
   timeoutMs?: number;
 }) {
   const [pos, setPos] = useState<Pos>({ i: 0, dir: 1, by: 'user', skipped: false });
-  const [phase, setPhase] = useState<'seek' | 'shown' | 'waiting' | 'missing' | 'empty'>('seek');
+  const [phase, setPhase] = useState<'seek' | 'shown' | 'waiting' | 'missing' | 'empty' | 'vacant'>(
+    'seek',
+  );
   const [rect, setRect] = useState<Rect | null>(null);
   const [cardH, setCardH] = useState(180);
   const [view, setView] = useState({ w: innerWidth, h: innerHeight });
@@ -183,10 +200,11 @@ export function TourEngine({
   const step = steps[pos.i];
   const last = pos.i === steps.length - 1;
 
-  // Entering a step on purpose (start, Next, Back) goes to its screen; a skip never moves you.
+  // Entering a step (start, Next, Back, or after a skip) goes to its screen.
   useEffect(() => {
     const p = steps[pos.i]?.path;
-    if (pos.by === 'user' && p && !p.includes(':') && !matchPath(p, path.current)) navigate(p);
+    // A skipped step still goes on to the next step's screen.
+    if (p && !p.includes(':') && !matchPath(p, path.current)) navigate(p);
   }, [pos, steps, navigate]);
 
   // Find the target: poll (routes and lazy screens take a moment), then skip, wait or show the
@@ -225,6 +243,10 @@ export function TourEngine({
       const since = here ?? started + 4000;
       if (Date.now() - since < timeoutMs) return false;
       clearInterval(timer);
+      if (step.optional && step.vacant) {
+        setPhase('vacant');
+        return true;
+      }
       const next = pos.i + pos.dir;
       if (next >= 0 && next < steps.length)
         setPos({ i: next, dir: pos.dir, by: 'skip', skipped: true });
@@ -312,6 +334,7 @@ export function TourEngine({
 
   if (!step) return null;
   const blank = phase === 'empty' && empty;
+  const vacant = phase === 'vacant' ? step.vacant : undefined;
   const shown = (phase === 'shown' || phase === 'empty') && rect;
   const pl = place(shown ? rect : null, cardH, view, safeArea(view.h), rtl);
   const PAD = 6;
@@ -349,10 +372,10 @@ export function TourEngine({
           {labels.counter(pos.i + 1, steps.length)}
         </p>
         <h2 id="tour-title" className="text-section font-semibold">
-          {blank ? empty.title : step.title}
+          {blank ? empty.title : (vacant?.title ?? step.title)}
         </h2>
         <div id="tour-body" className="text-sm leading-relaxed">
-          {blank ? empty.body : step.body}
+          {blank ? empty.body : (vacant?.body ?? step.body)}
         </div>
         {(pos.skipped || phase === 'missing') && (
           <p role="status" className="rounded-md bg-warn-soft px-2.5 py-1.5 text-meta text-warn">

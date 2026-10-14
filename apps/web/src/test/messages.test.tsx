@@ -522,7 +522,7 @@ function stubSpeech(voices: { lang: string }[] = []) {
 describe('parent page', () => {
   it('opens in Urdu (dir=rtl) for an Urdu guardian, with noindex and the Listen button', async () => {
     const speak = stubSpeech([]);
-    mockApi({ ['GET /api/p']: parentPage() });
+    mockApi({ 'GET /api/p': parentPage() });
     renderParent();
     await waitFor(() => expect(document.documentElement.dir).toBe('rtl'));
     await screen.findByText('ٹیوشن');
@@ -545,7 +545,7 @@ describe('parent page', () => {
 
   it('speaks Urdu when the phone has an Urdu voice', async () => {
     const speak = stubSpeech([{ lang: 'ur-PK' }]);
-    mockApi({ ['GET /api/p']: parentPage() });
+    mockApi({ 'GET /api/p': parentPage() });
     renderParent();
     fireEvent.click(await screen.findByRole('button', { name: /سنیں/ }));
     const u = speak.mock.calls[0]?.[0] as { text: string; lang: string };
@@ -554,7 +554,7 @@ describe('parent page', () => {
   });
 
   it('hides Listen without speechSynthesis', async () => {
-    mockApi({ ['GET /api/p']: parentPage({ guardian: { first_name: 'I', lang: 'en' } }) });
+    mockApi({ 'GET /api/p': parentPage({ guardian: { first_name: 'I', lang: 'en' } }) });
     renderParent();
     await screen.findByText(/Assalamu alaikum,/);
     expect(document.getElementById('parent-listen')).toBeNull();
@@ -563,7 +563,7 @@ describe('parent page', () => {
   it('asks the gate, then re-fetches with x-parent-gate', async () => {
     const seen: (string | null)[] = [];
     const { calls } = mockApi({
-      ['GET /api/p']: (_url: URL, init: RequestInit) => {
+      'GET /api/p': (_url: URL, init: RequestInit) => {
         const h = new Headers(init.headers);
         seen.push(h.get('x-parent-gate'));
         return h.get('x-parent-gate') === 'GT'
@@ -578,7 +578,7 @@ describe('parent page', () => {
               receipts: null,
             });
       },
-      ['POST /api/p/gate']: (_url: URL, init: RequestInit) =>
+      'POST /api/p/gate': (_url: URL, init: RequestInit) =>
         JSON.parse(String(init.body)).birth_year === 2015
           ? { gate_token: 'GT', expires_at: '2026-10-11T20:00:00Z' }
           : new Response(JSON.stringify({ error: { code: 'gate_failed', message: 'x' } }), {
@@ -616,14 +616,14 @@ describe('parent page', () => {
       remove: () => undefined,
     };
     const { calls } = mockApi({
-      ['GET /api/p']: parentPage({
+      'GET /api/p': parentPage({
         guardian: { first_name: 'I', lang: 'en' },
         gate: { kind: 'birth_year', passed: false },
         turnstile_site_key: 'SITE',
         dues: null,
         receipts: null,
       }),
-      ['POST /api/p/gate']: () =>
+      'POST /api/p/gate': () =>
         new Response(JSON.stringify({ error: { code: 'gate_failed', message: 'x' } }), {
           status: 400,
         }),
@@ -695,7 +695,7 @@ describe('parent page', () => {
 
   it('opens a receipt in print view and goes back', async () => {
     mockApi({
-      ['GET /api/p']: parentPage({ guardian: { first_name: 'I', lang: 'en' } }),
+      'GET /api/p': parentPage({ guardian: { first_name: 'I', lang: 'en' } }),
       'GET /api/p/receipt/R-2026-00001': () => parentReceipt(),
     });
     renderParent();
@@ -724,7 +724,7 @@ describe('parent page', () => {
     );
     const seen: (string | null)[] = [];
     mockApi({
-      ['GET /api/p']: parentPage({ guardian: { first_name: 'I', lang: 'en' } }),
+      'GET /api/p': parentPage({ guardian: { first_name: 'I', lang: 'en' } }),
       'GET /api/p/receipt/R-2026-00001': () => ({
         ...parentReceipt(),
         school: { ...parentReceipt().school, logo_v: 'abc123' },
@@ -755,7 +755,7 @@ describe('parent page', () => {
     );
     const seen: string[] = [];
     mockApi({
-      ['GET /api/p']: parentPage({
+      'GET /api/p': parentPage({
         guardian: { first_name: 'I', lang: 'en' },
         school: { ...parentPage().school, badge_v: 'b1' },
       }),
@@ -817,7 +817,7 @@ describe('RTL smoke: messaging screens in Urdu', () => {
 
   it('parent page', async () => {
     stubSpeech([]);
-    mockApi({ ['GET /api/p']: parentPage() });
+    mockApi({ 'GET /api/p': parentPage() });
     const { container } = renderParent();
     await waitFor(() => expect(document.documentElement.dir).toBe('rtl'));
     await screen.findByText('ٹیوشن');
