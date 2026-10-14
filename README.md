@@ -1,151 +1,119 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="brand/maktab-logo-dark.png">
-    <img src="brand/maktab-logo.png" alt="Maktab · مکتب" width="480">
+    <img src="brand/maktab-logo.png" alt="Maktab · مکتب" width="420">
   </picture>
 </p>
 
-**Try the demo:** https://maktab.conceptlix.com (made-up school, no account needed; docs/demo.md)
-
-<p align="center"><b>Free, open-source school and academy management for Pakistani community schools.</b><br>
-Maktab · مکتب</p>
+<p align="center"><b>Run your school from a phone: attendance, fees, receipts and parent messages, in Urdu and English.</b><br>
+Maktab · مکتب, free and open-source management for community schools and academies in Pakistan.</p>
 
 <p align="center">
-  <img alt="Status: pre-pilot" src="https://img.shields.io/badge/status-pre--pilot-orange">
-  <img alt="Milestones 0–4 done" src="https://img.shields.io/badge/milestones-0%E2%80%934%20done-0f766e">
+  <a href="https://maktab.conceptlix.com"><img alt="Try the demo" src="https://img.shields.io/badge/try%20the%20demo-maktab.conceptlix.com-0f766e"></a>
   <a href="https://github.com/faysalmehmood/maktab/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/faysalmehmood/maktab/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue"></a>
 </p>
 
-> **Not ready for production yet.** Maktab has not yet run in a real school. Do not use it for
-> real students' records or money until the pilot milestone (M7) is done.
+<p align="center">
+  <img src="docs/media/home-desktop.png" alt="The owner's home screen: registers taken, today's collection, messages waiting and what needs attention" width="860">
+  <br><sub>The principal's home screen: today's registers, today's collection, messages waiting and what needs attention.</sub>
+</p>
 
-## What Maktab does
+## What a school gets
 
-| Module | What it does |
+Made for schools and coaching academies of 100 to 1,000 students, with staff on ordinary Android
+phones and internet that comes and goes.
+
+| Area | What it does |
 |---|---|
-| Students & families | Admit students, keep guardians and siblings together as one family, import from CSV. |
-| Attendance | Teachers mark absentees on a phone in seconds; it works without internet and syncs later. |
-| Fees | Monthly fees, concessions, sponsors, late fines and numbered receipts at a family fee counter. |
-| Money out & reports | Expenses, salaries and advances, cash closing, income vs expense, printable and CSV reports. |
-| Messaging *(planned, M5)* | Urdu/English reminders sent from the school's own WhatsApp through a send-queue; a private page per parent. |
-| Settings & backup *(planned, M6)* | Templates, audit log viewer, "download everything", and nightly backups to three places. |
-
-**Built for** community schools and coaching academies in Pakistan with 100–1,000 students: staff
-on low-end Android phones, patchy internet, an Urdu and English interface (right-to-left Urdu,
-English digits), and no budget for software or hosting. One installation runs one school.
+| **Daily work** | Teachers take attendance on their phone in seconds: everyone starts present, tap the absentees. It works without internet and sends the register when the connection returns. |
+| **Money** | A fee counter for the whole family, numbered receipts (print on A5 or a 58 mm thermal printer, or share), concessions, sponsors, late fines, a defaulters list and a daily cash-drawer closing. |
+| **Parents** | Absence and fee reminders queued in Urdu or English and sent one tap at a time from the school's own WhatsApp. Each family gets a private page with attendance, dues and receipts, with a "listen" button. |
+| **Office** | Admissions with brothers and sisters kept together as one family, CSV import, expenses, salaries and advances, income vs expense and printable reports, an audit log and "download everything". |
+| **Guidance** | A built-in Help & guide with 25 tasks and 17 "Show me" tours that walk through the real screen, in Urdu and English ([the same guide as a document](docs/onboarding.md)). |
 
 ## Why it's different
 
-- **Money you can trust.** The fee ledger is append-only: nothing is edited or deleted, mistakes are
-  reversed with a new entry, receipts are numbered without gaps, and balances are always computed.
-- **Attendance works offline.** Registers are saved on the phone and sync when the connection returns.
+- **Money that adds up.** The fee ledger is append-only: nothing is edited or deleted, a mistake is
+  reversed with a new entry, receipt numbers have no gaps, and balances are always computed. The
+  database itself enforces these rules.
+- **Attendance works offline.** Registers are saved on the phone and sync later.
 - **One model for schools and academies.** Classes, sections, batches and short courses are all
-  "groups", so a student can be in Class 5-B and an evening English course at the same time.
-- **Free to run.** It fits Cloudflare's free tier ($0/month), with three independent backups:
-  Cloudflare's 7-day point-in-time restore, an encrypted nightly copy in two clouds, and a Google
-  Sheet the school owns.
-- **Open source under AGPL-3.0.** It stays free; anyone may host it for their own school.
+  groups, so a student can be in Class 5-B and an evening English course at once.
+- **Your school in front.** The school's own name, badge and colour appear on every screen, receipt
+  and parent page; Maktab stays in the background ("Runs on Maktab").
+- **Free to run, open source.** It runs within free hosting tiers, with encrypted nightly backups to
+  more than one place, and the AGPL-3.0 licence keeps it free.
 
 ## Screenshots
 
-Not yet published; see [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) for the planned list.
+<table>
+  <tr>
+    <td width="33%"><img src="docs/media/attendance-phone-urdu.png" alt="Attendance register on a phone, Urdu"></td>
+    <td width="33%"><img src="docs/media/whatsapp-queue-phone.png" alt="Message queue sending one family at a time"></td>
+    <td width="33%"><img src="docs/media/parent-page-phone.png" alt="A family's private parent page in Urdu"></td>
+  </tr>
+  <tr>
+    <td>Attendance register, in Urdu</td>
+    <td>Messages, one family at a time</td>
+    <td>A family's private page</td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/receipt-phone-dark.png" alt="Numbered receipt after a payment, dark theme"></td>
+    <td><img src="docs/media/defaulters-phone.png" alt="Defaulters list with Remind all"></td>
+    <td><img src="docs/media/guide-tour-phone.png" alt="A Show me tour step on the attendance screen"></td>
+  </tr>
+  <tr>
+    <td>Receipt, dark theme</td>
+    <td>Defaulters and reminders</td>
+    <td>A "Show me" tour</td>
+  </tr>
+</table>
 
-## Roadmap
+More screens, phone and desktop, in English and Urdu, light and dark: [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
 
-| Milestone | Scope | Status |
-|---|---|---|
-| M0 Scaffold | Schema and ledger triggers, sign-in and permissions, bilingual app shell, CI, backup workflow | Done |
-| M1 Foundation | Setup wizard, staff invites and roles, students/families, admissions, CSV import | Done |
-| M2 Attendance | Daily register, offline sync, corrections with reason, absentee list | Done |
-| M3 Fees | Fee counter, receipts, concessions, sponsors, fines, defaulters, cash closing | Done |
-| M4 Money out & reports | Expenses, payslips and advances, income vs expense, dashboard, report pack | Done |
-| M5 Messaging | Send-queue with Urdu/English templates, parent page | Next |
-| M6 Settings & backup | Audit viewer, recycle bin, "download everything", nightly backups live | Planned |
-| M7 Hardening & pilot | Security pass, Urdu review, Android checks, first real school month | Planned |
+## How to get it
 
-Full plan, decisions and review findings: [docs/PLAN.md](docs/PLAN.md) (§15).
+One installation runs one school, with its own data and backups.
 
-## Quick start (developers)
-
-Requires Node 22+ (`nvm use`). No Cloudflare account is needed for local development.
-
-```sh
-npm install
-cp apps/api/.dev.vars.example apps/api/.dev.vars   # fill GOOGLE_CLIENT_ID / SECRET and OWNER_EMAIL
-npm run db:migrate:local                            # local D1 (SQLite) via wrangler
-SEED_OWNER_EMAIL=you@example.com npm run db:seed    # optional demo data; that address becomes owner
-npm run dev                                         # web on :5173, API on :8787 (proxied)
-```
-
-Open http://localhost:5173. Sign-in needs a Google OAuth client (type "Web application") with the
-redirect URI `http://localhost:5173/api/auth/google/callback`. On an empty database only
-`OWNER_EMAIL` can sign in; after that, only invited emails. To use other ports, set both:
-`PORT=5180 API_PORT=8790 npm run dev`. To drive the API without Google, see
-[CONTRIBUTING.md](CONTRIBUTING.md#driving-the-api-locally-without-google).
-
-Checks before a pull request:
-
-```sh
-npm run typecheck && npm run lint && npm test && npm run build
-npx tsx packages/db/scripts/sync-custom-sql.ts --check
-```
-
-More: [CONTRIBUTING.md](CONTRIBUTING.md) (setup, rules, local cron) ·
-[docs/deploy.md](docs/deploy.md) (deploying to Cloudflare) · [docs/restore.md](docs/restore.md)
-(restoring a backup).
-
-## Architecture
-
-A TypeScript monorepo. The browser app is an installable PWA (React, Tailwind, Urdu RTL); the API is
-Hono on a Cloudflare Worker, which also serves the app; data is in D1 (SQLite), where database
-triggers enforce the money rules. The same code runs on Node with a SQLite file, as the escape hatch
-if the free tier changes ([ADR 0001](docs/ADR/0001-stack.md)).
-
-```
- phone / laptop browser ── PWA (React, en/ur) ── IndexedDB outbox (offline attendance)
-          │ HTTPS
-          ▼
- Cloudflare Worker ── Hono /api/* (sign-in, permission check on every route) + static app
-          │
-          ├── D1 (SQLite): append-only ledger, triggers, derived balances
-          └── R2: photos, payment proofs
-
- GitHub Actions, nightly ── D1 export → encrypted ──► R2 + Backblaze B2 + Google Sheet
-```
-
-| Path | What |
+| Option | How |
 |---|---|
-| `apps/api` | Worker: Google sign-in, sessions, permission matrix, routes, fee cron |
-| `apps/web` | PWA: Vite + React 19 + Tailwind 4 + shadcn/ui, i18next `en`/`ur` |
-| `packages/db` | Drizzle schema, SQL triggers and views, migrations, seed |
-| `packages/shared` | Zod schemas, roles and permissions, money formatting, translations |
-| `docs/` | Plan, ADRs, deploy and restore runbooks |
+| **Hosted for your school** | Write to [maktab@conceptlix.com](mailto:maktab@conceptlix.com). |
+| **On Cloudflare's free tier** | Your own Cloudflare account, $0 a month: follow [docs/deploy.md](docs/deploy.md). |
+| **On your own server or homelab** | The code runs on any server with a SQLite file ([ADR 0001](docs/ADR/0001-stack.md)); a ready Docker image is planned next. Ask at the address above if you need it now. |
 
-## How it was built
+**Try the demo:** [maktab.conceptlix.com](https://maktab.conceptlix.com), a made-up school with
+one-tap demo sign-ins as principal, accountant or teacher; data resets nightly
+([about the demo](docs/demo.md)).
 
-Planned first, with the research and evidence behind each decision recorded in
-[docs/PLAN.md](docs/PLAN.md). Built milestone by milestone in a loop of AI agents directed by a
-human (an implementer, a blind reviewer that did not see the implementer's reasoning, and a
-verifier working from a clean clone), with every review finding and its fix recorded in the plan.
+## Status
 
-## Security
+Built and reviewed, not yet proven in a school. Milestones 0 to 7b are done: attendance, fees,
+expenses and salaries, reports, messaging, settings and backups, hardening, the full Urdu interface
+and the new design. The pilot gate (M7c: live nightly backups and a restore drill, checks on real
+Android phones) is next, followed by a first real month at Global Science Academy, Pakpattan.
+Details: [docs/PLAN.md](docs/PLAN.md) §15.
 
-Please report vulnerabilities privately through GitHub's private vulnerability reporting; see
-[SECURITY.md](SECURITY.md). Do not open public issues for security problems.
+**How it was built.** Each milestone was planned with its evidence in [docs/PLAN.md](docs/PLAN.md),
+then built by AI agents under human direction in a fixed loop: one agent implements, a second reviews
+the change blind, a third verifies it from a clean clone, and every finding and fix is recorded.
 
-## License
+## For developers
 
-[AGPL-3.0](LICENSE). If you run a modified Maktab for others, you must share your changes under the
-same licence. Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
-[Code of Conduct](CODE_OF_CONDUCT.md).
+- **Stack:** TypeScript throughout: a React PWA (Tailwind, Urdu right-to-left), a Hono API on
+  Cloudflare Workers, and SQLite (D1) via Drizzle, with database triggers guarding the money rules.
+- **Quick start:** Node 22+, then `npm install` and `npm run dev`; full setup in [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Checks:** `npm run typecheck && npm run lint && npm test && npm run build` (1,142 tests), plus
+  `npx tsx packages/db/scripts/sync-custom-sql.ts --check`.
+- **Contributing:** see [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+- **Security:** report privately through GitHub's private vulnerability reporting ([SECURITY.md](SECURITY.md)).
+- **Thanks:** [Noto Nastaliq Urdu](https://fonts.google.com/noto/specimen/Noto+Nastaliq+Urdu) (SIL OFL 1.1);
+  ideas from [OpenMasjidStudents](https://github.com/OpenMasjid-Solutions/OpenMasjidStudents),
+  [CoachSync](https://github.com/rakibul-islam-raju/CoachSync), [Gibbon](https://gibbonedu.org) and
+  [Frappe Education](https://github.com/frappe/education) ([PLAN §16](docs/PLAN.md#16-research-summary-2026-10-10)).
 
-## Acknowledgements
+---
 
-- [Noto Nastaliq Urdu](https://fonts.google.com/noto/specimen/Noto+Nastaliq+Urdu), SIL Open Font
-  License 1.1 (subset in `apps/web/public/fonts/`).
-- Ideas borrowed from [OpenMasjidStudents](https://github.com/OpenMasjid-Solutions/OpenMasjidStudents)
-  (AGPL; fee ledger), [CoachSync](https://github.com/rakibul-islam-raju/CoachSync) (reversals, cash
-  snapshots), [Gibbon](https://gibbonedu.org) (families, messenger) and
-  [Frappe Education](https://github.com/frappe/education) (student groups). See
-  [docs/PLAN.md](docs/PLAN.md) §16.
+Licensed under [AGPL-3.0](LICENSE): if you run a modified Maktab for others, share your changes.
+Schools using Maktab show a small "Runs on Maktab" line; please keep it.
+Contact: [maktab@conceptlix.com](mailto:maktab@conceptlix.com).
