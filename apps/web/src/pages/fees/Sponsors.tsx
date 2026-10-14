@@ -28,6 +28,7 @@ import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson } from '@/lib/api';
 import { canCollect, canManageFees, karachiToday } from '@/lib/fees';
 import { useRoles } from '@/lib/roles';
+import { cn } from '@/lib/utils';
 
 function AddSponsor() {
   const { t } = useTranslation();
@@ -118,7 +119,19 @@ export function SponsorsPage() {
                     {t('fee.sponsor.activeStudents')} <Num>{s.active_students}</Num>
                   </>
                 }
-                trailing={<Mny paisa={s.due} className="font-semibold" />}
+                trailing={
+                  // A bare "PKR 0" did not say what it was: the sponsor's outstanding due.
+                  <span
+                    className={cn(
+                      'flex flex-col items-end text-end',
+                      s.due === 0 && 'text-muted-foreground',
+                    )}
+                    data-sponsor-due={s.due}
+                  >
+                    <span className="text-meta text-muted-foreground">{t('fee.col.due')}</span>
+                    <Mny paisa={s.due} className={cn(s.due > 0 && 'font-semibold')} />
+                  </span>
+                }
               />
             ))}
           </RowList>

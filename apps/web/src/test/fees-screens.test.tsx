@@ -7,6 +7,7 @@ import { dateTime } from '@/lib/dates';
 import { Dashboard } from '@/pages/Dashboard';
 import { BillingPage, runGenerate } from '@/pages/fees/Billing';
 import { DefaultersPage } from '@/pages/fees/Defaulters';
+import { SponsorsPage } from '@/pages/fees/Sponsors';
 import { group, mockApi, renderAt } from './api-mock';
 import { fam, feeSettings } from './fee-fixtures';
 
@@ -487,5 +488,25 @@ describe('fee setup', () => {
       errors: {},
       rule: null,
     });
+  });
+});
+
+describe('sponsors list', () => {
+  it("labels each row figure as the sponsor's due, muted when nothing is due", async () => {
+    mockApi({
+      'GET /api/fees/sponsors': {
+        sponsors: [
+          { id: 'SP1', name: 'Haji Sahib', phone: null, active_students: 2, due: 450000 },
+          { id: 'SP2', name: 'Zakat Committee', phone: null, active_students: 1, due: 0 },
+        ],
+      },
+    });
+    renderAt('/fees/sponsors', '/fees/sponsors', <SponsorsPage />, ['accountant']);
+    await screen.findByText('Haji Sahib');
+    const [owes, clear] = [...document.querySelectorAll('[data-sponsor-due]')] as HTMLElement[];
+    expect(owes?.textContent).toBe('DuePKR 4,500');
+    expect(owes?.className).not.toContain('text-muted-foreground');
+    expect(clear?.textContent).toBe('DuePKR 0');
+    expect(clear?.className).toContain('text-muted-foreground');
   });
 });
