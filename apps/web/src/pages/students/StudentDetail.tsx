@@ -714,7 +714,7 @@ export function StudentDetail() {
                 <dl className="flex-1 text-sm">
                   {s.left_date && (
                     <Row label={t('student.date')}>
-                      <Num>{s.left_date}</Num> {s.left_reason && `· ${s.left_reason}`}
+                      <DateText iso={s.left_date} /> {s.left_reason && `· ${s.left_reason}`}
                     </Row>
                   )}
                   {s.father_name && (
@@ -727,7 +727,7 @@ export function StudentDetail() {
                   )}
                   {s.dob && (
                     <Row label={t('student.dob')}>
-                      <Num>{s.dob}</Num>
+                      <DateText iso={s.dob} />
                     </Row>
                   )}
                   {s.b_form_no && (
@@ -736,7 +736,7 @@ export function StudentDetail() {
                     </Row>
                   )}
                   <Row label={t('student.admissionDate')}>
-                    <Num>{s.admission_date}</Num>
+                    <DateText iso={s.admission_date} />
                   </Row>
                   <Row label={t('student.family')}>
                     <bdi>{s.family.name}</bdi>
@@ -785,10 +785,13 @@ export function StudentDetail() {
                             )}
                           </span>
                           <span className="text-muted-foreground">
-                            <Num>
-                              {e.start_date}
-                              {e.end_date ? ` → ${e.end_date}` : ''}
-                            </Num>
+                            <DateText iso={e.start_date} />
+                            {e.end_date && (
+                              <>
+                                {' – '}
+                                <DateText iso={e.end_date} />
+                              </>
+                            )}
                             {e.roll_no && (
                               <>
                                 {' · '}

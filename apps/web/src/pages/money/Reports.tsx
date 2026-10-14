@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { DateText } from '@/components/date-text';
 import { Money } from '@/components/fees/common';
 import { Field, PageTitle } from '@/components/form';
 import { HelpButton } from '@/components/HelpButton';
@@ -26,6 +27,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { getJson } from '@/lib/api';
+import { monthLabel } from '@/lib/dates';
 import { addMonths, karachiToday, useAccounts } from '@/lib/fees';
 import { accountKindKey, nameIn } from '@/lib/money';
 import { type GrantRef, holds, useRoles } from '@/lib/roles';
@@ -100,7 +102,7 @@ export function ReportsHub() {
  * colour-blind readers whichever curated school colour is picked.
  */
 export function MonthBars({ months }: { months: IncomeExpenseDto['months'] }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const max = Math.max(1, ...months.flatMap((m) => [m.income, m.expenses + m.salaries]));
   const W = 64;
   const H = 140;
@@ -137,7 +139,7 @@ export function MonthBars({ months }: { months: IncomeExpenseDto['months'] }) {
             return (
               <g key={m.period} data-period={m.period}>
                 <rect x={x} y={H - hi} width={bar} height={hi} rx={3} className="fill-chart-in">
-                  <title>{`${m.period} · ${t('money.reports.income')}: ${(m.income / 100).toLocaleString('en-PK')}`}</title>
+                  <title>{`${monthLabel(m.period, i18n.language)} · ${t('money.reports.income')}: ${(m.income / 100).toLocaleString('en-PK')}`}</title>
                 </rect>
                 <rect
                   x={x + bar + 2}
@@ -147,7 +149,7 @@ export function MonthBars({ months }: { months: IncomeExpenseDto['months'] }) {
                   rx={3}
                   className="fill-chart-out"
                 >
-                  <title>{`${m.period} · ${t('money.dash.spending')}: ${(spend / 100).toLocaleString('en-PK')}`}</title>
+                  <title>{`${monthLabel(m.period, i18n.language)} · ${t('money.dash.spending')}: ${(spend / 100).toLocaleString('en-PK')}`}</title>
                 </rect>
                 <text
                   x={i * W + W / 2}
@@ -155,7 +157,7 @@ export function MonthBars({ months }: { months: IncomeExpenseDto['months'] }) {
                   textAnchor="middle"
                   className="num fill-muted-foreground text-[10px]"
                 >
-                  {m.period.slice(2)}
+                  {monthLabel(m.period, i18n.language)}
                 </text>
               </g>
             );
@@ -266,7 +268,7 @@ export function IncomeExpensePage() {
                 {r.months.map((m) => (
                   <TableRow key={m.period}>
                     <TableCell>
-                      <bdi className="num">{m.period}</bdi>
+                      <DateText iso={m.period} kind="month" />
                     </TableCell>
                     <TableCell className="text-end">
                       <Money paisa={m.income} />
@@ -464,7 +466,7 @@ export function CashbookPage() {
               <TableBody>
                 <TableRow>
                   <TableCell>
-                    <bdi className="num">{b.from}</bdi>
+                    <DateText iso={b.from} />
                   </TableCell>
                   <TableCell colSpan={5}>{t('money.reports.opening')}</TableCell>
                   <TableCell className="text-end font-medium" id="cashbook-opening">
@@ -476,7 +478,7 @@ export function CashbookPage() {
                   // every row (no movement is 0), so it keeps the key unique.
                   <TableRow key={`${x.kind}-${x.ref_id}-${x.date}-${x.balance}`} data-kind={x.kind}>
                     <TableCell>
-                      <bdi className="num">{x.date}</bdi>
+                      <DateText iso={x.date} />
                     </TableCell>
                     <TableCell>{t(`money.reports.kind.${x.kind}`)}</TableCell>
                     <TableCell>
@@ -500,7 +502,7 @@ export function CashbookPage() {
               <TableBody className="border-t-2 font-medium">
                 <TableRow>
                   <TableCell>
-                    <bdi className="num">{b.to}</bdi>
+                    <DateText iso={b.to} />
                   </TableCell>
                   <TableCell colSpan={3}>{t('money.reports.closing')}</TableCell>
                   <TableCell className="text-end">
@@ -642,7 +644,7 @@ export function ExpenseRegisterPage() {
                     <bdi className="num">{e.expense_no}</bdi>
                   </TableCell>
                   <TableCell>
-                    <bdi className="num">{e.date}</bdi>
+                    <DateText iso={e.date} />
                   </TableCell>
                   <TableCell>
                     <bdi>

@@ -3,8 +3,9 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FeeSetup, rateHistory, validateFineRule } from '@/components/fees/setup';
 import { initI18n, setLanguage } from '@/i18n';
+import { dateTime } from '@/lib/dates';
 import { Dashboard } from '@/pages/Dashboard';
-import { BillingPage, karachiTime, runGenerate } from '@/pages/fees/Billing';
+import { BillingPage, runGenerate } from '@/pages/fees/Billing';
 import { DefaultersPage } from '@/pages/fees/Defaulters';
 import { group, mockApi, renderAt } from './api-mock';
 import { fam, feeSettings } from './fee-fixtures';
@@ -121,7 +122,7 @@ describe('billing', () => {
       return el;
     });
     expect(failing.textContent).toContain('Refused by a ledger rule');
-    expect(failing.textContent).toContain('2026-10-11 00:30');
+    expect(failing.textContent).toContain('11 Oct 2026, 00:30');
     const generate = document.getElementById('billing-generate') as HTMLButtonElement;
     expect(generate.disabled).toBe(true);
     expect(document.getElementById('billing-preview-first')).toBeTruthy();
@@ -235,7 +236,7 @@ describe('billing', () => {
       return el;
     });
     expect(list.textContent).toContain('Ali');
-    expect(list.textContent).toContain('2026-09');
+    expect(list.textContent).toMatch(/Sept? 2026/);
     expect(list.textContent).toContain('PKR 200');
     fireEvent.click(await screen.findByText('Bill now'));
     await waitFor(() =>
@@ -245,9 +246,12 @@ describe('billing', () => {
     );
   });
 
-  it('karachiTime shows a UTC instant on the school clock', () => {
-    expect(karachiTime('2026-10-10T19:30:00.000Z')).toBe('2026-10-11 00:30');
-    expect(karachiTime('2026-10-10 04:00:00')).toBe('2026-10-10 09:00');
+  it('dateTime shows a UTC instant on the school clock, in either language', () => {
+    expect(dateTime('2026-10-10T19:30:00.000Z', 'en')).toBe('11 Oct 2026, 00:30');
+    // SQLite's datetime() text is UTC without a zone (audit rows, billing chunks).
+    expect(dateTime('2026-10-14 04:10:02', 'en')).toBe('14 Oct 2026, 09:10');
+    expect(dateTime('2026-10-14 04:10:02', 'ur')).toMatch(/^14 اکتوبر، 2026، 09:10$/);
+    expect(dateTime('not a date', 'en')).toBe('not a date');
   });
 
   // M7b: the dashboard banner and tiles became Home's "Needs attention" rows and today cards.

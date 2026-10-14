@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { PrintBadge } from '@/components/brand/SchoolBadge';
+import { DateText } from '@/components/date-text';
 import { Money, ReasonDialog } from '@/components/fees/common';
 import { ErrorNote, Field, PageTitle } from '@/components/form';
 import { HelpButton } from '@/components/HelpButton';
@@ -92,7 +93,7 @@ function SlipsTable({
               <TableRow key={r.id} data-slip={r.id}>
                 {showMonth && (
                   <TableCell>
-                    <bdi className="num">{r.period_key}</bdi>
+                    <DateText iso={r.period_key} kind="month" />
                   </TableCell>
                 )}
                 <TableCell>
@@ -366,7 +367,7 @@ export function PayslipPage() {
         back={{ to: '/salary', label: t('money.salary.title') }}
         title={
           <>
-            <bdi>{slip.staff_name}</bdi> · <bdi className="num">{slip.period_key}</bdi>
+            <bdi>{slip.staff_name}</bdi> · <DateText iso={slip.period_key} kind="month" />
           </>
         }
         subtitle={t('money.salary.slip')}
@@ -448,7 +449,7 @@ export function PayslipPage() {
             <ul className="flex flex-col divide-y" id="slip-payments">
               {slip.payments.map((p) => (
                 <li key={p.id} className="flex flex-wrap gap-2 py-2">
-                  <bdi className="num">{p.date}</bdi>
+                  <DateText iso={p.date} />
                   <bdi>{p.account_name}</bdi>
                   {p.note && <bdi className="text-muted-foreground">{p.note}</bdi>}
                   <span className="ms-auto font-medium">
@@ -577,7 +578,7 @@ export function MyPayslipsPage() {
         <Card key={s.id} className="gap-2 py-4" data-slip={s.id}>
           <CardHeader className="px-4">
             <CardTitle className="flex flex-wrap items-center gap-2">
-              <bdi className="num">{s.period_key}</bdi>
+              <DateText iso={s.period_key} kind="month" />
               <PayslipStatusBadge status={s.status} partial={s.paid_partial} />
             </CardTitle>
           </CardHeader>

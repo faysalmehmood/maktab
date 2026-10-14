@@ -213,7 +213,7 @@ describe('billing (rebuilt)', () => {
     expect(panel.querySelector('#billing-reopenable')).toBeTruthy();
     const runs = await byId('billing-chunks');
     expect(within(runs).getByText('Failed')).toBeTruthy();
-    expect(within(runs).getByText('2026-10-11 00:30')).toBeTruthy();
+    expect(within(runs).getByText('11 Oct 2026, 00:30')).toBeTruthy();
     expect(screen.getByText('Every enrolled student is billed for this month.')).toBeTruthy();
   });
 

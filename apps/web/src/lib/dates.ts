@@ -26,3 +26,24 @@ export const monthLabel = (period: string, lang: string): string =>
 /** "October" / "اکتوبر" for month 1–12 (no year), through the same Intl path as every other date. */
 export const monthName = (month: number, lang: string): string =>
   fmt(lang, { month: 'long' }).format(new Date(Date.UTC(2026, month - 1, 15, 12)));
+
+/** A UTC instant ("…Z", or SQLite's "YYYY-MM-DD HH:MM:SS", which is UTC without saying so). */
+const instant = (s: string): Date => {
+  const iso = s.includes('T') ? s : s.replace(' ', 'T');
+  return new Date(/Z$|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`);
+};
+
+/** "14 Oct 2026, 09:17" on the school's clock (Asia/Karachi, whatever the phone's zone), 24-hour. */
+export const dateTime = (at: string, lang: string): string => {
+  const d = instant(at);
+  if (Number.isNaN(d.getTime())) return at;
+  return new Intl.DateTimeFormat(lang === 'ur' ? 'ur-PK-u-nu-latn' : 'en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: 'Asia/Karachi',
+  }).format(d);
+};

@@ -2,7 +2,7 @@ import { CloudOff, LogIn, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { Num } from '@/components/form';
+import { DateText } from '@/components/date-text';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -94,7 +94,7 @@ export function FailedList({ count }: { count: number }) {
           <li key={e.client_id} className="flex flex-wrap items-center gap-2 ps-6">
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">
-                <bdi>{e.label ?? t('attendance.group')}</bdi> · <Num>{e.submission.date}</Num>
+                <bdi>{e.label ?? t('attendance.group')}</bdi> · <DateText iso={e.submission.date} />
               </span>
               <span>{reason(e.error_code ?? e.error, e.submission.date)}</span>
             </span>
@@ -116,7 +116,7 @@ export function FailedList({ count }: { count: number }) {
             </DialogHeader>
             <p className="text-sm">
               <bdi>{confirm.label ?? t('attendance.group')}</bdi> ·{' '}
-              <Num>{confirm.submission.date}</Num>
+              <DateText iso={confirm.submission.date} />
             </p>
             <DialogFooter>
               <Button variant="outline" onClick={() => setConfirm(null)}>

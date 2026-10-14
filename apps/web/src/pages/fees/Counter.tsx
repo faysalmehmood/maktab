@@ -13,6 +13,7 @@ import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Avatar } from '@/components/avatar';
+import { DateText } from '@/components/date-text';
 import { AmountInput, Figure, MethodChips, Money, StatusBadge } from '@/components/fees/common';
 import { WaiveFineDialog } from '@/components/fees/dialogs';
 import { FeesTabs } from '@/components/fees/FeesTabs';
@@ -218,7 +219,7 @@ function LineRow({
   const { t, i18n } = useTranslation();
   const head = (
     <span className="flex flex-wrap items-center gap-x-2">
-      <Num>{line.period_key}</Num>
+      <DateText iso={line.period_key} kind="month" />
       <bdi>{headLabel(line, i18n.language)}</bdi>
       <StatusBadge status={line.status} />
     </span>
@@ -975,7 +976,7 @@ function CollectForm({
               {preview.rows.map((r) => (
                 <li key={r.line.id} className="flex gap-2" data-alloc={r.line.id}>
                   <bdi>{r.line.student_name}</bdi>
-                  <Num>{r.line.period_key}</Num>
+                  <DateText iso={r.line.period_key} kind="month" />
                   <span className="ms-auto">
                     <Money paisa={r.amount} />
                   </span>
@@ -1063,7 +1064,7 @@ function CollectForm({
               <ul className="flex flex-col divide-y" id="confirm-rows">
                 {shown.view.rows.map((r) => (
                   <li key={r.id} className="flex flex-wrap gap-x-2 py-1" data-confirm-row={r.id}>
-                    <bdi>{r.student_name}</bdi>·<Num>{r.period_key}</Num>·
+                    <bdi>{r.student_name}</bdi>·<DateText iso={r.period_key} kind="month" />·
                     <bdi>{headLabel(r, i18n.language)}</bdi>
                     <span className="ms-auto">
                       <Money paisa={r.amount} />

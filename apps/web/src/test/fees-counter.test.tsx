@@ -634,10 +634,11 @@ describe('counter: choose lines, confirm details, warnings, fines', () => {
     click('counter-confirm');
     await issueButton();
     const rows = [...document.querySelectorAll('[data-confirm-row]')].map((r) => r.textContent);
-    expect(rows).toEqual([
-      'Ali·2026-09·TuitionPKR 2,200',
-      'Sara·2026-09·TuitionPKR 3,150',
-      'Ali·2026-10·AdmissionPKR 1,650',
+    // Months by name (ICU spells September "Sep" or "Sept" depending on its version).
+    expect(rows.map((r) => r?.replace('Sept ', 'Sep '))).toEqual([
+      'Ali·Sep 2026·TuitionPKR 2,200',
+      'Sara·Sep 2026·TuitionPKR 3,150',
+      'Ali·Oct 2026·AdmissionPKR 1,650',
     ]);
     expect(document.getElementById('confirm-account')?.textContent).toBe('HBL current');
     expect(document.getElementById('confirm-date')?.textContent).toContain('(Today)');

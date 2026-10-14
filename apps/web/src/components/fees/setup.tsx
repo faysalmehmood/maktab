@@ -10,6 +10,7 @@ import { Lock, Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ReceiptSeries } from '@/components/backup/DataPanel';
+import { DateText } from '@/components/date-text';
 import { AmountInput, Money } from '@/components/fees/common';
 import { ErrorNote, Field, Num } from '@/components/form';
 import { Badge } from '@/components/ui/badge';
@@ -329,7 +330,7 @@ function RatesEditor() {
                     <bdi>{target(r)}</bdi>
                   </TableCell>
                   <TableCell>
-                    <Num>{r.effective_from}</Num>
+                    <DateText iso={r.effective_from} />
                   </TableCell>
                   <TableCell className="text-end">
                     <Money paisa={r.amount} />

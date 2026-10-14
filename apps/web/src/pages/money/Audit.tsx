@@ -3,6 +3,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '@/components/avatar';
+import { DateText } from '@/components/date-text';
 import { FilterBar } from '@/components/filter-bar';
 import { Field } from '@/components/form';
 import { MoneyErrorNote } from '@/components/money/common';
@@ -11,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { getJson } from '@/lib/api';
+import { shortDate } from '@/lib/dates';
+import { isolate } from '@/lib/utils';
 
 /**
  * PLAN §5.4 "audit everything … show the audit trail to owner": who, what, when, before/after.
@@ -65,7 +68,7 @@ function AuditEntry({ row }: { row: AuditRowDto }) {
     <li className="flex flex-col gap-1 px-4 py-2.5 text-sm" data-audit={row.id}>
       <div className="flex flex-wrap items-center gap-2">
         <Avatar name={row.user_name} size="sm" tone="muted" />
-        <bdi className="num text-muted-foreground">{row.at.replace('T', ' ').slice(0, 19)}</bdi>
+        <DateText iso={row.at} kind="time" className="text-muted-foreground" />
         <span className="font-medium" title={row.entity} data-code={row.entity}>
           {label.entity(row.entity)}
         </span>
@@ -127,7 +130,7 @@ function AuditEntry({ row }: { row: AuditRowDto }) {
 }
 
 export function AuditPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const label = useAuditLabels();
   const [entity, setEntity] = useState('');
   const [entityId, setEntityId] = useState('');
@@ -169,13 +172,19 @@ export function AuditPage() {
             ? [
                 {
                   id: 'from',
-                  label: `${t('money.common.from')} ${from}`,
+                  label: `${t('money.common.from')} ${isolate(shortDate(from, i18n.language))}`,
                   onClear: () => setFrom(''),
                 },
               ]
             : []),
           ...(to
-            ? [{ id: 'to', label: `${t('money.common.to')} ${to}`, onClear: () => setTo('') }]
+            ? [
+                {
+                  id: 'to',
+                  label: `${t('money.common.to')} ${isolate(shortDate(to, i18n.language))}`,
+                  onClear: () => setTo(''),
+                },
+              ]
             : []),
         ]}
         onClearAll={() => {

@@ -10,6 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { type FormEvent, type ReactNode, useLayoutEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DateText } from '@/components/date-text';
 import { AmountInput, Money } from '@/components/fees/common';
 import { Field } from '@/components/form';
 import { AccountSelect, MoneyErrorNote, payOutAccounts } from '@/components/money/common';
@@ -286,7 +287,7 @@ export function PayDialog({
             <DialogTitle>{t('money.salary.payTitle')}</DialogTitle>
             <DialogDescription asChild>
               <div>
-                <bdi>{slip.staff_name}</bdi> · <bdi className="num">{slip.period_key}</bdi> ·{' '}
+                <bdi>{slip.staff_name}</bdi> · <DateText iso={slip.period_key} kind="month" /> ·{' '}
                 {t('money.salary.left')} <Money paisa={left} />
               </div>
             </DialogDescription>
@@ -580,7 +581,7 @@ export function PayslipPrint({
         )}
         <dt>{t('money.common.month')}</dt>
         <dd>
-          <N>{slip.period_key}</N>
+          <DateText iso={slip.period_key} kind="month" lang={lang} />
         </dd>
         <dt>{t('money.common.status')}</dt>
         <dd>{t(`money.salary.status.${slip.status}`)}</dd>
@@ -636,7 +637,7 @@ export function PayslipPrint({
             {slip.payments.map((p) => (
               <tr key={p.id}>
                 <td>
-                  <N>{p.date}</N> · <bdi>{p.account_name}</bdi>
+                  <DateText iso={p.date} lang={lang} /> · <bdi>{p.account_name}</bdi>
                 </td>
                 <td className="end">
                   <N>{money(p.amount)}</N>

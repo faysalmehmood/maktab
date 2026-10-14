@@ -2,6 +2,7 @@ import type { CashSessionDto } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DateText } from '@/components/date-text';
 import { AmountInput, Figure, Money, ReasonDialog } from '@/components/fees/common';
 import { FeesTabs } from '@/components/fees/FeesTabs';
 import { ErrorNote, Field, Num, PageTitle } from '@/components/form';
@@ -370,7 +371,7 @@ function SessionsList() {
               {q.data.sessions.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell>
-                    <Num>{s.business_date}</Num>
+                    <DateText iso={s.business_date} />
                   </TableCell>
                   <TableCell>
                     <bdi>{s.collector_name ?? ''}</bdi>

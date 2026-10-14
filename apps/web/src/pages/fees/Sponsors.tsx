@@ -208,11 +208,11 @@ export function SponsorDetail() {
               </Link>
               <Num>{`${sp.share_pct}%`}</Num>
               <span className="text-sm text-muted-foreground">
-                <Num>{sp.valid_from}</Num>
+                <DateText iso={sp.valid_from} />
                 {sp.valid_to && (
                   <>
-                    {' → '}
-                    <Num>{sp.valid_to}</Num>
+                    {' – '}
+                    <DateText iso={sp.valid_to} />
                   </>
                 )}
               </span>

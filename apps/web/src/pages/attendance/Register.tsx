@@ -152,7 +152,7 @@ function HistorySheet({ r, onClose }: { r: RegisterResponse; onClose: () => void
         <SheetHeader>
           <SheetTitle>{t('attendance.history')}</SheetTitle>
           <SheetDescription>
-            <Num>{r.date}</Num>
+            <DateText iso={r.date} />
           </SheetDescription>
         </SheetHeader>
         {r.history.length === 0 ? (

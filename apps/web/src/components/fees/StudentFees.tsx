@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { DateText } from '@/components/date-text';
 import { ConcessionValue, FeeLinesTable, Figure, Money } from '@/components/fees/common';
 import {
   EndConcessionDialog,
@@ -204,11 +205,11 @@ export function StudentFeesCard({
                           <bdi className="text-sm text-muted-foreground">{c.head_name}</bdi>
                         )}
                         <span className="text-sm text-muted-foreground">
-                          <Num>{c.valid_from}</Num>
+                          <DateText iso={c.valid_from} />
                           {(c.ended_at ?? c.valid_to) && (
                             <>
-                              {' → '}
-                              <Num>{(c.ended_at ?? c.valid_to) as string}</Num>
+                              {' – '}
+                              <DateText iso={(c.ended_at ?? c.valid_to) as string} />
                             </>
                           )}
                         </span>
@@ -242,11 +243,11 @@ export function StudentFeesCard({
                       </Link>
                       <Num>{`${s.share_pct}%`}</Num>
                       <span className="text-sm text-muted-foreground">
-                        <Num>{s.valid_from}</Num>
+                        <DateText iso={s.valid_from} />
                         {s.valid_to && (
                           <>
-                            {' → '}
-                            <Num>{s.valid_to}</Num>
+                            {' – '}
+                            <DateText iso={s.valid_to} />
                           </>
                         )}
                       </span>
@@ -273,7 +274,7 @@ export function StudentFeesCard({
                 <ul className="flex flex-col divide-y">
                   {d.receipts.slice(0, 10).map((r) => (
                     <li key={r.id} className="flex flex-wrap items-center gap-2">
-                      <Num>{r.business_date}</Num>
+                      <DateText iso={r.business_date} />
                       <Link
                         to={`/receipts/${r.id}`}
                         className="flex min-h-11 items-center underline"
