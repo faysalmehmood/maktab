@@ -1,4 +1,4 @@
-import { type DefaultersResponse, formatPkPhone } from '@maktab/shared';
+import { type DefaultersResponse, formatPkPhone, telHref } from '@maktab/shared';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { BellRing, PartyPopper, Printer } from 'lucide-react';
 import { useState } from 'react';
@@ -177,7 +177,7 @@ export function DefaultersPage() {
               const phone = (d as { guardian_phone?: string | null }).guardian_phone;
               return phone ? (
                 <a
-                  href={`tel:+${phone}`}
+                  href={telHref(phone)}
                   className="relative z-[2] inline-flex min-h-11 items-center text-brand underline-offset-4 hover:underline"
                 >
                   <bdi className="num">{formatPkPhone(phone)}</bdi>

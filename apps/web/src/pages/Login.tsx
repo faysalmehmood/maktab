@@ -1,4 +1,4 @@
-import { formatPkPhone } from '@maktab/shared';
+import { formatPkPhone, telHref } from '@maktab/shared';
 import { Phone } from 'lucide-react';
 import { type MouseEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -235,7 +235,7 @@ export function Login() {
                   {/* A 44 px tap target, not a 17 px line of text (verify pass). */}
                   <a
                     id="door-call"
-                    href={`tel:+${school.phone}`}
+                    href={telHref(school.phone)}
                     className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border bg-card px-3 font-semibold hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
                   >
                     <Phone className="size-4" aria-hidden />

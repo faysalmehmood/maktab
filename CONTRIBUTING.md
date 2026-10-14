@@ -113,6 +113,9 @@ Driving the API by hand:
   with `backdate_reason` (audited); anything else is 400 `bad_business_date`. Cash always lands in
   today's drawer session; non-cash (`bank`, `jazzcash`, `easypaisa`, `cheque`, `other`) needs an
   account (named, or the first matching one; else 400 `account_required`) and opens no session.
+- Phones are stored as `92…` (mobiles `923XXXXXXXXX`; landlines area code + subscriber) and shown
+  by `formatPkPhone`, which assumes a two-digit area code (042, 021, 051, …): a three-digit one
+  such as Abbottabad's 0992 reads as `099 2123 4567`, still the right digits.
 - Counter search (`GET /api/fees/search?q=`) matches student, family and guardian names (substring),
   an exact admission number, or 6+ digits of a guardian phone/WhatsApp (a leading 0 or +92 is
   normalised); at most 20 families.

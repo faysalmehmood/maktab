@@ -84,3 +84,15 @@ export function formatPkPhone(stored: string | null | undefined): string {
     ? `0${national.slice(0, 2)} ${sub.slice(0, split[0])} ${sub.slice(split[0])}`
     : `0${national}`;
 }
+
+/**
+ * A `tel:` link for a stored number: PK numbers in international form (`tel:+924235550100`), as
+ * typed rows (`04235550100`) included; anything else with its digits and any leading +.
+ */
+export function telHref(stored: string | null | undefined): string {
+  if (!stored) return '';
+  const n = normalizePkPhone(stored);
+  if (n) return `tel:+${n.number}`;
+  const digits = toLatinDigits(stored).replace(/[^\d+]/g, '');
+  return `tel:${digits.startsWith('+') ? `+${digits.replace(/\+/g, '')}` : digits}`;
+}

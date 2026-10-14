@@ -15,6 +15,7 @@ import {
   parseYesNo,
   renderTemplate,
   type TemplateKey,
+  telHref,
   templateProblems,
   toCsvLine,
   wasFor,
@@ -176,5 +177,17 @@ describe('M5 fix pass: mobile check, template rules, plural verb', () => {
     expect(wasFor(2, 'en')).toBe('were');
     expect(wasFor(1, 'ur')).toBe('تھے');
     expect(wasFor(3, 'ur')).toBe('تھے');
+  });
+});
+
+describe('telHref', () => {
+  it('dials PK numbers internationally, however they were stored', () => {
+    expect(telHref('04235550100')).toBe('tel:+924235550100');
+    expect(telHref('924235550100')).toBe('tel:+924235550100');
+    expect(telHref('0336-5551217')).toBe('tel:+923365551217');
+    expect(telHref('923365551217')).toBe('tel:+923365551217');
+    // Not a PK number: its own digits, a country code left alone.
+    expect(telHref('+44 20 7946 0000')).toBe('tel:+442079460000');
+    expect(telHref('1122')).toBe('tel:1122');
   });
 });

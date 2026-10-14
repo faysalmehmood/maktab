@@ -11,6 +11,7 @@ import {
   type StudentDetailDto,
   type StudentFeesDto,
   studentStatusSchema,
+  telHref,
 } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -907,7 +908,7 @@ export function StudentDetail() {
                         <span className="flex flex-wrap items-center gap-2 text-sm">
                           {g.phone && (
                             <a
-                              href={`tel:+${g.phone}`}
+                              href={telHref(g.phone)}
                               className="inline-flex min-h-11 items-center text-brand underline-offset-4 hover:underline"
                             >
                               <Num>{formatPkPhone(g.phone)}</Num>
