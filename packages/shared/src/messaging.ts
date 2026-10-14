@@ -212,8 +212,19 @@ export function joinNames(names: readonly string[], lang: MessageLang): string {
   return `${names.slice(0, -1).join(comma)}${and}${names[names.length - 1]}`;
 }
 
-/** First word of a name: the parent page shows first names only (PLAN §7). */
-export const firstName = (name: string): string => name.trim().split(/\s+/)[0] ?? '';
+/** "Muhammad" and its spellings (and Urdu محمد): an honorific prefix, not the name a child is called. */
+const MUHAMMAD = /^(muhammad|mohammad|muhammed|mohammed|mohd\.?|md\.?|محمد)$/i;
+
+/**
+ * The calling name the parent page shows (PLAN §7: never the full name): the first word, or the
+ * first two when the name starts with Muhammad (or a spelling of it), since "Muhammad" alone names
+ * half the class: "Muhammad Ali Khan" → "Muhammad Ali", "Ali Khan" → "Ali".
+ */
+export const firstName = (name: string): string => {
+  const words = name.trim().split(/\s+/);
+  const [first = '', second] = words;
+  return MUHAMMAD.test(first) && second ? `${first} ${second}` : first;
+};
 
 // ---- Send queue -----------------------------------------------------------------------------------
 

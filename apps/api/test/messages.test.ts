@@ -658,6 +658,20 @@ describe('parent links and the public parent page', () => {
     ).toBe(403);
   });
 
+  it('calling names: Muhammad + the next name, never the surname', async () => {
+    const s = await setup();
+    await s.db.run(
+      sql`UPDATE student SET name = 'Muhammad Ali Khan' WHERE id = ${s.ali.student_id}`,
+    );
+    await s.db.run(sql`UPDATE guardian SET name = 'Mohd Imran Khan' WHERE id = ${s.khanGuardian}`);
+    const { token } = await linked(s, { gate: 'none' });
+    const r = await s.anon<ParentPageDto>('GET', '/api/p', undefined, { 'x-parent-token': token });
+    expect(r.status, r.text).toBe(200);
+    expect(r.body.guardian.first_name).toBe('Mohd Imran');
+    expect(r.body.children.map((c) => c.first_name)).toEqual(['Muhammad Ali', 'Zain']);
+    expect(r.text).not.toMatch(/Ali Khan|Imran Khan/);
+  });
+
   it('page shape: first names, class, today, month %, dues, receipts, notices — never CNIC, B-form, DOB, phones, staff', async () => {
     const s = await setup();
     await register(s, s.g5a.id, [
