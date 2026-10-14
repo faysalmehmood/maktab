@@ -203,6 +203,18 @@ export async function runBatch(db: AppDb, stmts: SQL[]): Promise<void> {
 export const inJson = (col: SQL, values: readonly string[]): SQL =>
   sql`${col} IN (SELECT value FROM json_each(${JSON.stringify(values)}))`;
 
+/**
+ * `col IN (?, ?, …)`, one bound value each (≤ IN_LIST_MAX: D1 binds at most 100 a statement). Unlike
+ * inJson, SQLite pushes this into an aggregate view (payer_credit) as index lookups; an
+ * `IN (SELECT … json_each)` term makes it aggregate every payer first (D1 bills each row read).
+ */
+export const IN_LIST_MAX = 90;
+export const inList = (col: SQL, values: readonly string[]): SQL =>
+  sql`${col} IN (${sql.join(
+    values.map((v) => sql`${v}`),
+    sql`, `,
+  )})`;
+
 /** The innermost cause's message: SQLite's own text, without drizzle's echo of the query. */
 export function rootMessage(err: unknown): string {
   let msg = err instanceof Error ? err.message : String(err);

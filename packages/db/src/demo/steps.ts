@@ -1191,9 +1191,12 @@ function payrollOps(period: string, day: string): Op[] {
     ...STAFF.map((st) => ({
       cash: CASH_PAID.has(st.key),
       run: async ({ db }: StepCtx) => {
+        // By id, not as a join: SQLite pushes `id = ?` into the payslip_net aggregate, while a join
+        // aggregates every slip first (D1 bills each row read).
         const [slip] = await db.all<{ id: string; status: string; net: number; paid: number }>(
-          sql`SELECT p.id, p.status, n.net, n.paid FROM payslip p JOIN payslip_net n ON n.id = p.id
-              WHERE p.staff_id = ${staffId(st.key)} AND p.period_key = ${period}`,
+          sql`SELECT n.id, n.status, n.net, n.paid FROM payslip_net n
+              WHERE n.id = (SELECT id FROM payslip WHERE staff_id = ${staffId(st.key)}
+                              AND period_key = ${period})`,
         );
         if (!slip) return;
         if (slip.status === 'draft')
@@ -1944,8 +1947,11 @@ function monthPlan(cal: DemoCalendar, period: string): Map<string, Op[]> {
  * would cost a state write per op (~1,300 a seed).
  */
 async function dayDone(db: AppDb, day: string, op: Op): Promise<boolean> {
+  // Every drawer in the demo is the accountant's: by collector, the check is an index range
+  // (cash_session_once), not a scan of every session (~50 rows read per op on D1, ~700 ops).
   const [later] = await db.all<{ x: number }>(sql`
-    SELECT 1 AS x FROM cash_session WHERE business_date > ${day}
+    SELECT 1 AS x FROM cash_session
+      WHERE collector_id = ${userId('accountant')} AND business_date > ${day}
     UNION ALL SELECT 1 FROM receipt WHERE business_date > ${day}
     UNION ALL SELECT 1 FROM expense WHERE date > ${day}
     LIMIT 1`);

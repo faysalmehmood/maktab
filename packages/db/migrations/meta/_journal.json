@@ -176,6 +176,13 @@
       "when": 1791886449837,
       "tag": "0024_m7b_school_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1792002187883,
+      "tag": "0025_demo_read_indexes",
+      "breakpoints": true
     }
   ]
 }
