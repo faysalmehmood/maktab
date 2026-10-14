@@ -62,10 +62,25 @@ export function normalizePkPhone(input: string): PkPhone | null {
   return null;
 }
 
-/** `923001234567` → `0300 1234567` for display; anything else is returned unchanged. */
+/** Groups a landline subscriber number the way it is read aloud: 8 → 4+4, 7 → 3+4, 6 → 3+3. */
+const SUBSCRIBER = { 8: [4, 4], 7: [3, 4], 6: [3, 3] } as Record<number, [number, number]>;
+
+/**
+ * For display: mobiles `923001234567` → `0300 1234567`; landlines `924235550100` → `042 3555 0100`.
+ * Typed spellings (`04235550100`, `+92 42 …`) are normalised first, since older rows (the school's
+ * own phone) were stored as typed. A two-digit area code is assumed: it is right for every large
+ * city (042, 021, 051, …), and a three-digit one still reads as one number. Anything that is not a
+ * PK number is returned unchanged.
+ */
 export function formatPkPhone(stored: string | null | undefined): string {
   if (!stored) return '';
-  if (/^923\d{9}$/.test(stored)) return `0${stored.slice(2, 5)} ${stored.slice(5)}`;
-  if (/^92\d+$/.test(stored)) return `0${stored.slice(2)}`;
-  return stored;
+  const n = normalizePkPhone(stored);
+  if (!n) return stored;
+  const national = n.number.slice(2);
+  if (n.mobile) return `0${national.slice(0, 3)} ${national.slice(3)}`;
+  const sub = national.slice(2);
+  const split = SUBSCRIBER[sub.length];
+  return split
+    ? `0${national.slice(0, 2)} ${sub.slice(0, split[0])} ${sub.slice(split[0])}`
+    : `0${national}`;
 }

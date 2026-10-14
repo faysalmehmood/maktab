@@ -1,4 +1,4 @@
-import type { ReceiptPrintDto } from '@maktab/shared';
+import { formatPkPhone, type ReceiptPrintDto } from '@maktab/shared';
 import { type ReactNode, useLayoutEffect, useRef } from 'react';
 import { money } from '@/lib/fees';
 import { cn } from '@/lib/utils';
@@ -104,7 +104,7 @@ export function ReceiptPrint({
         {data.school.address && <div className="receipt-sub">{data.school.address}</div>}
         {data.school.phone && (
           <div className="receipt-sub">
-            <N>{data.school.phone}</N>
+            <N>{formatPkPhone(data.school.phone)}</N>
           </div>
         )}
         <div className="receipt-title">{title}</div>

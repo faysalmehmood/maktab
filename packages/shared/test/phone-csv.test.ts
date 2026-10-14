@@ -57,7 +57,21 @@ describe('PK phone normaliser (PLAN §12 exp4)', () => {
     expect(normalizePkPhone('0300-1234567')).toEqual({ number: '923001234567', mobile: true });
     expect(normalizePkPhone('12345')).toBeNull();
     expect(formatPkPhone('923001234567')).toBe('0300 1234567');
-    expect(formatPkPhone('924235761234')).toBe('04235761234');
+    expect(formatPkPhone('924235761234')).toBe('042 3576 1234');
+  });
+
+  it.each([
+    ['924235550100', '042 3555 0100'],
+    ['04235550100', '042 3555 0100'],
+    ['+92 42 3555 0100', '042 3555 0100'],
+    ['92512345678', '051 234 5678'],
+    ['03365551217', '0336 5551217'],
+    ['923365551217', '0336 5551217'],
+    ['12345', '12345'],
+    ['+1 202 555 0100', '+1 202 555 0100'],
+    ['', ''],
+  ])('formats %s for display as %s', (input, shown) => {
+    expect(formatPkPhone(input)).toBe(shown);
   });
 
   it('admission schema normalises guardian phones and defaults consent off', () => {

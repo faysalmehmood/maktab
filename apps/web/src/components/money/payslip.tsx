@@ -1,4 +1,5 @@
 import {
+  formatPkPhone,
   newId,
   PAYSLIP_LINE_KINDS,
   type PayrollStaffDto,
@@ -559,7 +560,7 @@ export function PayslipPrint({
         {slip.school.address && <div className="receipt-sub">{slip.school.address}</div>}
         {slip.school.phone && (
           <div className="receipt-sub">
-            <N>{slip.school.phone}</N>
+            <N>{formatPkPhone(slip.school.phone)}</N>
           </div>
         )}
         <div className="receipt-title">{t('money.salary.slip')}</div>
