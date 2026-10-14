@@ -40,7 +40,13 @@ async function api(path, init = {}) {
 }
 await api('/api/auth/demo', { method: 'POST', body: JSON.stringify({ as: 'principal' }) });
 const groups = (await api('/api/groups')).items.filter((g) => g.active_count > 0);
-const group = groups.sort((a, b) => b.active_count - a.active_count)[0];
+// Prefer the largest class whose register is still open today, so the shot shows attendance
+// being taken rather than corrected; fall back to the largest class.
+const openToday = new Set(
+  ((await api('/api/dashboard/today')).registers?.not_taken ?? []).map((r) => r.grp_id),
+);
+const bySize = groups.sort((a, b) => b.active_count - a.active_count);
+const group = bySize.find((g) => openToday.has(g.id)) ?? bySize[0];
 // A family that owes money (so the pages are not empty) and has at least one payment receipt.
 const defaulters = (await api('/api/fees/defaulters')).defaulters;
 const familyIds = [...new Set(defaulters.map((d) => d.family_id))];
