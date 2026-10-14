@@ -305,10 +305,16 @@ describe('admission (PLAN §14.2)', () => {
 
     const list = await api<Paged<StudentListItem>>('GET', '/api/students');
     expect(
-      list.body.items.map((s) => [s.name, s.family_id, s.group_name, s.guardian_phone]),
+      list.body.items.map((s) => [
+        s.name,
+        s.family_id,
+        s.programme_name,
+        s.group_name,
+        s.guardian_phone,
+      ]),
     ).toEqual([
-      ['Ali', first.body.family_id, '5-A', '923001234567'],
-      ['Sara', first.body.family_id, '5-A', '923001234567'],
+      ['Ali', first.body.family_id, 'Class 5', '5-A', '923001234567'],
+      ['Sara', first.body.family_id, 'Class 5', '5-A', '923001234567'],
     ]);
     const byPhone = await api<Paged<StudentListItem>>('GET', '/api/students?q=03001234567');
     expect(byPhone.body.total).toBe(2);

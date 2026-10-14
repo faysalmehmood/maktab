@@ -16,6 +16,7 @@ import { Select } from '@/components/ui/select';
 import { getJson } from '@/lib/api';
 import { useGroups } from '@/lib/queries';
 import { canWriteStudents, useRoles } from '@/lib/roles';
+import { classLabel } from '@/lib/utils';
 
 type Status = (typeof STUDENT_STATUSES)[number];
 
@@ -104,7 +105,7 @@ export function StudentsList() {
     {
       id: 'group',
       header: t('student.group'),
-      cell: (s) => (s.group_name ? <bdi>{s.group_name}</bdi> : '—'),
+      cell: (s) => (s.group_name ? <bdi>{classLabel(s)}</bdi> : '—'),
     },
     {
       id: 'father',

@@ -16,6 +16,7 @@ const student = (n: number, name: string) => ({
   has_photo: false,
   group_id: ids.group,
   group_name: 'A',
+  programme_name: 'Class 5',
   roll_no: String(n),
   guardian_phone: '923001234567',
 });
@@ -51,7 +52,9 @@ describe('students list', () => {
     expect(screen.getAllByText('0300 1234567')[0]?.tagName).toBe('BDI');
     // Data-derived names in the mixed-direction subtitle are isolated too ("5-B" never "B-5").
     expect(screen.getAllByText('Imran').every((el) => el.tagName === 'BDI')).toBe(true);
-    expect(screen.getAllByText('A').some((el) => el.tagName === 'BDI')).toBe(true);
+    // The class reads "Class 5 A" (programme + group) as everywhere else, not the bare "A".
+    expect(screen.getAllByText('Class 5 A').some((el) => el.tagName === 'BDI')).toBe(true);
+    expect(screen.queryAllByText('A').filter((el) => el.tagName === 'BDI')).toHaveLength(0);
     expect(screen.getByRole('link', { name: /داخلہ/ })).toBeTruthy();
     // Default view asks for active students only, page 1.
     expect(api.calls.find((c) => c.path.startsWith('/api/students'))?.path).toBe(

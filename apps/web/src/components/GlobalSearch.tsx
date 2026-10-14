@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router';
 import { Avatar } from '@/components/avatar';
 import { getJson } from '@/lib/api';
 import { canReadStudents, useRoles } from '@/lib/roles';
-import { cn } from '@/lib/utils';
+import { classLabel, cn } from '@/lib/utils';
 
 /** How many matches the dropdown shows; "See all results" opens the Students list with the query. */
 export const SEARCH_LIMIT = 6;
@@ -143,7 +143,7 @@ export function GlobalSearch() {
                     <bdi>{s.name}</bdi>
                   </span>
                   <span className="truncate text-meta text-muted-foreground">
-                    {s.group_name ? <bdi>{s.group_name}</bdi> : '—'}
+                    {s.group_name ? <bdi>{classLabel(s)}</bdi> : '—'}
                   </span>
                 </span>
                 <bdi className="num text-meta text-muted-foreground">{s.admission_no}</bdi>
