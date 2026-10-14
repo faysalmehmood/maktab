@@ -56,16 +56,18 @@ it. On 2026-10-14 a full reseed of the first, larger dataset (300 students, ~86k
 the previous day's run used it up, and D1 refused writes for the rest of the UTC day. So:
 
 - **A row write is the row plus one per index on its table.** That makes some tables dear:
-  `charge` has 9 indexes (10 writes a row), `receipt` 6, `message` 5, `receipt_allocation` 3,
+  `charge` has 9 indexes (10 writes a row), `receipt` 7, `message` 5, `receipt_allocation` 3,
   `att_mark` and `audit` 2. Updates count too.
 - **A full reseed is budgeted at 33,000 row writes** (`DEMO_SEED_WRITES`; the cap is 35,000).
   Every reseed but the first runs over a seeded demo, and that is what counts: the wipe empties the
   six self-referencing tables row by row (about 3,000 writes, see the wipe below) before the new
   dataset is written. The cost depends a little on the seed day. Measured over the previous demo
-  (`packages/db/test/demo-seed.test.ts`, which fails past the budget): ~31,400 writes for
-  2026-10-14 (5,274 rows; ~28,300 on a fresh database). A sweep of every seed day from 2026-10-14
-  to 2028-04-30, each reseeded over the day before, ranged from ~27,500 (summer vacation) to
-  **~31,400 at worst** (2027-02-28), 1,600 under the budget. Charges are the largest part
+  (`packages/db/test/demo-seed.test.ts`, which fails past the budget): ~31,900 writes for
+  2026-10-14 (~28,800 on a fresh database), ~500 more than before migration 0025's two indexes
+  (see Reads below). Before them, a sweep of every seed day from 2026-10-14 to 2028-04-30, each
+  reseeded over the day before, ranged from ~27,500 (summer vacation) to ~31,400 at worst
+  (2027-02-28): **~31,900 at worst** now, 1,100 under the budget. D1's own count for the same
+  reseed (`meta.rows_written`, apps/api/test/d1-demo-reads.test.ts) is lower: 29,193. Charges are the largest part
   (~10,000), then receipts and allocations, audit, registers and messages. That is why the school
   has 112 students: a reseed over the demo costs about 260 writes a student. `npm run seed:demo`
   prints the plan before it starts and the same measurement after.
@@ -80,11 +82,48 @@ the previous day's run used it up, and D1 refused writes for the rest of the UTC
   reseed (~33,000 writes) instead of the undo, so the dates move forward. That is at most about six
   reseeds a month, one on any day, a third of the daily 100,000.
 - **At most one reset a UTC day** (full or undo), whoever asks.
-- **Quota guard:** if D1 refuses a write for a limit (`exceeded`, `quota`, `daily limit`), the demo
-  logs `demo_alarm: d1_quota` and runs nothing until the next 00:00 UTC (`backoff_until` in
-  `GET /api/demo`).
-- Reads: the step loop reads `_demo_state` and the current step's own rows; nothing scans
-  `att_mark` repeatedly. To check a seeded demo remotely, run one count query per table, once.
+- **Quota guard:** if D1 refuses a query for a daily limit (`exceeded`, `quota`, `daily limit`, or
+  the read limit: code 7500, "exceeded D1's free tier daily row read limit"), the demo logs
+  `demo_alarm: d1_quota` and runs nothing until the next 00:00 UTC (`backoff_until` in
+  `GET /api/demo`). At the read limit even `_demo_state` cannot be read, so the isolate also
+  remembers the backoff: later ticks touch nothing, and `POST /api/demo/step` and `GET /api/demo`
+  answer 503 `demo_not_ready` (`apps/api/test/demo-quota.test.ts`).
+
+**Reads.** The same account allows **5,000,000 rows read a day**. D1 counts every row a query
+visits, not the rows it returns: a scan of a table, of a view's whole aggregate, or of
+`sqlite_master` (~470 rows: every DDL statement scans it) counts in full, and so do the reads a
+trigger makes. On 2026-10-14 the demo used up the read limit too (`wrangler d1 info`: ~11,000,000
+rows read in 24,826 queries). Measured on workerd's D1 (`apps/api/test/d1-demo-reads.test.ts`,
+which sums `meta.rows_read` per step and per statement and fails past the budget), seed day
+2026-10-14:
+
+| | before | after (2026-10-15) |
+|---|---|---|
+| Full reseed over the demo | 1,236,530 | **345,425** (2027-02-28: 351,528; 2026-11-02: 326,904) |
+| First seed (empty database) | | 272,241 |
+| Idle tick (every minute) | 23 | 23 |
+| 02:00 tick, nothing to undo | 502 | 35 |
+| Nightly undo of a visitor's afternoon (11 changes, 5 tables) | 22,836 | 6,009 |
+| `GET /api/demo` | 11 | 11 |
+
+- **A full reseed is budgeted at 400,000 rows read** (`DEMO_SEED_READS`; the target is 1,000,000,
+  the cap 1,500,000). Half of the old cost was one statement: dropping `charge` (a table that
+  references itself) deletes it row by row, and each delete looked for children by scanning every
+  remaining charge (n²/2, ~563,000 rows for ~1,000 charges). The wipe now keeps the index on the
+  self-referencing column (`charge_parent`, `receipt_reverses_id_unique`) until the drop: ~3,000.
+- What a reseed reads now: the day-by-day ops ~130,000 (the family's dues before each receipt, the
+  allocation triggers), the wipe ~100,000 (each of ~400 DROP statements scans `sqlite_master`; not
+  reducible short of fewer schema objects) and the six billing runs ~97,000.
+- Fixed on the way, and good for every school, not only the demo: `receipt(cash_session_id)` and
+  `payslip_line(payslip_id)` are indexed (migration 0025; a drawer's expected cash and every payslip
+  read scanned the whole table), the generation cursor no longer joins groups × chunks in SQL, and
+  credit lookups bind their families (`IN (?, …)`) so SQLite reads `payer_credit` by index.
+- The nightly undo costs ~1,500 rows a chunk (three looks at `sqlite_master`) plus ~470 for each
+  trigger it drops and re-makes; it now drops only the triggers its restores fire.
+- **A day's budget.** A normal day: 1,440 idle ticks (~33,000) + the undo (a few thousand to a few
+  tens of thousands) + what visitors read. A reseed day (Mondays, the 1st): about 380,000 + visitors.
+  Both are well under a tenth of 5,000,000, with the GSA pilot's ~1,000 a day beside it.
+- To check a seeded demo remotely, run one count query per table, once.
 
 **Sign-in.** The sign-in page has three buttons: **Try as principal** (owner), **Try as
 accountant** and **Try as teacher** (Ayesha Siddiqa, class teacher of Class 5 A, who also teaches
@@ -107,8 +146,8 @@ photos, bill photos) are capped at 200 KB and 10 an hour per IP. Everything else
 - The demo's cron runs **every minute**. At **02:00 Asia/Karachi**, if the log has entries and no
   reset ran this UTC day, it estimates the cost (one grouped read of the log), and if that is under
   20,000 it **plays the log back**, newest first, 100 entries per D1 batch: each batch drops the
-  touched tables' guard and undo triggers, restores the rows, re-creates the triggers and deletes
-  the log rows, in one transaction, so the money guards are never off between batches. Changes made
+  touched tables' guard and undo triggers that its restores fire (insert, update or delete),
+  restores the rows, re-creates the triggers and deletes the log rows, in one transaction, so the money guards are never off between batches. Changes made
   while it runs wait for the next night. A night nobody touched the demo costs a few reads.
 - **Every Monday and on the 1st of the month**, the 02:00 run is a **full reseed** instead
   (`demoReseedDue` in `apps/api/src/routes/demo.ts`), dated from that day: the undo only ever
@@ -141,7 +180,10 @@ How a full reseed works (`packages/db/src/demo/runner.ts`):
    it while another table still references it, so tables are dropped children first, in
    `pragma_foreign_key_list` order. The six tables that reference themselves (`charge`, `receipt`,
    `enrolment`, `grp`, `programme`, `user`) are still emptied row by row; their indexes are dropped
-   first so that costs one write a row plus the primary key (~3,000 writes, in the budget below).
+   first so that costs one write a row plus the primary key (~3,000 writes, in the budget below),
+   all but the one on the self-referencing column (`charge_parent`, `receipt_reverses_id_unique`):
+   without it each row's delete scans the whole table for children (~563,000 rows read for
+   `charge`; see Reads).
 3. The dataset is rebuilt in about 140 resumable, idempotent steps
    (`packages/db/src/demo/steps.ts`). Ids are deterministic, receipts use idempotency keys, and
    every step checks whether its work is already done, so a call cut short by the CPU limit or a
@@ -223,6 +265,12 @@ links use `PARENT_LINK_SECRET` from `apps/api/.dev.vars`. To see the demo UI loc
   past the session), and a reset refuses another school's database. The undo puts back exactly what a visitor changed (edits, a delete, a payment,
   a reversal) with every trigger restored, runs once a UTC day, and is skipped over 20,000 writes;
   quota errors are recognised.
+- `apps/api/test/d1-demo-reads.test.ts` (workerd's D1 through wrangler's `getPlatformProxy`): a
+  full reseed over the demo, driven as the cron drives it, reads at most `DEMO_SEED_READS`; an idle
+  tick and `GET /api/demo` read ≤ 50 rows, the 02:00 tick with nothing to undo ≤ 50, and a small
+  nightly undo ≤ 10,000. Its log prints the rows read per step and the top statements;
+  `DEMO_READS_TODAY=YYYY-MM-DD` measures another seed day. `demo-quota.test.ts`: the read-limit
+  error backs the demo off until 00:00 UTC without another query.
 - `apps/api/test/demo.test.ts`: `DEMO_MODE` is set only on `[env.demo]` (never on `env.gsap` or
   the top level). Without it every demo route is 404. With it, the buttons give each fixed user its
   roles, the locked routes answer `demo_locked` (even for the demo principal), uploads are capped,
