@@ -134,7 +134,7 @@ export function demoRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         db,
         sql`SELECT id, status FROM "user" WHERE email = ${email}`,
       );
-      if (!u || u.status !== 'active')
+      if (u?.status !== 'active')
         throw new ApiError(503, 'demo_not_ready', 'The demo is being prepared; try again shortly');
       const s = await createSession(db, newId(), u.id, {
         ua: c.req.header('user-agent') ?? null,

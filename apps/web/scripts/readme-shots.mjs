@@ -21,7 +21,10 @@ const opt = (name, dflt) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : dflt;
 };
-const base = (args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--')) ?? 'http://localhost:5173').replace(/\/$/, '');
+const base = (
+  args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--')) ??
+  'http://localhost:5173'
+).replace(/\/$/, '');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const outDir = resolve(root, opt('--out', 'docs/media'));
 const port = Number(opt('--port', '9351'));
@@ -62,18 +65,32 @@ for (const id of familyIds) {
 }
 if (!family) throw new Error('no family with dues and a payment receipt in the demo data');
 const fam = await api(`/api/families/${family}`);
-const link = await api(`/api/guardians/${fam.guardians[0].id}/parent-link`, { method: 'POST', body: '{}' });
+const link = await api(`/api/guardians/${fam.guardians[0].id}/parent-link`, {
+  method: 'POST',
+  body: '{}',
+});
 const parentPath = new URL(link.url, base).pathname + new URL(link.url, base).hash;
-console.log(`class ${group.programme_name} ${group.name}, family ${fam.name}, receipt ${receipt.receipt_no}`);
+console.log(
+  `class ${group.programme_name} ${group.name}, family ${fam.name}, receipt ${receipt.receipt_no}`,
+);
 
 // ---- Chrome over CDP -----------------------------------------------------------------------------
 const chrome =
   process.env.CHROME ??
-  (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome');
+  (process.platform === 'darwin'
+    ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+    : 'google-chrome');
 const profile = mkdtempSync(join(tmpdir(), 'readme-shots-'));
 const proc = spawn(
   chrome,
-  ['--headless=new', '--disable-gpu', '--no-first-run', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'],
+  [
+    '--headless=new',
+    '--disable-gpu',
+    '--no-first-run',
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${profile}`,
+    'about:blank',
+  ],
   { stdio: ['ignore', 'ignore', 'pipe'] },
 );
 const exited = new Promise((ok) => proc.once('exit', ok));
@@ -116,20 +133,36 @@ try {
   const [cname, ...cval] = cookie.split('; ')[0].split('=');
   await send('Network.setCookie', { name: cname, value: cval.join('='), url: base }, sessionId);
   const evaluate = async (expression) => {
-    const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId);
-    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? 'evaluate failed');
+    const r = await send(
+      'Runtime.evaluate',
+      { expression, awaitPromise: true, returnByValue: true },
+      sessionId,
+    );
+    if (r.exceptionDetails)
+      throw new Error(r.exceptionDetails.exception?.description ?? 'evaluate failed');
     return r.result.value;
   };
   let initId;
   /** Opens `path` with the viewport, language and theme, and waits until the data has loaded. */
   async function open(path, { vp, lang, theme, ready = 'true' }) {
     await send('Emulation.setDeviceMetricsOverride', vp, sessionId);
-    await send('Emulation.setTouchEmulationEnabled', { enabled: vp.mobile, maxTouchPoints: 5 }, sessionId);
-    await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] }, sessionId);
-    if (initId) await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: initId }, sessionId);
+    await send(
+      'Emulation.setTouchEmulationEnabled',
+      { enabled: vp.mobile, maxTouchPoints: 5 },
+      sessionId,
+    );
+    await send(
+      'Emulation.setEmulatedMedia',
+      { features: [{ name: 'prefers-color-scheme', value: theme }] },
+      sessionId,
+    );
+    if (initId)
+      await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: initId }, sessionId);
     ({ identifier: initId } = await send(
       'Page.addScriptToEvaluateOnNewDocument',
-      { source: `try{localStorage.setItem('maktab.lang','${lang}');localStorage.setItem('maktab.theme','${theme}')}catch{}` },
+      {
+        source: `try{localStorage.setItem('maktab.lang','${lang}');localStorage.setItem('maktab.theme','${theme}')}catch{}`,
+      },
       sessionId,
     ));
     await send('Page.navigate', { url: base + path }, sessionId);
@@ -151,40 +184,82 @@ try {
   }
   const text = (re) => `new RegExp(${JSON.stringify(re)}).test(document.body.innerText)`;
   const shot = async (name) => {
-    const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }, sessionId);
+    const { data } = await send(
+      'Page.captureScreenshot',
+      { format: 'png', captureBeyondViewport: false },
+      sessionId,
+    );
     writeFileSync(join(outDir, name), Buffer.from(data, 'base64'));
     console.log('wrote', name);
   };
 
-  await open('/', { vp: DESKTOP, lang: 'en', theme: 'light', ready: text('Collected|collection|Today') });
+  await open('/', {
+    vp: DESKTOP,
+    lang: 'en',
+    theme: 'light',
+    ready: text('Collected|collection|Today'),
+  });
   await shot('home-desktop.png');
 
-  await open(`/attendance/register/${group.id}`, { vp: PHONE, lang: 'ur', theme: 'light', ready: `document.querySelectorAll('main li, main [role=row], main button').length > 5` });
+  await open(`/attendance/register/${group.id}`, {
+    vp: PHONE,
+    lang: 'ur',
+    theme: 'light',
+    ready: `document.querySelectorAll('main li, main [role=row], main button').length > 5`,
+  });
   await shot('attendance-phone-urdu.png');
 
-  await open('/messages', { vp: PHONE, lang: 'en', theme: 'light', ready: `document.querySelectorAll('main li, main [role=row]').length > 0` });
+  await open('/messages', {
+    vp: PHONE,
+    lang: 'en',
+    theme: 'light',
+    ready: `document.querySelectorAll('main li, main [role=row]').length > 0`,
+  });
   await shot('whatsapp-queue-phone.png');
 
   // The parent page never saves its language: it follows the guardian, so use its own toggle.
   await open(parentPath, { vp: PHONE, lang: 'ur', theme: 'light', ready: text('Listen|سنیں') });
   if ((await evaluate(`document.documentElement.lang`)) !== 'ur') {
-    await evaluate(`[...document.querySelectorAll('button')].find((b) => b.innerText.includes('اردو'))?.click()`);
+    await evaluate(
+      `[...document.querySelectorAll('button')].find((b) => b.innerText.includes('اردو'))?.click()`,
+    );
     await sleep(800);
   }
-  if ((await evaluate(`document.documentElement.lang`)) !== 'ur') throw new Error('parent page is not in Urdu');
+  if ((await evaluate(`document.documentElement.lang`)) !== 'ur')
+    throw new Error('parent page is not in Urdu');
   await shot('parent-page-phone.png');
 
-  await open(`/receipts/${receipt.id}`, { vp: PHONE, lang: 'en', theme: 'dark', ready: text(receipt.receipt_no) });
+  await open(`/receipts/${receipt.id}`, {
+    vp: PHONE,
+    lang: 'en',
+    theme: 'dark',
+    ready: text(receipt.receipt_no),
+  });
   await shot('receipt-phone-dark.png');
 
-  await open('/fees/defaulters', { vp: PHONE, lang: 'en', theme: 'light', ready: `[...document.querySelectorAll('button')].some((b) => /Remind all/i.test(b.innerText))` });
+  await open('/fees/defaulters', {
+    vp: PHONE,
+    lang: 'en',
+    theme: 'light',
+    ready: `[...document.querySelectorAll('button')].some((b) => /Remind all/i.test(b.innerText))`,
+  });
   await shot('defaulters-phone.png');
 
   // The "Show me" tour of Take attendance: start it from its guide page, then wait for the card.
-  await open('/guide/take-attendance', { vp: PHONE, lang: 'en', theme: 'light', ready: `document.querySelector('[data-show-me="take-attendance"]')` });
+  await open('/guide/take-attendance', {
+    vp: PHONE,
+    lang: 'en',
+    theme: 'light',
+    ready: `document.querySelector('[data-show-me="take-attendance"]')`,
+  });
   await evaluate(`document.querySelector('[data-show-me="take-attendance"]').click()`);
   for (let i = 0; i < 50; i++) {
-    if (await evaluate(`!!document.querySelector('[data-tour-card]') && location.pathname.startsWith('/attendance')`)) break;
+    if (
+      await evaluate(
+        `!!document.querySelector('[data-tour-card]') && location.pathname.startsWith('/attendance')`,
+      )
+    )
+      break;
     if (i === 49) throw new Error('the tour card never appeared on /attendance');
     await sleep(200);
   }
