@@ -669,6 +669,10 @@ describe('parent links and the public parent page', () => {
     expect(r.status, r.text).toBe(200);
     expect(r.body.guardian.first_name).toBe('Mohd Imran');
     expect(r.body.children.map((c) => c.first_name)).toEqual(['Muhammad Ali', 'Zain']);
+    // Two words: never the second (it may be the family name).
+    await s.db.run(sql`UPDATE student SET name = 'Muhammad Zain' WHERE id = ${s.zain.student_id}`);
+    const r2 = await s.anon<ParentPageDto>('GET', '/api/p', undefined, { 'x-parent-token': token });
+    expect(r2.body.children.map((c) => c.first_name)).toEqual(['Muhammad Ali', 'Muhammad']);
     expect(r.text).not.toMatch(/Ali Khan|Imran Khan/);
   });
 

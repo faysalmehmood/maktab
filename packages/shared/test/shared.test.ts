@@ -62,7 +62,11 @@ describe('firstName (the parent page calling name)', () => {
       expect(firstName(`${m} Hamza Butt`), m).toBe(`${m} Hamza`);
     expect(firstName('محمد علی خان')).toBe('محمد علی');
     expect(firstName('علی خان')).toBe('علی');
-    // Muhammad alone, or a name that only starts with the letters, stays one word.
+    // Two words keep one (the second may be the surname); Muhammad alone, or a name that only
+    // starts with the letters, stays one word.
+    expect(firstName('Muhammad Bilal')).toBe('Muhammad');
+    expect(firstName('Muhammad Khan')).toBe('Muhammad');
+    expect(firstName('محمد خان')).toBe('محمد');
     expect(firstName('Muhammad')).toBe('Muhammad');
     expect(firstName('Mohdish Raza')).toBe('Mohdish');
     expect(firstName('')).toBe('');
