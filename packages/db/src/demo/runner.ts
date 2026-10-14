@@ -78,17 +78,57 @@ const snapshotStep: Step = {
 
 const q = (name: string) => `"${name.replace(/"/g, '""')}"`;
 
+/**
+ * Children before parents. With foreign keys on (always, on D1) SQLite runs an implicit DELETE of
+ * every row before dropping a table that another table still references, or (with
+ * defer_foreign_keys) any table with outstanding references; D1 counts those deleted rows and
+ * index entries as writes (~7,000 over a seeded demo). Dropping each table only once nothing else
+ * refers to it avoids that, except for a table that references itself (charge, receipt,
+ * enrolment, …): those rows are still deleted, so their indexes go first.
+ */
+async function dropOrder(
+  db: AppDb,
+  tables: string[],
+): Promise<{ order: string[]; selfRef: Set<string> }> {
+  const fks = await db.all<{ child: string; parent: string }>(sql`
+    SELECT t.value AS child, f."table" AS parent
+    FROM json_each(${JSON.stringify(tables)}) t, pragma_foreign_key_list(t.value) f`);
+  const selfRef = new Set(fks.filter((f) => f.child === f.parent).map((f) => f.child));
+  const left = new Set(tables);
+  const order: string[] = [];
+  while (left.size) {
+    const free = [...left].filter(
+      (t) => !fks.some((f) => f.parent === t && f.child !== t && left.has(f.child)),
+    );
+    // A cycle between two tables (none today): drop the rest in schema order, newest first.
+    const next = free.length ? free : [...left].reverse();
+    for (const t of next) {
+      left.delete(t);
+      order.push(t);
+    }
+  }
+  return { order, selfRef };
+}
+
 const dropStep: Step = {
   name: 'wipe:drop',
   run: async ({ db }) => {
     const rows = JSON.parse((await getState(db)).schema ?? '[]') as SchemaRow[];
-    const stmts: SQL[] = [sql`PRAGMA defer_foreign_keys = ON`];
+    const stmts: SQL[] = [];
     for (const r of rows.filter((x) => x.type === 'trigger'))
       stmts.push(sql.raw(`DROP TRIGGER IF EXISTS ${q(r.name)}`));
     for (const r of [...rows].reverse().filter((x) => x.type === 'view'))
       stmts.push(sql.raw(`DROP VIEW IF EXISTS ${q(r.name)}`));
-    for (const r of [...rows].reverse().filter((x) => x.type === 'table'))
-      stmts.push(sql.raw(`DROP TABLE IF EXISTS ${q(r.name)}`));
+    const tables = rows.filter((x) => x.type === 'table').map((x) => x.name);
+    const { order, selfRef } = await dropOrder(db, tables);
+    for (const t of order) {
+      // A table that references itself is deleted row by row before it is dropped (below); without
+      // its indexes each of those deletes is one write, not one per index.
+      if (selfRef.has(t))
+        for (const i of rows.filter((x) => x.type === 'index' && x.tbl_name === t))
+          stmts.push(sql.raw(`DROP INDEX IF EXISTS ${q(i.name)}`));
+      stmts.push(sql.raw(`DROP TABLE IF EXISTS ${q(t)}`));
+    }
     // The undo log (its triggers went with their tables): the reseed must not be logged.
     stmts.push(sql.raw(`DROP TABLE IF EXISTS ${UNDO_TABLE}`));
     await runBatch(db, stmts);
@@ -178,6 +218,8 @@ export type DemoStatus = {
   last_error: string | null;
   /** Set after D1 refused a write for the account's daily limit: nothing runs before then. */
   backoff_until: string | null;
+  /** The seed day the data is dated from (world.ts DemoCalendar); null before the first seed. */
+  anchor: string | null;
 };
 
 export async function demoStatus(db: AppDb): Promise<DemoStatus> {
@@ -196,6 +238,7 @@ export async function demoStatus(db: AppDb): Promise<DemoStatus> {
     dirty: st.dirty === '1',
     last_error: st.last_error ?? null,
     backoff_until: st.backoff_until ?? null,
+    anchor: st.anchor ?? null,
   };
 }
 

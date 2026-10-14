@@ -7,6 +7,7 @@ import {
   demoForcePending,
   demoQuotaBackoff,
   demoStatus,
+  demoToday,
   isQuotaError,
   markDemoDirty,
   startDemoReset,
@@ -257,10 +258,13 @@ export async function demoTick(db: AppDb, env: Bindings, nowMs = Date.now()): Pr
       return true;
     }
     const karachiHour = new Date(nowMs + 5 * 3_600_000).getUTCHours();
-    if (karachiHour !== 2) return false;
-    if (demoReseedDue(nowMs)) {
+    if (karachiHour < 2) return false;
+    // From 02:00 on a reseed day, until the data is dated today: a reseed refused at 02:00 (a reset
+    // already ran that UTC day, a quota backoff until 05:00 PKT, a deploy gap) starts on the first
+    // tick that may run it, not next week.
+    if (demoReseedDue(nowMs) && s.anchor !== demoToday(nowMs)) {
       try {
-        // Still one reset a UTC day: startDemoReset refuses the second (and the rest of the hour).
+        // Still one reset a UTC day: startDemoReset refuses the second.
         await startDemoReset(db, { reason: 'weekly reseed', now: new Date(nowMs) });
       } catch (err) {
         if (err instanceof Error && /one reset a UTC day/.test(err.message)) return false;
@@ -269,6 +273,7 @@ export async function demoTick(db: AppDb, env: Bindings, nowMs = Date.now()): Pr
       await advanceOnce(db, env);
       return true;
     }
+    if (karachiHour !== 2) return false;
     const u = await startDemoUndo(db, { now: nowMs });
     if (!u.started) return false;
     await advanceOnce(db, env);

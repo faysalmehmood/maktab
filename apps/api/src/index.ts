@@ -39,9 +39,10 @@ export default {
     const db = getDb({ DB: env.DB });
     ctx.waitUntil(
       (async () => {
-        // Demo (docs/demo.md): only the demo's own reset runs. The demo school's calendar stops at
-        // September 2026, so no fee generation, late fines or daily pass: they would write rows every
-        // day that the nightly undo then has to take back (the D1 write budget).
+        // Demo (docs/demo.md): only the demo's own reset runs. The dataset is dated from its seed
+        // day and reseeded every Monday and on the 1st, so no fee generation, late fines or daily
+        // pass: they would write rows every day that the nightly undo then has to take back (the D1
+        // write budget).
         if (isDemo(env)) {
           await demoTick(db, env).catch((err: unknown) => {
             console.error('demo reset step failed', err);

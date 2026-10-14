@@ -311,4 +311,28 @@ describe('DEMO_MODE=1', () => {
     expect(await demoTick(db, { ...env, ...demoEnv }, at + 30 * 60_000)).toBe(false);
     expect(await anchor()).toBe('2027-01-11');
   }, 180_000);
+
+  it('a reseed missed at 02:00 starts on a later tick that day (here 05:01, the next UTC day)', async () => {
+    // Monday 1 Feb 2027 (also the 1st). A reset already ran in that UTC day (31 Jan), so 02:00 is
+    // refused; 05:01 PKT is 00:01 UTC on 1 Feb, a new UTC day.
+    const at = Date.parse('2027-01-31T21:00:30Z');
+    await db.run(sql`UPDATE _demo_state SET value = '2027-01-31' WHERE key = 'last_reset_day'`);
+    expect(await demoTick(db, { ...env, ...demoEnv }, at)).toBe(false);
+    expect((await demoStatus(db)).anchor).toBe('2027-01-11');
+    // 03:00 Karachi, same UTC day: still refused; no undo either.
+    expect(await demoTick(db, { ...env, ...demoEnv }, at + 3_600_000)).toBe(false);
+    const later = Date.parse('2027-02-01T00:01:00Z');
+    expect(await demoTick(db, { ...env, ...demoEnv }, later)).toBe(true);
+    expect((await demoStatus(db)).anchor).toBe('2027-02-01');
+    for (let i = 1; i < 400 && (await demoStatus(db)).phase !== 'done'; i++)
+      await demoTick(db, { ...env, ...demoEnv }, later + i * 1000);
+    expect((await demoStatus(db)).phase).toBe('done');
+    // Dated today now: later ticks that day leave it alone.
+    expect(await demoTick(db, { ...env, ...demoEnv }, later + 3_600_000)).toBe(false);
+    // A day that is not a reseed day never reseeds, whatever the hour.
+    expect(await demoTick(db, { ...env, ...demoEnv }, Date.parse('2027-02-02T06:00:00Z'))).toBe(
+      false,
+    );
+    expect((await demoStatus(db)).anchor).toBe('2027-02-01');
+  }, 180_000);
 });

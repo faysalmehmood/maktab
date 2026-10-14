@@ -84,26 +84,67 @@ const addDay = (d: string, n: number) =>
   new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 export const weekday = (d: string) => new Date(`${d}T00:00:00Z`).getUTCDay();
 
+const EID_FITR = { en: 'Eid ul Fitr', ur: 'عید الفطر' };
+const EID_ADHA = { en: 'Eid ul Adha', ur: 'عید الاضحیٰ' };
+const ASHURA = { en: 'Ashura', ur: 'عاشورہ' };
+const MILAD = { en: 'Eid Milad un Nabi', ur: 'عید میلاد النبی' };
+const IQBAL = { en: 'Iqbal Day', ur: 'یومِ اقبال' };
+const QUAID = { en: 'Quaid-e-Azam Day', ur: 'یومِ قائد' };
+const KASHMIR = { en: 'Kashmir Solidarity Day', ur: 'یومِ یکجہتیٔ کشمیر' };
+const PAKISTAN = { en: 'Pakistan Day', ur: 'یومِ پاکستان' };
+const LABOUR = { en: 'Labour Day', ur: 'یومِ مزدور' };
+const AZADI = { en: 'Independence Day', ur: 'یومِ آزادی' };
+
+/**
+ * Gazetted holidays from the 2026-27 session start to the latest seed day anyone is likely to use
+ * (spring 2028), so a seed day that moves forward still skips them. Islamic dates after 2026 are
+ * estimates (they follow the moon sighting): Eid ul Fitr ~10 Mar 2027 and ~27 Feb 2028, Eid ul
+ * Adha ~17 May 2027, Ashura ~15 Jun 2027, Eid Milad un Nabi ~15 Aug 2027.
+ */
+const GAZETTED: [string, { en: string; ur: string }][] = [
+  ['2026-05-01', LABOUR],
+  ['2026-05-27', EID_ADHA],
+  ['2026-05-28', EID_ADHA],
+  ['2026-05-29', EID_ADHA],
+  ['2026-08-14', AZADI],
+  ['2026-08-26', MILAD],
+  ['2026-11-09', IQBAL],
+  ['2026-12-25', QUAID],
+  ['2027-02-05', KASHMIR],
+  ['2027-03-10', EID_FITR],
+  ['2027-03-11', EID_FITR],
+  ['2027-03-12', EID_FITR],
+  ['2027-03-23', PAKISTAN],
+  ['2027-05-01', LABOUR],
+  ['2027-05-17', EID_ADHA],
+  ['2027-05-18', EID_ADHA],
+  ['2027-05-19', EID_ADHA],
+  ['2027-06-14', ASHURA],
+  ['2027-06-15', ASHURA],
+  ['2027-08-14', AZADI],
+  ['2027-08-15', MILAD],
+  ['2027-11-09', IQBAL],
+  ['2027-12-25', QUAID],
+  ['2028-02-05', KASHMIR],
+  ['2028-02-27', EID_FITR],
+  ['2028-02-28', EID_FITR],
+  ['2028-02-29', EID_FITR],
+  ['2028-03-23', PAKISTAN],
+];
+/** Summer vacation, 1 June to 13 August, every year (Punjab schools). */
+const VACATION = (d: string) => d.slice(5) >= '06-01' && d.slice(5) <= '08-13';
+
+const HOLIDAY_SET = new Set(GAZETTED.map(([d]) => d));
+
 export function holidays(): Holiday[] {
-  const out: Holiday[] = [
-    { date: '2026-05-01', en: 'Labour Day', ur: 'یومِ مزدور' },
-    { date: '2026-05-27', en: 'Eid ul Adha', ur: 'عید الاضحیٰ' },
-    { date: '2026-05-28', en: 'Eid ul Adha', ur: 'عید الاضحیٰ' },
-    { date: '2026-05-29', en: 'Eid ul Adha', ur: 'عید الاضحیٰ' },
-    { date: '2026-08-14', en: 'Independence Day', ur: 'یومِ آزادی' },
-    { date: '2026-08-26', en: 'Eid Milad un Nabi', ur: 'عید میلاد النبی' },
-  ];
-  for (let d = '2026-06-01'; d <= '2026-08-13'; d = addDay(d, 1))
-    if (weekday(d) !== 0) out.push({ date: d, en: 'Summer vacation', ur: 'موسمِ گرما کی تعطیلات' });
+  const out: Holiday[] = GAZETTED.map(([date, n]) => ({ date, ...n }));
+  for (const y of ['2026', '2027'])
+    for (let d = `${y}-06-01`; d <= `${y}-08-13`; d = addDay(d, 1))
+      // A gazetted day inside the vacation keeps its own name (one row a date).
+      if (weekday(d) !== 0 && !HOLIDAY_SET.has(d))
+        out.push({ date: d, en: 'Summer vacation', ur: 'موسمِ گرما کی تعطیلات' });
   return out.sort((a, b) => (a.date < b.date ? -1 : 1));
 }
-
-const HOLIDAY_SET = new Set(
-  holidays()
-    .filter((h) => h.en !== 'Summer vacation')
-    .map((h) => h.date),
-);
-const VACATION = (d: string) => d >= '2026-06-01' && d <= '2026-08-13';
 
 /** The office counts cash Monday–Saturday, also in the summer vacation, never on a gazetted holiday. */
 export const officeOpen = (d: string) => weekday(d) !== 0 && !HOLIDAY_SET.has(d);
@@ -419,18 +460,18 @@ export const PROGRAMMES: Programme[] = [
 ];
 
 const sized: [string, number[]][] = [
-  ['nursery', [8]],
-  ['prep', [8]],
-  ['c1', [9]],
-  ['c2', [9]],
-  ['c3', [9]],
-  ['c4', [7, 7]],
-  ['c5', [7, 7]],
-  ['c6', [7, 7]],
-  ['c7', [6, 6]],
-  ['c8', [6, 6]],
-  ['c9', [8]],
-  ['c10', [8]],
+  ['nursery', [6]],
+  ['prep', [6]],
+  ['c1', [8]],
+  ['c2', [8]],
+  ['c3', [8]],
+  ['c4', [6, 6]],
+  ['c5', [6, 6]],
+  ['c6', [6, 6]],
+  ['c7', [5, 5]],
+  ['c8', [5, 5]],
+  ['c9', [6]],
+  ['c10', [6]],
 ];
 export const GROUPS: Group[] = [
   ...sized.flatMap(([p, sizes]) =>
@@ -447,7 +488,7 @@ export const GROUPS: Group[] = [
     programme: 'fsc',
     name: 'Morning batch',
     primary: false,
-    size: 10,
+    size: 8,
     days: 'Mon-Sat',
     start: '08:00',
     end: '13:00',
@@ -768,7 +809,7 @@ const JOINERS: [string, number, number][] = [
   ['fsc-morning', 3, 17],
 ];
 /** Leavers: withdrawn at the end of the fourth month (moved city), by student index. */
-export const LEAVER_INDEXES = [41, 83, 118];
+export const LEAVER_INDEXES = [41, 83, 105];
 /** The leavers' last month, as an index in `cal.months`. */
 export const LEAVER_MONTH = 3;
 
@@ -838,13 +879,13 @@ function people(): Base {
   for (const g of GROUPS) ids(`grp:${g.key}`);
   for (const s of STAFF) ids(`staff:${s.key}`);
 
-  // 135 seats; 84 families, 25 of them (30%) with siblings. Sized to the D1 write budget
-  // (docs/demo.md): every student costs about 85 row writes over the six months.
+  // 112 seats; 70 families, 21 of them (30%) with siblings. Sized to the D1 write budget
+  // (docs/demo.md): a reseed over the previous demo costs about 260 row writes a student.
   const seats = GROUPS.filter((g) => g.key !== 'matric-evening').flatMap((g) =>
     Array.from({ length: g.size }, () => g.key),
   );
-  const nFamilies = 84;
-  const multi = 25;
+  const nFamilies = 70;
+  const multi = 21;
   const sizes: number[] = Array.from({ length: nFamilies }, (_, i) => (i < multi ? 2 : 1));
   let extra = seats.length - sizes.reduce((a, b) => a + b, 0);
   while (extra > 0) {

@@ -254,7 +254,10 @@ async function baseData(ctx: StepCtx): Promise<void> {
     ]),
     ...bulk(
       'holiday',
-      holidays().map((h) => ({ date: h.date, name_en: h.en, name_ur: h.ur, created_by: by })),
+      // The session's own calendar only (each row is a write).
+      holidays()
+        .filter((h) => h.date >= cal.sessionStart && h.date <= cal.sessionEnd)
+        .map((h) => ({ date: h.date, name_en: h.en, name_ur: h.ur, created_by: by })),
     ),
   );
   const grades = PROGRAMMES.filter((p) => p.kind === 'grade');
@@ -980,6 +983,9 @@ function waiveOp(day: string, f: Family, n: number): Op {
   return {
     cash: false,
     run: async ({ db }) => {
+      // Keyed by the plan (family, day, n), not by the fine it picks: a re-run finds it done.
+      const waiverId = dayId(day, `waiver:${f.id}:${n}`);
+      if (await exists(db, sql`SELECT 1 FROM charge WHERE id = ${waiverId}`)) return;
       const [fine] = await db.all<{ id: string }>(sql`
         SELECT c.id FROM charge c
         WHERE c.kind = 'fine' AND c.payer_type = 'family' AND c.payer_id = ${f.id}
@@ -990,7 +996,7 @@ function waiveOp(day: string, f: Family, n: number): Op {
         fineId: fine.id,
         reason: WAIVE_REASONS[n % WAIVE_REASONS.length] as string,
         by: userId('principal'),
-        waiverId: dayId(day, `waiver:${fine.id}`),
+        waiverId,
       });
     },
   };
@@ -1494,6 +1500,13 @@ export function markFor(s: Student, day: string): 'P' | 'A' | 'L' | 'E' {
   return 'P';
 }
 
+/**
+ * The mark used in the seed: on the seed day the habitually absent students are away, so today's
+ * registers always have absences to message about (the week's chance alone left some days with none).
+ */
+export const markOn = (cal: DemoCalendar, s: Student, day: string) =>
+  day === cal.today && s.absence >= 0.16 ? 'A' : markFor(s, day);
+
 export function registerRoster(w: World, group: string, day: string): Student[] {
   if (group === 'matric-evening')
     return weekday(day) === 6 ? [] : w.students.filter((s) => s.evening && activeOn(s, day));
@@ -1540,7 +1553,7 @@ function attendanceStep(day: string): Step {
         const teacher = CLASS_TEACHER[g.key] === 'ayesha' ? userId('teacher') : userId('admin');
         // 08:xx Karachi for day classes, 16:xx for the evening batch.
         const takenAt = `${day}T${g.key === 'matric-evening' ? '11' : '03'}:${String(5 + gi).padStart(2, '0')}:00.000Z`;
-        const marks = roster.map((s) => ({ s: s.id, st: markFor(s, day) }));
+        const marks = roster.map((s) => ({ s: s.id, st: markOn(cal, s, day) }));
         stmts.push(
           sql`INSERT INTO att_register (id, client_id, grp_id, date, grp_subject_id, taken_by, taken_at, received_at, batch_token)
               VALUES (${reg}, ${`demo:${g.key}:${day}`}, ${grpId(g.key)}, ${day}, '', ${teacher}, ${takenAt}, ${takenAt}, 'demo')`,
@@ -1673,7 +1686,7 @@ const messagesStep: Step = {
         const byFam = new Map<string, Student[]>();
         const taken = new Set(registerGroups(cal, day).map((g) => g.key));
         for (const s of w.students)
-          if (activeOn(s, day) && taken.has(s.group) && markFor(s, day) === 'A')
+          if (activeOn(s, day) && taken.has(s.group) && markOn(cal, s, day) === 'A')
             byFam.set(s.familyId, [...(byFam.get(s.familyId) ?? []), s]);
         for (const [fid, kids] of byFam) {
           const f = famById.get(fid) as Family;
@@ -1921,6 +1934,27 @@ function monthPlan(cal: DemoCalendar, period: string): Map<string, Op[]> {
   return m;
 }
 
+/**
+ * Whether an op of `day` must not run again. Progress is saved per finished step (and at the end
+ * of an invocation), so a call cut short repeats a day's ops from the last saved one; several ops
+ * decide from live balances ("nothing due: skip", "the first fine left"), and run again later they
+ * would decide differently. Days run in date order, so once anything is dated after `day` the day
+ * is over and none of its ops runs again; within the day, a cash op never runs after the drawer
+ * is closed (closing is the day's last op). Cheaper than saving the cursor after every op, which
+ * would cost a state write per op (~1,300 a seed).
+ */
+async function dayDone(db: AppDb, day: string, op: Op): Promise<boolean> {
+  const [later] = await db.all<{ x: number }>(sql`
+    SELECT 1 AS x FROM cash_session WHERE business_date > ${day}
+    UNION ALL SELECT 1 FROM receipt WHERE business_date > ${day}
+    UNION ALL SELECT 1 FROM expense WHERE date > ${day}
+    LIMIT 1`);
+  if (later) return true;
+  if (!op.cash) return false;
+  const s = await sessionFor(db, userId('accountant'), day);
+  return !!s?.closed_at;
+}
+
 /** One step per office day (fixed list, cheap to build); days with nothing to do finish at once. */
 function dayStep(cal: DemoCalendar, period: string, day: string): Step {
   return {
@@ -1928,7 +1962,7 @@ function dayStep(cal: DemoCalendar, period: string, day: string): Step {
     run: async (ctx, sub) => {
       const ops = monthPlan(cal, period).get(day) ?? [];
       const op = ops[sub];
-      if (op) await op.run(ctx);
+      if (op && !(await dayDone(ctx.db, day, op))) await op.run(ctx);
       return sub + 1 < ops.length ? sub + 1 : null;
     },
   };

@@ -14,8 +14,10 @@ import {
   isQuotaError,
   markDemoDirty,
   seedDemo,
+  seedSteps,
   startDemoReset,
   startDemoUndo,
+  world,
 } from '../src/demo';
 import { collect, incomeExpense, reverseReceipt } from '../src/ledger';
 import { createTestDb } from '../src/node';
@@ -94,8 +96,8 @@ describe('demo dataset', () => {
 
   it('has the promised shape', async () => {
     expect(await n(db, 'SELECT count(*) n FROM school')).toBe(1);
-    expect(await n(db, 'SELECT count(*) n FROM student')).toBe(135);
-    expect(await n(db, 'SELECT count(*) n FROM family')).toBe(84);
+    expect(await n(db, 'SELECT count(*) n FROM student')).toBe(112);
+    expect(await n(db, 'SELECT count(*) n FROM family')).toBe(70);
     expect(await n(db, 'SELECT count(*) n FROM grp')).toBe(19);
     expect(await n(db, 'SELECT count(*) n FROM staff')).toBe(14);
     expect(await n(db, 'SELECT count(*) n FROM grp WHERE is_primary = 0')).toBe(2);
@@ -105,7 +107,7 @@ describe('demo dataset', () => {
         db,
         'SELECT count(*) n FROM (SELECT family_id FROM student GROUP BY 1 HAVING count(*) > 1)',
       ),
-    ).toBe(25);
+    ).toBe(21);
     expect(await n(db, 'SELECT count(*) n FROM concession')).toBe(12);
     expect(await n(db, 'SELECT count(*) n FROM sponsor')).toBe(3);
     expect(await n(db, 'SELECT count(*) n FROM opening_balance')).toBe(10);
@@ -120,7 +122,7 @@ describe('demo dataset', () => {
       3,
     );
     expect(await n(db, "SELECT count(*) n FROM receipt WHERE kind = 'payment'")).toBeGreaterThan(
-      350,
+      300,
     );
     expect(await n(db, "SELECT count(DISTINCT method) n FROM receipt WHERE kind = 'payment'")).toBe(
       4,
@@ -238,9 +240,11 @@ describe('demo dataset', () => {
     );
   });
 
-  it('works for any seed day: a month end, a Sunday, and a day past the session', async () => {
-    for (const today of ['2026-10-31', '2026-11-01', '2027-05-03']) {
+  it('works for any seed day: a month end, Sundays, a day past the session (reseeded over last week)', async () => {
+    for (const today of ['2026-10-31', '2026-11-01', '2027-02-14', '2027-05-03']) {
       const d = createTestDb();
+      const week = new Date(Date.parse(`${today}T00:00:00Z`) - 7 * 86_400_000);
+      await seedDemo(d, { parentSecret: SECRET, today: week.toISOString().slice(0, 10) });
       const c0 = await n(d, 'SELECT total_changes() n');
       const r = await seedDemo(d, { parentSecret: SECRET, today });
       expect(r.phase, today).toBe('done');
@@ -261,9 +265,17 @@ describe('demo dataset', () => {
     }
   }, 180_000);
 
-  it('fits the D1 write budget (docs/demo.md): a full seed ≤ DEMO_SEED_WRITES ≤ the cap', async () => {
-    const writes = await writesOf(db, changes);
-    console.log(`demo seed: ~${writes} D1 row writes (budget ${DEMO_SEED_WRITES})`);
+  it('fits the D1 write budget (docs/demo.md): a reseed over the demo ≤ DEMO_SEED_WRITES ≤ the cap', async () => {
+    const fresh = await writesOf(db, changes);
+    // The real cost: every reseed but the first wipes a seeded demo. The wipe drops children before
+    // parents so SQLite deletes no rows first, except in the tables that reference themselves.
+    const c0 = await n(db, 'SELECT total_changes() n');
+    await seedDemo(db, { parentSecret: SECRET, ownerEmail: 'owner@example.com', today: TODAY });
+    const writes = await writesOf(db, (await n(db, 'SELECT total_changes() n')) - c0);
+    console.log(
+      `demo seed: fresh ~${fresh}, over the demo ~${writes} D1 row writes (budget ${DEMO_SEED_WRITES})`,
+    );
+    expect(fresh).toBeLessThan(writes);
     expect(writes).toBeLessThanOrEqual(DEMO_SEED_WRITES);
     expect(DEMO_SEED_WRITES).toBeLessThanOrEqual(DEMO_SEED_WRITE_CAP);
     // Not so far under that the constant stops meaning anything.
@@ -338,6 +350,26 @@ describe('demo dataset', () => {
     expect(calls).toBeGreaterThan(demoPlan(TODAY).length);
     expect(await fingerprint(db2)).toEqual(await fingerprint(db));
   }, 180_000);
+
+  it('every step is idempotent: running them all again over a finished seed changes nothing', async () => {
+    const counts = async () =>
+      JSON.stringify(
+        await db.all(sql`SELECT (SELECT count(*) FROM charge) c, (SELECT count(*) FROM receipt) r,
+          (SELECT count(*) FROM receipt_allocation) a, (SELECT count(*) FROM expense) e,
+          (SELECT count(*) FROM cash_session) s, (SELECT count(*) FROM message) m,
+          (SELECT count(*) FROM audit) au, (SELECT count(*) FROM transfer) t,
+          (SELECT count(*) FROM payslip) p, (SELECT count(*) FROM salary_payment) sp`),
+      );
+    const before = await fingerprint(db);
+    const c0 = await counts();
+    const ctx = { db, w: world(CAL), cal: CAL, parentSecret: SECRET };
+    for (const step of seedSteps(CAL))
+      for (let sub: number | null = 0, i = 0; sub !== null && i < 500; i++)
+        sub = await step.run(ctx, sub);
+    expect(await counts()).toBe(c0);
+    expect(await fingerprint(db)).toEqual(before);
+    expect(await db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
+  }, 120_000);
 
   it('ids do not depend on the order a process asks for them (each Worker isolate is fresh)', async () => {
     const keys = ['user:accountant', 'account:drawer', 'head:tuition', 'user:principal', 'rate:x'];

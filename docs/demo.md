@@ -13,7 +13,7 @@ pilot (Global Science Academy) runs on its own installation, **https://maktab-gs
   current month. Everything is invented:
   names are common Pakistani names, phone numbers are in the fake `03XX 555 NNNN` and
   `042 3555 NNNN` blocks, and CNICs use the 555 block too.
-- 135 students in 84 families (25 with siblings). Classes run from Nursery to Class 10, with A/B
+- 112 students in 70 families (21 with siblings). Classes run from Nursery to Class 10, with A/B
   sections for Classes 4–8, plus an FSc Pre-Medical morning batch and a Matric evening batch. There
   are 14 staff, with class and subject teachers assigned.
 - Fees: tuition by programme, academy tuition, admission fee (mid-session joiners only), exam fee
@@ -21,25 +21,30 @@ pilot (Global Science Academy) runs on its own installation, **https://maktab-gs
   (1 September). There are 12 concessions, 3 sponsors (the trust pays every month, the other two
   once a quarter, so all three owe something) and 10 opening balances carried from the paper
   register.
-- Six monthly billing runs, the current month included (about 1,200 charges). About 420 receipts
+- Six monthly billing runs, the current month included (about 1,000 charges). About 350 receipts
   (cash, bank, JazzCash, one cheque). The completed months are about 95% collected; the current
   month only as far as today (most families pay by the due date, the 10th; late payers trickle in),
-  so there are about 40 families with dues. Some payments are partial and some in advance. There are
+  so there are about 35 families with dues. Some payments are partial and some in advance. There are
   four reversals (a typo re-entered, a JazzCash transfer reversed, an entry typed twice, a bounced
   cheque) and one refund, all in the completed months.
 - **Today** (when the seed day is an office day): five families paid cash at the counter, and the
   accountant's drawer is open with those receipts. Every earlier office day's drawer is closed, some
   with small variances, and cash is deposited at the bank every Saturday. Late fines and waivers.
+  The seed day's drawer is never closed by the seed: until the next reseed, the Cash page shows
+  that day's session as still open (on Tuesday to Sunday, Monday's), as a counter left open
+  overnight would. A visitor can close it; the nightly undo opens it again.
 - Expenses by category in every month, today's month included, one of them voided. 70 payslips
   approved and paid (14 staff, through last month; this month's are not prepared yet), and two
   salary advances recovered through payslips.
-- Registers for the **last 5 school days up to and including today**, about 5% absence. Today's are
+- Registers for the **last 5 school days up to and including today**, about 5% absence (today the
+  habitually absent children are away, so there is always someone to message about). Today's are
   partly taken: 12 of 19 groups, with Class 5 A (the demo teacher's), the evening batch and five
-  others still to do. Messages (about 215): absence rows (today's queued, earlier days sent or
+  others still to do. Messages (about 180): absence rows (today's queued, earlier days sent or
   skipped), fee-due and overdue reminders for the current month (last month's before the 14th), a
   notice to every family a week ago and payment receipts. 40 guardians have parent links.
 - The session stays 2026-27 (1 April 2026 – 31 March 2027); a seed day past its end stretches it to
-  the end of that month. The demo runs no fee cron, late fines or daily pass, so nothing writes rows
+  the end of that month. The calendar knows the gazetted holidays and the summer vacation (1 June –
+  13 August) through spring 2028; Islamic holidays after 2026 are estimates. The demo runs no fee cron, late fines or daily pass, so nothing writes rows
   on its own; the dataset ages until the next reseed (below).
 - Seeding locally as of another day: `DEMO_TODAY=2026-11-02 npm run seed:demo -w @maktab/db`.
 
@@ -54,15 +59,16 @@ the previous day's run used it up, and D1 refused writes for the rest of the UTC
   `charge` has 9 indexes (10 writes a row), `receipt` 6, `message` 5, `receipt_allocation` 3,
   `att_mark` and `audit` 2. Updates count too.
 - **A full reseed is budgeted at 33,000 row writes** (`DEMO_SEED_WRITES`; the cap is 35,000).
-  The cost depends a little on the seed day (more of the current month is collected later in the
-  month). Measured on a fresh database (`packages/db/test/demo-seed.test.ts`): 5,937 rows, ~32,200
-  writes for a mid-month day (2026-10-14); month ends ~32,100–32,400; the 5th of a month ~30,800.
-  Charges are the largest part (~12,000), then receipts and allocations, audit, registers and
-  messages. The test fails if a mid-month seed, a month end, a Sunday or a day past the session
-  grows past the budget. `npm run seed:demo` prints the plan before it starts and a measured figure
-  after; on a database that already holds the demo that figure over-counts (~41,000), because
-  SQLite's `DROP TABLE` with foreign keys on deletes the rows first and counts them, which D1 does
-  not (see the wipe below).
+  Every reseed but the first runs over a seeded demo, and that is what counts: the wipe empties the
+  six self-referencing tables row by row (about 3,000 writes, see the wipe below) before the new
+  dataset is written. The cost depends a little on the seed day. Measured over the previous demo
+  (`packages/db/test/demo-seed.test.ts`, which fails past the budget): ~31,400 writes for
+  2026-10-14 (5,274 rows; ~28,300 on a fresh database). A sweep of every seed day from 2026-10-14
+  to 2028-04-30, each reseeded over the day before, ranged from ~27,500 (summer vacation) to
+  **~31,400 at worst** (2027-02-28), 1,600 under the budget. Charges are the largest part
+  (~10,000), then receipts and allocations, audit, registers and messages. That is why the school
+  has 112 students: a reseed over the demo costs about 260 writes a student. `npm run seed:demo`
+  prints the plan before it starts and the same measurement after.
 - Why not more attendance: a register day costs about 3 writes a student (mark + 2 indexes) plus
   the register rows, ~420 writes a day here. Three months of registers would be ~25,000 writes on
   their own, so the demo keeps one week. Six months of money history is kept, because that is
@@ -108,7 +114,9 @@ photos, bill photos) are capped at 200 KB and 10 an hour per IP. Everything else
   (`demoReseedDue` in `apps/api/src/routes/demo.ts`), dated from that day: the undo only ever
   returns the demo to its seed day, so without it "today" would drift into the past (no registers
   or receipts today, a new month unbilled). It starts only if no reset ran this UTC day and D1 is
-  not in a quota backoff, costs ~33,000 writes and signs everyone out. Monday rather than Sunday:
+  not in a quota backoff, costs ~33,000 writes and signs everyone out. If 02:00 could not start it
+  (a reset already ran that UTC day, a quota backoff until 05:00 PKT, a deploy), any later tick
+  that day starts it, until the data is dated today (`anchor` in `GET /api/demo`). Monday rather than Sunday:
   Sunday is the school's weekly off, so a Sunday seed day has no counter and no registers to show.
   The 1st catches the new month's billing. Between reseeds the dataset ages: by Saturday "today"
   shows nothing collected or taken yet, as on a quiet morning.
@@ -117,7 +125,7 @@ photos, bill photos) are capped at 200 KB and 10 an hour per IP. Everything else
   ~33,000 writes and signs everyone out. Use it only on a quiet day, for example when an undo was
   skipped for its size.
 - Progress: `GET /api/demo` returns `{phase, step, total, step_name, started_at, finished_at, dirty,
-  last_error, backoff_until}`. `phase` is `running` (full reseed), `undoing` (nightly undo) or
+  last_error, backoff_until, anchor}`. `phase` is `running` (full reseed), `undoing` (nightly undo) or
   `done`.
 
 How a full reseed works (`packages/db/src/demo/runner.ts`):
@@ -129,11 +137,18 @@ How a full reseed works (`packages/db/src/demo/runner.ts`):
    undo log is dropped. `d1_migrations` and `_demo_state` are kept. This is not `DELETE`: D1 counts
    every deleted row and index entry as a row written, while a `DROP TABLE` costs a handful.
    Measured on 2026-10-13: `DELETE` of 1,000 indexed rows counted more than 1,000; `DROP TABLE`
-   counted 4.
+   counted 4. With foreign keys on (always, on D1) SQLite deletes a table's rows before dropping
+   it while another table still references it, so tables are dropped children first, in
+   `pragma_foreign_key_list` order. The six tables that reference themselves (`charge`, `receipt`,
+   `enrolment`, `grp`, `programme`, `user`) are still emptied row by row; their indexes are dropped
+   first so that costs one write a row plus the primary key (~3,000 writes, in the budget below).
 3. The dataset is rebuilt in about 140 resumable, idempotent steps
    (`packages/db/src/demo/steps.ts`). Ids are deterministic, receipts use idempotency keys, and
    every step checks whether its work is already done, so a call cut short by the CPU limit or a
-   lost response is simply run again. A lease stops the cron and the step route from running the
+   lost response is simply run again. A day's ops that decide from live balances ("nothing due",
+   "the first fine left") never run again once anything is dated after that day, or (cash ops)
+   once that day's drawer is closed; a test re-runs every step over a finished seed and finds
+   nothing changed. A lease stops the cron and the step route from running the
    same step at once. Money is written only through the ledger helpers. Each invocation runs up to
    12 step calls; a fee-generation chunk counts as 4, because 12 of them in one invocation exceeded
    the free plan's CPU limit (error 1102).
@@ -203,7 +218,9 @@ links use `PARENT_LINK_SECRET` from `apps/api/.dev.vars`. To see the demo UI loc
   cash receipts in an open drawer, 12 of 19 registers and queued absence messages. Other seed days
   (a month end, a Sunday, a day past the session) seed cleanly within budget. The seed fits
   `DEMO_SEED_WRITES` (≤ 35,000). A reset for the same seed day reproduces the same school, a seed
-  cut into one-call slices ends identical, and a reset refuses another school's database. The undo puts back exactly what a visitor changed (edits, a delete, a payment,
+  cut into one-call slices ends identical, running every step again over a finished seed changes
+  nothing, a reseed over the demo stays within budget (also for a month end, two Sundays and a day
+  past the session), and a reset refuses another school's database. The undo puts back exactly what a visitor changed (edits, a delete, a payment,
   a reversal) with every trigger restored, runs once a UTC day, and is skipped over 20,000 writes;
   quota errors are recognised.
 - `apps/api/test/demo.test.ts`: `DEMO_MODE` is set only on `[env.demo]` (never on `env.gsap` or
@@ -211,4 +228,4 @@ links use `PARENT_LINK_SECRET` from `apps/api/.dev.vars`. To see the demo UI loc
   roles, the locked routes answer `demo_locked` (even for the demo principal), uploads are capped,
   writes mark the demo dirty, only `OWNER_EMAIL` may reseed, the 02:00 tick undoes a visitor's
   change once a UTC day, and on a Monday (or the 1st) it reseeds in full, dated from that day,
-  once.
+  once; a reseed refused at 02:00 starts on a later tick that day.
