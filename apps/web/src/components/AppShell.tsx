@@ -455,7 +455,8 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
       {open && (
         <div
           id="account-menu"
-          className="absolute inset-x-0 bottom-full z-30 mb-2 flex flex-col gap-3 rounded-xl border bg-popover p-3 text-popover-foreground shadow-lg"
+          // Wider than the 240 px sidebar: at its width the theme options truncated to "A…".
+          className="absolute start-0 bottom-full z-30 mb-2 flex w-72 flex-col gap-3 rounded-xl border bg-popover p-3 text-popover-foreground shadow-lg"
         >
           <div className="flex items-center justify-between gap-2">
             <span className="text-meta font-semibold text-muted-foreground">
