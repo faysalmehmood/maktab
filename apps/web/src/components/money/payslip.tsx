@@ -637,7 +637,8 @@ export function PayslipPrint({
             {slip.payments.map((p) => (
               <tr key={p.id}>
                 <td>
-                  <DateText iso={p.date} lang={lang} /> · <bdi>{p.account_name}</bdi>
+                  <DateText iso={p.date} lang={lang} /> ·{' '}
+                  <bdi className="wrap">{p.account_name}</bdi>
                 </td>
                 <td className="end">
                   <N>{money(p.amount)}</N>

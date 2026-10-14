@@ -216,7 +216,10 @@ export function SponsorDetail() {
               key={sp.id}
               className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2"
             >
-              <Link to={`/students/${sp.student_id}`} className="font-medium hover:underline">
+              <Link
+                to={`/students/${sp.student_id}`}
+                className="inline-flex min-h-11 items-center font-medium hover:underline"
+              >
                 <bdi>{sp.student_name}</bdi>
               </Link>
               <Num>{`${sp.share_pct}%`}</Num>

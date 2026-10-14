@@ -402,6 +402,11 @@ bdi[dir="rtl"][lang="ur"] {
   /* "PKR 1,000" never breaks across lines, even in the 58 mm amount column. */
   white-space: nowrap;
 }
+/* Long free text (an account's name) may wrap: on a phone the A5 preview is narrower than paper. */
+.receipt bdi.wrap {
+  white-space: normal;
+  display: inline;
+}
 /* Urdu names inside the receipt keep Nastaliq (bdi is for isolation, not the font). */
 .receipt[lang="ur"] bdi:not(.num) {
   font-family: var(--font-urdu);

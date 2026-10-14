@@ -544,17 +544,20 @@ export function PayslipPrintPage() {
           {t('money.common.print')}
         </Button>
       </div>
-      <PayslipPrint
-        slip={slip}
-        lang={lang}
-        mark={
-          school?.has_logo ? (
-            <img src="/api/school/logo" alt="" className="receipt-logo" />
-          ) : (
-            <PrintBadge school={school} />
-          )
-        }
-      />
+      {/* As the receipt preview: the sheet never widens the page on a phone. */}
+      <div className="min-w-0 overflow-x-auto">
+        <PayslipPrint
+          slip={slip}
+          lang={lang}
+          mark={
+            school?.has_logo ? (
+              <img src="/api/school/logo" alt="" className="receipt-logo" />
+            ) : (
+              <PrintBadge school={school} />
+            )
+          }
+        />
+      </div>
     </section>
   );
 }
