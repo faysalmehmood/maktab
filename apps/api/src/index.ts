@@ -39,13 +39,14 @@ export default {
     const db = getDb({ DB: env.DB });
     ctx.waitUntil(
       (async () => {
-        // Demo (docs/demo.md): a running reset owns the tick; billing and the daily pass wait.
+        // Demo (docs/demo.md): only the demo's own reset runs. The demo school's calendar stops at
+        // September 2026, so no fee generation, late fines or daily pass: they would write rows every
+        // day that the nightly undo then has to take back (the D1 write budget).
         if (isDemo(env)) {
-          const busy = await demoTick(db, env).catch((err: unknown) => {
+          await demoTick(db, env).catch((err: unknown) => {
             console.error('demo reset step failed', err);
-            return true;
           });
-          if (busy) return;
+          return;
         }
         try {
           console.log(JSON.stringify({ cron: await runScheduled(db) }));

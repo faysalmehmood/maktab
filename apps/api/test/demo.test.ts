@@ -240,7 +240,7 @@ describe('DEMO_MODE=1', () => {
     expect((await demoStatus(db)).phase).toBe('done');
   });
 
-  it('the owner’s reset (and the 02:00 tick) wipe and reseed, ending on the same school', async () => {
+  it('only OWNER_EMAIL may reseed; the 02:00 tick undoes what visitors changed, once a UTC day', async () => {
     const before = await db.all(sql`SELECT count(*) AS n, sum(amount) AS s FROM receipt`);
     const owner = await signedInAs(db, ['owner'], 'owner2@example.com');
     // The real owner is OWNER_EMAIL; owner2 is just another owner and is refused.
@@ -253,20 +253,35 @@ describe('DEMO_MODE=1', () => {
         })
       ).status,
     ).toBe(403);
-    // 02:00 Karachi with the demo dirty: the tick starts the nightly reset and drives it.
-    await db.run(sql`UPDATE _demo_state SET value = '1' WHERE key = 'dirty'`);
-    const at = Date.parse('2026-10-14T21:00:30Z');
+    // A visitor changes a family; the 02:00 Karachi tick plays the undo log back (no reseed).
+    // (A helper session: the demo buttons' per-IP limit is used up by the tests above.)
+    const { cookie } = await signedInAs(db, ['owner'], 'visitor@example.com');
+    const [fam] = await db.all<{ id: string; area: string }>(
+      sql`SELECT id, area FROM family ORDER BY id DESC LIMIT 1`,
+    );
+    const patch = await app().request(`/api/families/${fam?.id}`, {
+      method: 'PATCH',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ area: 'DHA Phase 5' }),
+    });
+    expect(patch.status).toBeLessThan(400);
+    const areaNow = async () =>
+      (await db.all<{ area: string }>(sql`SELECT area FROM family WHERE id = ${fam?.id}`))[0]?.area;
+    expect(await areaNow()).toBe('DHA Phase 5');
+    const at = Date.parse('2027-01-05T21:00:30Z');
     expect(await demoTick(db, { ...env, ...demoEnv }, at)).toBe(true);
-    for (let i = 0; i < 200 && (await demoStatus(db)).phase === 'running'; i++)
+    for (let i = 0; i < 50 && (await demoStatus(db)).phase !== 'done'; i++)
       await demoTick(db, { ...env, ...demoEnv }, at + i * 60_000);
     const s = await demoStatus(db);
     expect(s.phase).toBe('done');
     expect(s.dirty).toBe(false);
+    expect(await areaNow()).toBe(fam?.area);
     expect(await db.all(sql`SELECT count(*) AS n, sum(amount) AS s FROM receipt`)).toEqual(before);
     expect(await db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
-    // Same day again: no second reset even if dirty.
-    await db.run(sql`UPDATE _demo_state SET value = '1' WHERE key = 'dirty'`);
+    // Same UTC day again: no second reset even with new changes.
+    await db.run(sql`UPDATE family SET area = 'Gulberg' WHERE id = ${fam?.id}`);
     expect(await demoTick(db, { ...env, ...demoEnv }, at + 10 * 60_000)).toBe(false);
+    expect((await demoStatus(db)).phase).toBe('done');
     expect(SECRET.length).toBeGreaterThan(31);
   }, 180_000);
 });

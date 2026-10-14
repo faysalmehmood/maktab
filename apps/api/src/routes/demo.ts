@@ -3,10 +3,14 @@ import {
   advanceDemoSeed,
   DEMO_USERS,
   type DemoLogin,
+  demoBackedOff,
   demoForcePending,
+  demoQuotaBackoff,
   demoStatus,
+  isQuotaError,
   markDemoDirty,
   startDemoReset,
+  startDemoUndo,
 } from '@maktab/db';
 import { newId } from '@maktab/shared';
 import { sql } from 'drizzle-orm';
@@ -171,7 +175,13 @@ export function demoRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       if (!resetLimit.take('reset'))
         throw new ApiError(429, 'rate_limited', 'The demo was reset recently; wait an hour');
       const db = c.get('db');
-      await startDemoReset(db, { reason: `manual by ${p.user.email}` });
+      try {
+        await startDemoReset(db, { reason: `manual by ${p.user.email}` });
+      } catch (err) {
+        if (err instanceof Error && /one reset a UTC day/.test(err.message))
+          throw new ApiError(429, 'rate_limited', 'The demo was already reset today (UTC)');
+        throw err;
+      }
       // The owner's own session goes with the wipe; the reset continues on the cron / step calls.
       return c.json(await advanceOnce(db, c.env, 10_000, 10), 202);
     },
@@ -186,12 +196,19 @@ export function demoRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         throw new ApiError(429, 'rate_limited', 'Too many requests; wait a minute');
       const db = c.get('db');
       let s = await demoStatus(db);
-      if (s.phase !== 'running') {
+      // D1 said the account's daily quota is used up: nothing until the next UTC midnight.
+      if (demoBackedOff(s)) return c.json(s);
+      if (s.phase !== 'running' && s.phase !== 'undoing') {
         const [school] = await safeAll<{ n: number }>(db, sql`SELECT count(*) AS n FROM school`);
-        // Nothing to do on a seeded demo; an empty database is seeded.
+        // Nothing to do on a seeded demo; an empty database is seeded (one reset a UTC day).
         const force = await demoForcePending(db);
         if (!force && (s.phase === 'done' || Number(school?.n ?? 0) > 0)) return c.json(s);
-        s = await startDemoReset(db, { reason: 'first seed' });
+        try {
+          s = await startDemoReset(db, { reason: 'first seed' });
+        } catch (err) {
+          if (err instanceof Error && /one reset a UTC day/.test(err.message)) return c.json(s);
+          throw err;
+        }
       }
       return c.json(await advanceOnce(db, c.env));
     },
@@ -199,27 +216,38 @@ export function demoRoutes(app: Hono<AppEnv>, table: RouteTable): void {
 }
 
 /**
- * The demo cron (every minute): continue a running reset; start the nightly one at 02:00 Karachi when
- * a visitor changed something since the last seed; seed an empty database. Returns true while a
- * reset is running (the fee cron and daily pass wait for it).
+ * The demo cron (every minute; docs/demo.md): continue a running reset; at 02:00 Karachi play back
+ * the undo log of what visitors changed (one reset a UTC day, capped at DEMO_UNDO_WRITE_CAP row
+ * writes); seed an empty database. Returns true while a reset is running. Nothing at all while D1's
+ * daily quota is used up (backoff until the next UTC midnight).
  */
 export async function demoTick(db: AppDb, env: Bindings, nowMs = Date.now()): Promise<boolean> {
-  let s = await demoStatus(db);
-  if (s.phase !== 'running') {
-    const k = new Date(nowMs + 5 * 3_600_000);
-    const today = k.toISOString().slice(0, 10);
-    const startedToday = s.started_at
-      ? new Date(Date.parse(s.started_at) + 5 * 3_600_000).toISOString().slice(0, 10) === today
-      : false;
+  try {
+    const s = await demoStatus(db);
+    if (demoBackedOff(s, nowMs)) return false;
+    if (s.phase === 'running' || s.phase === 'undoing') {
+      await advanceOnce(db, env);
+      return true;
+    }
     const [school] = await safeAll<{ n: number }>(db, sql`SELECT count(*) AS n FROM school`);
-    const empty = Number(school?.n ?? 0) === 0 || (await demoForcePending(db));
-    const nightly = k.getUTCHours() === 2 && s.dirty && !startedToday;
-    if (!empty && !nightly) return false;
-    s = await startDemoReset(db, {
-      reason: empty ? 'first seed' : 'nightly',
-      now: new Date(nowMs),
-    });
+    if (Number(school?.n ?? 0) === 0 || (await demoForcePending(db))) {
+      try {
+        await startDemoReset(db, { reason: 'first seed', now: new Date(nowMs) });
+      } catch (err) {
+        if (err instanceof Error && /one reset a UTC day/.test(err.message)) return false;
+        throw err;
+      }
+      await advanceOnce(db, env);
+      return true;
+    }
+    const karachiHour = new Date(nowMs + 5 * 3_600_000).getUTCHours();
+    if (karachiHour !== 2) return false;
+    const u = await startDemoUndo(db, { now: nowMs });
+    if (!u.started) return false;
+    await advanceOnce(db, env);
+    return true;
+  } catch (err) {
+    if (isQuotaError(err)) await demoQuotaBackoff(db, nowMs);
+    throw err;
   }
-  await advanceOnce(db, env);
-  return true;
 }

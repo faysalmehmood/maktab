@@ -3,14 +3,20 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AppDb } from '../src/client';
 import {
   advanceDemoSeed,
+  DEMO_SEED_WRITE_CAP,
+  DEMO_SEED_WRITES,
+  DEMO_UNDO_WRITE_CAP,
   DEMO_USERS,
   demoPlan,
   demoStatus,
+  estimateUndo,
+  isQuotaError,
   markDemoDirty,
   seedDemo,
   startDemoReset,
+  startDemoUndo,
 } from '../src/demo';
-import { incomeExpense } from '../src/ledger';
+import { collect, incomeExpense, reverseReceipt } from '../src/ledger';
 import { createTestDb } from '../src/node';
 
 const SECRET = 'test-parent-link-secret-at-least-32-characters';
@@ -45,10 +51,14 @@ async function fingerprint(db: AppDb) {
 
 describe('demo dataset', () => {
   let db: AppDb;
+  let changes0 = 0;
+  let changes = 0;
   beforeAll(async () => {
     db = createTestDb();
     const t0 = Date.now();
+    changes0 = await n(db, 'SELECT total_changes() n');
     const r = await seedDemo(db, { parentSecret: SECRET, ownerEmail: 'Owner@Example.com' });
+    changes = (await n(db, 'SELECT total_changes() n')) - changes0;
     expect(r.phase).toBe('done');
     // The brief: a local seed in well under two minutes.
     expect(Date.now() - t0).toBeLessThan(120_000);
@@ -56,8 +66,8 @@ describe('demo dataset', () => {
 
   it('has the promised shape', async () => {
     expect(await n(db, 'SELECT count(*) n FROM school')).toBe(1);
-    expect(await n(db, 'SELECT count(*) n FROM student')).toBe(300);
-    expect(await n(db, 'SELECT count(*) n FROM family')).toBe(190);
+    expect(await n(db, 'SELECT count(*) n FROM student')).toBe(135);
+    expect(await n(db, 'SELECT count(*) n FROM family')).toBe(84);
     expect(await n(db, 'SELECT count(*) n FROM grp')).toBe(19);
     expect(await n(db, 'SELECT count(*) n FROM staff')).toBe(14);
     expect(await n(db, 'SELECT count(*) n FROM grp WHERE is_primary = 0')).toBe(2);
@@ -67,8 +77,8 @@ describe('demo dataset', () => {
         db,
         'SELECT count(*) n FROM (SELECT family_id FROM student GROUP BY 1 HAVING count(*) > 1)',
       ),
-    ).toBe(57);
-    expect(await n(db, 'SELECT count(*) n FROM concession')).toBe(20);
+    ).toBe(25);
+    expect(await n(db, 'SELECT count(*) n FROM concession')).toBe(12);
     expect(await n(db, 'SELECT count(*) n FROM sponsor')).toBe(3);
     expect(await n(db, 'SELECT count(*) n FROM opening_balance')).toBe(10);
     expect(await n(db, 'SELECT count(*) n FROM parent_link')).toBe(40);
@@ -76,12 +86,12 @@ describe('demo dataset', () => {
     expect(await n(db, "SELECT count(*) n FROM payslip WHERE status = 'paid'")).toBe(84);
     expect(await n(db, "SELECT count(*) n FROM receipt WHERE kind = 'reversal'")).toBe(4);
     expect(await n(db, "SELECT count(*) n FROM receipt WHERE kind = 'refund'")).toBe(1);
-    expect(await n(db, "SELECT count(*) n FROM charge WHERE kind = 'fine'")).toBeGreaterThan(50);
+    expect(await n(db, "SELECT count(*) n FROM charge WHERE kind = 'fine'")).toBeGreaterThan(40);
     expect(await n(db, "SELECT count(*) n FROM charge WHERE kind = 'fine_waiver'")).toBeGreaterThan(
       3,
     );
     expect(await n(db, "SELECT count(*) n FROM receipt WHERE kind = 'payment'")).toBeGreaterThan(
-      800,
+      350,
     );
     expect(await n(db, "SELECT count(DISTINCT method) n FROM receipt WHERE kind = 'payment'")).toBe(
       4,
@@ -91,10 +101,12 @@ describe('demo dataset', () => {
       5,
     );
     expect(await n(db, 'SELECT count(*) n FROM expense WHERE voided_by IS NOT NULL')).toBe(1);
-    expect(await n(db, 'SELECT count(*) n FROM att_register')).toBeGreaterThan(400);
+    // One week of registers (the write budget): 5 school days × 19 groups.
+    expect(await n(db, 'SELECT count(DISTINCT date) n FROM att_register')).toBe(5);
+    expect(await n(db, 'SELECT count(*) n FROM att_register')).toBeGreaterThan(80);
     expect(await n(db, 'SELECT count(DISTINCT status) n FROM message')).toBe(3);
     expect(await n(db, 'SELECT count(DISTINCT template_key) n FROM message')).toBe(5);
-    expect(await n(db, 'SELECT count(*) n FROM audit')).toBeGreaterThan(1000);
+    expect(await n(db, 'SELECT count(*) n FROM audit')).toBeGreaterThan(700);
     // The fixed demo logins plus the installation owner (lower-cased).
     for (const email of [...Object.values(DEMO_USERS), 'owner@example.com'])
       expect(
@@ -115,11 +127,33 @@ describe('demo dataset', () => {
         db,
         "SELECT count(DISTINCT payer_id) n FROM charge_status WHERE payer_type = 'family' AND due > 0",
       ),
-    ).toBeGreaterThan(40);
+    ).toBeGreaterThan(20);
     // Absence 5–8% on the September registers.
     const abs = await n(db, "SELECT round(1000.0 * sum(status = 'A') / count(*)) n FROM att_mark");
     expect(abs).toBeGreaterThanOrEqual(40);
     expect(abs).toBeLessThanOrEqual(80);
+  });
+
+  it('fits the D1 write budget (docs/demo.md): a full seed ≤ DEMO_SEED_WRITES ≤ the cap', async () => {
+    // A D1 row write = the row + one per index on its table; updates and the runner's own state
+    // writes are counted twice (row + index), which over-counts a little.
+    const tables = await db.all<{ name: string; idx: number }>(sql`SELECT m.name,
+        (SELECT count(*) FROM sqlite_master i WHERE i.type = 'index' AND i.tbl_name = m.name) AS idx
+      FROM sqlite_master m WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite%'
+        AND m.name NOT IN ('d1_migrations', '__drizzle_migrations', '_demo_state', '_demo_undo')`);
+    let rows = 0;
+    let writes = 0;
+    for (const t of tables) {
+      const c = await n(db, `SELECT count(*) n FROM "${t.name}"`);
+      rows += c;
+      writes += c * (1 + t.idx);
+    }
+    writes += Math.max(0, changes - rows) * 2;
+    console.log(`demo seed: ${rows} rows, ~${writes} D1 row writes (budget ${DEMO_SEED_WRITES})`);
+    expect(writes).toBeLessThanOrEqual(DEMO_SEED_WRITES);
+    expect(DEMO_SEED_WRITES).toBeLessThanOrEqual(DEMO_SEED_WRITE_CAP);
+    // Not so far under that the constant stops meaning anything.
+    expect(writes).toBeGreaterThan(DEMO_SEED_WRITES * 0.9);
   });
 
   it('keeps every money rule: ledger_consistency empty, the P&L ties, no FK problem', async () => {
@@ -159,7 +193,12 @@ describe('demo dataset', () => {
     expect(await fingerprint(db)).toEqual(before);
     expect(await db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
     // The schema came back whole: every trigger and view the migrations made.
-    expect(await n(db, "SELECT count(*) n FROM sqlite_master WHERE type = 'trigger'")).toBe(97);
+    expect(
+      await n(
+        db,
+        "SELECT count(*) n FROM sqlite_master WHERE type = 'trigger' AND name NOT LIKE '!_demo!_%' ESCAPE '!'",
+      ),
+    ).toBe(97);
     expect(await n(db, "SELECT count(*) n FROM sqlite_master WHERE type = 'view'")).toBe(8);
   }, 180_000);
 
@@ -206,6 +245,119 @@ describe('demo dataset', () => {
       (await db3.all<{ value: string }>(sql`SELECT value FROM _demo_state WHERE key = 'plan'`))[0]
         ?.value,
     ).not.toBe('old-plan');
+  });
+
+  it('the nightly undo puts back exactly what a visitor changed, cheaply, once a UTC day', async () => {
+    const before = await fingerprint(db);
+    const extra = async () =>
+      JSON.stringify(
+        await db.all(sql`SELECT (SELECT group_concat(area) FROM family) a,
+          (SELECT count(*) FROM holiday) h, (SELECT count(*) FROM receipt) r`),
+      );
+    const before2 = await extra();
+    const one = async (q: string) => String((await db.all<{ v: string }>(sql.raw(q)))[0]?.v);
+    // A visitor's afternoon: edits, an insert, a delete, a bank payment and a reversal.
+    await db.run(
+      sql`UPDATE family SET area = 'Johar Town' WHERE id IN (SELECT id FROM family LIMIT 3)`,
+    );
+    await db.run(sql`DELETE FROM holiday WHERE rowid = (SELECT min(rowid) FROM holiday)`);
+    const fam = await one(
+      "SELECT payer_id v FROM charge_status WHERE payer_type = 'family' AND due > 0 LIMIT 1",
+    );
+    const bank = await one("SELECT id v FROM account WHERE kind = 'bank'");
+    const accountant = await one(
+      `SELECT id v FROM "user" WHERE email = '${DEMO_USERS.accountant}'`,
+    );
+    await collect(db, {
+      receiptId: 'VISITOR-RECEIPT-1',
+      payerType: 'family',
+      payerId: fam,
+      amount: 1000_00,
+      method: 'bank',
+      accountId: bank,
+      reference: 'TEST-1',
+      collectorId: accountant,
+      idempotencyKey: 'visitor:1',
+      businessDate: '2026-09-30',
+      today: '2026-09-30',
+    });
+    const target = await one(
+      "SELECT id v FROM receipt WHERE kind = 'payment' AND method = 'bank' AND id NOT IN (SELECT reverses_id FROM receipt WHERE reverses_id IS NOT NULL) LIMIT 1",
+    );
+    await reverseReceipt(db, {
+      receiptId: target,
+      byUserId: accountant,
+      reason: 'visitor test',
+      series: { series: 'AN', year: 2026 },
+      reversalId: 'VISITOR-REVERSAL-1',
+      businessDate: '2026-09-30',
+      cashSessionId: null,
+    });
+    expect(await extra()).not.toBe(before2);
+    const est = await estimateUndo(db);
+    expect(est.entries).toBeGreaterThan(5);
+    expect(est.writes).toBeLessThan(DEMO_UNDO_WRITE_CAP);
+
+    // A night well after the seeds above (each one counts as that UTC day's reset).
+    const at = Date.parse('2027-01-05T21:00:30Z');
+    const u = await startDemoUndo(db, { now: at });
+    expect(u).toMatchObject({ started: true });
+    for (let i = 0; i < 50 && (await demoStatus(db)).phase === 'undoing'; i++)
+      await advanceDemoSeed(db, { deadline: Number.POSITIVE_INFINITY, maxCalls: 4 });
+    expect((await demoStatus(db)).phase).toBe('done');
+    expect(await extra()).toBe(before2);
+    expect(await fingerprint(db)).toEqual(before);
+    expect(await db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
+    expect(await db.all(sql`PRAGMA foreign_key_check`)).toEqual([]);
+    expect(await n(db, 'SELECT count(*) n FROM _demo_undo')).toBe(0);
+    // The money guards and the log's own triggers are all back.
+    expect(
+      await n(
+        db,
+        "SELECT count(*) n FROM sqlite_master WHERE type = 'trigger' AND name NOT LIKE '!_demo!_%' ESCAPE '!'",
+      ),
+    ).toBe(97);
+    expect(
+      await n(
+        db,
+        "SELECT count(*) n FROM sqlite_master WHERE type = 'trigger' AND name LIKE '!_demo!_undo!_%' ESCAPE '!'",
+      ),
+    ).toBeGreaterThan(150);
+    // Logging again, and a second reset the same UTC day is refused.
+    await db.run(
+      sql`UPDATE family SET area = 'Model Town' WHERE id = (SELECT id FROM family LIMIT 1)`,
+    );
+    expect(await startDemoUndo(db, { now: at + 3_600_000 })).toEqual({
+      started: false,
+      reason: 'today',
+    });
+    await expect(startDemoReset(db, { reason: 'x', now: new Date(at) })).rejects.toThrow(/UTC day/);
+    // The next day it runs.
+    expect(await startDemoUndo(db, { now: at + 86_400_000 })).toMatchObject({ started: true });
+    for (let i = 0; i < 10 && (await demoStatus(db)).phase === 'undoing'; i++)
+      await advanceDemoSeed(db, { deadline: Number.POSITIVE_INFINITY });
+    expect(await fingerprint(db)).toEqual(before);
+  }, 60_000);
+
+  it('skips (and does not start) an undo that would cost more than the cap', async () => {
+    const big = Array.from(
+      { length: 3000 },
+      (_, i) => `(${1_000_000 + i}, 'charge', 'I', '{}', NULL)`,
+    );
+    await db.run(sql.raw(`INSERT INTO _demo_undo (id, tbl, op, pk, old) VALUES ${big.join(',')}`));
+    expect((await estimateUndo(db)).writes).toBeGreaterThan(DEMO_UNDO_WRITE_CAP);
+    const r = await startDemoUndo(db, { now: Date.parse('2027-02-01T21:00:00Z') });
+    expect(r).toMatchObject({ started: false, reason: 'over_budget' });
+    expect((await demoStatus(db)).last_error).toMatch(/undo skipped/);
+    await db.run(sql`DELETE FROM _demo_undo WHERE id >= 1000000`);
+  });
+
+  it('recognises a D1 quota error (then backs off until the next UTC midnight)', () => {
+    expect(isQuotaError(new Error('D1_ERROR: Exceeded maximum rows written per day'))).toBe(true);
+    expect(
+      isQuotaError(new Error('Failed query', { cause: new Error('daily limit reached') })),
+    ).toBe(true);
+    expect(isQuotaError(new Error('UNIQUE constraint failed: receipt.id'))).toBe(false);
   });
 
   it('refuses to wipe a database that belongs to another school', async () => {

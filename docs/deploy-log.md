@@ -207,6 +207,22 @@ installation, **starting empty** (no data copied from the old production databas
   2026-10-20 if ever needed. The old logo object stays in `maktab-files` (unreferenced).
 - Seeded remotely by the Worker itself (POST /api/demo/step loop); numbers in the M8/demo report.
 
+## 2026-10-14: D1 daily write limit reached (account-wide)
+- The 2026-10-13 seed (300 students, older plan) finished at 17:24 UTC. A reseed with the current
+  plan started at 02:49 UTC on the 14th (force flag, step loop + cron). Fee generation for May hit
+  error 1102 repeatedly (12 chunks an invocation); fixed by counting a generation chunk as 4 step
+  calls. At step 113 of 191 Cloudflare alerted that the account's free D1 limit (100k rows written
+  a day, shared with gsap) was reached.
+- Stopped: the step loop killed; env demo redeployed with `crons = []` (version b6b65da7), so
+  nothing advances the half-done reset. The demo shows a partial dataset until the next reseed.
+  gsap untouched (its D1 still empty).
+- Redesign (docs/demo.md "The D1 budget"): dataset cut to 135 students / 84 families, one week of
+  registers, ~33k row writes for a full seed; the nightly reset plays back an undo log (cost ≈ what
+  visitors wrote, cap 20k); one reset a UTC day; D1 quota errors stop the demo until 00:00 UTC; the
+  demo runs no fee cron or daily pass.
+- `BACKUP_REPORT_TOKEN`: set on env demo (random, unused there) and regenerated for env gsap and the
+  GitHub secret together (one value, never printed).
+
 ## Pending (user)
 1. Google Cloud console → the OAuth client → add redirect URI
    `https://maktab-gsap.conceptlix.com/api/auth/google/callback`; then

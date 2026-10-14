@@ -36,8 +36,9 @@ export function compareObjects(actual: readonly SchemaObject[], expected = expec
   return { missing, extra };
 }
 
+// `_demo_*`: the public demo's own undo-log triggers (packages/db/src/demo/undo.ts), not the schema's.
 export const MASTER_QUERY =
-  "SELECT type, name FROM sqlite_master WHERE type IN ('trigger', 'view', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY type, name";
+  "SELECT type, name FROM sqlite_master WHERE type IN ('trigger', 'view', 'index') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '!_demo!_%' ESCAPE '!' ORDER BY type, name";
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const problems = checkCustomSql();

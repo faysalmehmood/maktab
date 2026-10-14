@@ -30,7 +30,7 @@ import {
   waiveFine,
 } from '../ledger';
 import {
-  ATTENDANCE_MONTH,
+  attendanceDays,
   CLASS_TEACHER,
   DEMO_MONTHS,
   DEMO_SEED,
@@ -50,7 +50,6 @@ import {
   STAFF,
   type Student,
   SUBJECTS,
-  schoolDay,
   subjectTeachers,
   type World,
   weekday,
@@ -78,7 +77,12 @@ export type StepCtx = {
   /** The installation owner's Google address (OWNER_EMAIL): an extra owner login for the reset. */
   ownerEmail?: string;
 };
-export type Step = { name: string; run: (ctx: StepCtx, sub: number) => Promise<number | null> };
+export type Step = {
+  name: string;
+  run: (ctx: StepCtx, sub: number) => Promise<number | null>;
+  /** Step calls one run counts as against an invocation's maxCalls (default 1). */
+  cost?: number;
+};
 
 // ---- ids and small helpers ---------------------------------------------------------------------
 
@@ -533,7 +537,7 @@ type Pick = {
   note: string;
 };
 
-/** 20 concessions: 8 sibling, 5 needy, 4 scholarship, 3 topper (deterministic picks). */
+/** 12 concessions: 4 sibling, 4 needy, 2 scholarship, 2 topper (deterministic picks). */
 export function concessionPicks(w: World): Pick[] {
   const r = rng(DEMO_SEED + 7);
   const taken = new Set<string>();
@@ -552,7 +556,7 @@ export function concessionPicks(w: World): Pick[] {
     const fam = w.families.find((f) => f.id === s.familyId) as Family;
     return fam.students.length >= 3 && fam.students.indexOf(s) >= 2;
   });
-  take(younger, 8, (_, n) => ({
+  take(younger, 4, (_, n) => ({
     type: 'pct',
     value: n % 2 ? 15 : 10,
     reason: 'sibling',
@@ -565,7 +569,7 @@ export function concessionPicks(w: World): Pick[] {
     'Long illness in the family',
     'Flood-affected relatives',
   ];
-  take(eligible, 5, (_, n) => ({
+  take(eligible, 4, (_, n) => ({
     type: 'pct',
     value: [25, 30, 40, 50, 50][n - 1] as number,
     reason: 'needy',
@@ -573,18 +577,18 @@ export function concessionPicks(w: World): Pick[] {
   }));
   take(
     eligible.filter((s) => ['c8a', 'c8b', 'c9a', 'c10a'].includes(s.group)),
-    4,
+    2,
     (_, n) => ({
       type: 'pct',
-      value: n === 4 ? 100 : 50,
+      value: n === 2 ? 100 : 50,
       reason: 'scholarship',
       note:
-        n === 4 ? 'Full merit scholarship (Class 8 board, 1st in district)' : 'Merit scholarship',
+        n === 2 ? 'Full merit scholarship (Class 8 board, 1st in district)' : 'Merit scholarship',
     }),
   );
   take(
     eligible.filter((s) => ['c5a', 'c6b', 'c7a'].includes(s.group)),
-    3,
+    2,
     () => ({
       type: 'fixed',
       value: rupees(1000),
@@ -716,6 +720,9 @@ const concessionsStep: Step = {
 function generateStep(period: string): Step {
   return {
     name: `generate:${period}`,
+    // A generation chunk is heavy: 3 per invocation, like the fee cron (maxChunks); 12 of them ended
+    // in error 1102 (CPU exceeded) on generate:2026-05, 2026-10-14.
+    cost: 4,
     run: async ({ db }) => {
       const cur = await generationCursor(db, period);
       if (!cur) return null;
@@ -1555,7 +1562,7 @@ const messagesStep: Step = {
     if (sub === 0) {
       if (await exists(db, sql`SELECT 1 FROM message LIMIT 1`)) return null;
       // Absence: the last five school days of September, one row per family per day.
-      const days = daysOf(ATTENDANCE_MONTH).filter(schoolDay).slice(-5);
+      const days = attendanceDays().slice(-5);
       const rows: MsgRow[] = [];
       const lastSent = new Map<string, string>();
       for (const day of days) {
@@ -1699,7 +1706,7 @@ const messagesStep: Step = {
       ]);
       return 3;
     }
-    // Payment received: family payments of the last week of September.
+    // Payment received: family payments of the second half of September.
     const receipts = await db.all<{
       id: string;
       receipt_no: string;
@@ -1708,7 +1715,7 @@ const messagesStep: Step = {
       payer_id: string;
     }>(sql`
       SELECT id, receipt_no, amount, business_date, payer_id FROM receipt
-      WHERE kind = 'payment' AND payer_type = 'family' AND business_date >= '2026-09-24'
+      WHERE kind = 'payment' AND payer_type = 'family' AND business_date >= '2026-09-15'
         AND id NOT IN (SELECT reverses_id FROM receipt WHERE reverses_id IS NOT NULL)
       ORDER BY id`);
     const rows = receipts.flatMap((r) => {
@@ -1834,7 +1841,7 @@ export function seedSteps(): Step[] {
     steps.push(generateStep(period));
     for (const day of officeDays(period)) steps.push(dayStep(period, day));
   }
-  for (const day of daysOf(ATTENDANCE_MONTH).filter(schoolDay)) steps.push(attendanceStep(day));
+  for (const day of attendanceDays()) steps.push(attendanceStep(day));
   steps.push(messagesStep, parentLinksStep);
   cachedSteps = steps;
   return steps;

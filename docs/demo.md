@@ -10,27 +10,54 @@ pilot (Global Science Academy) runs on its own installation, **https://maktab-gs
   mode, session 2026-27, with six months of history (April–September 2026). Everything is invented:
   names are common Pakistani names, phone numbers are in the fake `03XX 555 NNNN` and
   `042 3555 NNNN` blocks, and CNICs use the 555 block too.
-- 300 students in 190 families (57 with siblings). Classes run from Nursery to Class 10, with A/B
+- 135 students in 84 families (25 with siblings). Classes run from Nursery to Class 10, with A/B
   sections for Classes 4–8, plus an FSc Pre-Medical morning batch and a Matric evening batch. There
   are 14 staff, with class and subject teachers assigned.
 - Fees: tuition by programme, academy tuition, admission fee (mid-session joiners only), exam fee
-  (Classes 5–10, second term) and an activity fund (Nursery–Class 3). There are 20 concessions, 3
+  (Classes 5–10, second term) and an activity fund (Nursery–Class 3). There are 12 concessions, 3
   sponsors and 10 opening balances.
-- Six monthly billing runs. About 950 receipts (cash, bank, JazzCash, one cheque), about 87%
-  collected and roughly 80 families with dues. Some payments are partial and some in advance. There
-  are four reversals (a typo re-entered, a JazzCash transfer reversed, an entry typed twice, a
-  bounced cheque) and one refund.
+- Six monthly billing runs (about 1,200 charges). About 420 receipts (cash, bank, JazzCash, one
+  cheque), about 90% collected and roughly 25 families with dues. Some payments are partial and some
+  in advance. There are four reversals (a typo re-entered, a JazzCash transfer reversed, an entry
+  typed twice, a bounced cheque) and one refund.
 - Late fines and waivers. The accountant's drawer is closed every office day, some days with small
   variances, and cash is deposited at the bank every Saturday.
 - Expenses by category, including one voided. 84 payslips approved and paid, and two salary
   advances recovered through payslips.
-- Registers for every school day of **September**, with 5–8% absence. Messages: absence rows
-  (sent, skipped and queued), fee-due and overdue reminders, a notice to every family and payment
-  receipts. 40 guardians have parent links.
+- Registers for the **last week of September** (5 school days), with 5–8% absence. Messages
+  (about 165): absence rows (sent, skipped and queued), fee-due and overdue reminders, a notice to
+  every family and payment receipts. 40 guardians have parent links.
+- The school's calendar stops at 30 September 2026: the demo runs no fee cron, late fines or daily
+  pass, so nothing writes rows on its own.
 
-Registers cover September only. A full six months of registers would be about 27,000 more rows,
-and every reseed counts against the Cloudflare account's free D1 limit of 100,000 rows written a
-day. That limit is shared with the GSA pilot.
+## The D1 budget
+
+The Cloudflare account's free D1 plan allows **100,000 rows written and 5,000,000 rows read a day**,
+reset at 00:00 UTC (05:00 PKT), for **all its databases together**: the demo and the GSA pilot share
+it. On 2026-10-14 a full reseed of the first, larger dataset (300 students, ~86k writes) on top of
+the previous day's run used it up, and D1 refused writes for the rest of the UTC day. So:
+
+- **A row write is the row plus one per index on its table.** That makes some tables dear:
+  `charge` has 9 indexes (10 writes a row), `receipt` 6, `message` 5, `receipt_allocation` 3,
+  `att_mark` and `audit` 2. Updates count too.
+- **A full reseed is budgeted at 33,000 row writes** (`DEMO_SEED_WRITES`; the cap is 35,000).
+  Measured on the local seed: 6,069 rows, ~32,450 writes, of which charges ~12,000, receipts and
+  allocations ~6,900, audit ~2,600, registers ~2,500, messages ~1,000. `npm run seed:demo` prints
+  the plan before it starts and the measured figure after; `packages/db/test/demo-seed.test.ts`
+  fails if the dataset grows past the budget.
+- Why not more attendance: a register day costs about 3 writes a student (mark + 2 indexes) plus
+  the register rows, ~420 writes a day here. Three months of registers would be ~25,000 writes on
+  their own, so the demo keeps one week. Six months of money history is kept, because that is
+  what the reports show.
+- **Nightly reset = undo, not reseed** (below): it costs about what visitors wrote that day
+  (a visitor's afternoon of edits, a payment and a reversal: ~135 writes). It is skipped, with an
+  alarm in the logs (`demo_alarm: undo_over_budget`), if it would cost more than **20,000**.
+- **At most one reset a UTC day** (full or undo), whoever asks.
+- **Quota guard:** if D1 refuses a write for a limit (`exceeded`, `quota`, `daily limit`), the demo
+  logs `demo_alarm: d1_quota` and runs nothing until the next 00:00 UTC (`backoff_until` in
+  `GET /api/demo`).
+- Reads: the step loop reads `_demo_state` and the current step's own rows; nothing scans
+  `att_mark` repeatedly. To check a seeded demo remotely, run one count query per table, once.
 
 **Sign-in.** The sign-in page has three buttons: **Try as principal** (owner), **Try as
 accountant** and **Try as teacher** (Ayesha Siddiqa, class teacher of Class 5 A, who also teaches
@@ -46,31 +73,43 @@ photos, bill photos) are capped at 200 KB and 10 an hour per IP. Everything else
 
 ## Reset schedule
 
-- Any successful write by a visitor marks the demo **dirty**. Sign-in and the parent page do not
-  count.
-- The demo's cron runs **every minute**. At **02:00 Asia/Karachi**, if the demo is dirty, it starts
-  a reset. Each tick then runs up to 12 step calls (more hits the free plan's CPU limit, error 1102), and the fee cron and daily pass
-  wait until the reset is done. A night nobody touched the demo costs nothing.
-- The owner (`OWNER_EMAIL` only, not the demo principal) can reset by hand:
-  `POST /api/demo/reset`, rate limited to 2 an hour. This signs everyone out.
+- Any successful write by a visitor marks the demo **dirty**, and every change to school data is
+  logged in `_demo_undo` (`packages/db/src/demo/undo.ts`): after the seed, each data table has
+  three `_demo_undo_<table>_{i,u,d}` triggers that record the key of an inserted row or the old
+  values of an updated or deleted one. Sign-in sessions (`user_session`) are not logged.
+- The demo's cron runs **every minute**. At **02:00 Asia/Karachi**, if the log has entries and no
+  reset ran this UTC day, it estimates the cost (one grouped read of the log), and if that is under
+  20,000 it **plays the log back**, newest first, 100 entries per D1 batch: each batch drops the
+  touched tables' guard and undo triggers, restores the rows, re-creates the triggers and deletes
+  the log rows, in one transaction, so the money guards are never off between batches. Changes made
+  while it runs wait for the next night. A night nobody touched the demo costs a few reads.
+- The owner (`OWNER_EMAIL` only, not the demo principal) can start a **full reseed** by hand:
+  `POST /api/demo/reset` (2 an hour, and refused if a reset already ran this UTC day). It costs
+  ~33,000 writes and signs everyone out. Use it only on a quiet day, for example when an undo was
+  skipped for its size.
 - Progress: `GET /api/demo` returns `{phase, step, total, step_name, started_at, finished_at, dirty,
-  last_error}`.
+  last_error, backoff_until}`. `phase` is `running` (full reseed), `undoing` (nightly undo) or
+  `done`.
 
-How a reset works (`packages/db/src/demo/runner.ts`):
+How a full reseed works (`packages/db/src/demo/runner.ts`):
 
-1. A snapshot of `sqlite_master` is saved in `_demo_state`.
-2. Every table, index, view and trigger is **dropped and re-created** from that snapshot.
-   `d1_migrations` and `_demo_state` are kept. This is not `DELETE`: D1 counts every deleted row
-   and index entry as a row written, while a `DROP TABLE` costs a handful. Measured on 2026-10-13:
-   `DELETE` of 1,000 indexed rows counted more than 1,000; `DROP TABLE` counted 4.
-3. The dataset is rebuilt in about 160 resumable, idempotent steps
+1. A snapshot of `sqlite_master` (without the demo's own `_demo_*` objects) is saved in
+   `_demo_state`.
+2. Every table, index, view and trigger is **dropped and re-created** from that snapshot, and the
+   undo log is dropped. `d1_migrations` and `_demo_state` are kept. This is not `DELETE`: D1 counts
+   every deleted row and index entry as a row written, while a `DROP TABLE` costs a handful.
+   Measured on 2026-10-13: `DELETE` of 1,000 indexed rows counted more than 1,000; `DROP TABLE`
+   counted 4.
+3. The dataset is rebuilt in about 140 resumable, idempotent steps
    (`packages/db/src/demo/steps.ts`). Ids are deterministic, receipts use idempotency keys, and
    every step checks whether its work is already done, so a call cut short by the CPU limit or a
    lost response is simply run again. A lease stops the cron and the step route from running the
-   same step at once. Money is written only through the ledger helpers.
+   same step at once. Money is written only through the ledger helpers. Each invocation runs up to
+   12 step calls; a fee-generation chunk counts as 4, because 12 of them in one invocation exceeded
+   the free plan's CPU limit (error 1102).
+4. The last step installs the undo-log triggers (about 180 schema writes).
 
-A full reseed writes on the order of 70k D1 rows. At most one runs a night, and only when the demo
-is dirty. Do not reset by hand more than once a day.
+`db:verify` ignores the `_demo_*` triggers.
 
 ## Re-deploy and re-seed
 
@@ -84,7 +123,8 @@ npm run db:verify -- --remote --env demo               # from the repo root
 To re-seed now, either:
 
 - sign in as the owner and `POST /api/demo/reset`, or
-- drive it from a terminal (the cron does the same, once a minute):
+- drive it from a terminal (the cron does the same, once a minute). Check the budget first: a
+  full reseed is ~33,000 of the account's 100,000 daily writes, shared with the GSA pilot:
 
   ```sh
   until curl -s -X POST https://maktab.conceptlix.com/api/demo/step \
@@ -105,7 +145,7 @@ npx wrangler d1 execute DB --remote --env demo --command \
    INSERT INTO _demo_state VALUES ('force', '1') ON CONFLICT (key) DO UPDATE SET value = '1';"
 ```
 
-Locally: `npm run db:migrate:local && npm run seed:demo -w @maktab/db` takes about 3 s. It wipes the
+Locally: `npm run db:migrate:local && npm run seed:demo -w @maktab/db` takes about 2 s. It wipes the
 local database first. Use `SEED_OWNER_EMAIL=<gmail>` to add your Google account as an owner. Parent
 links use `PARENT_LINK_SECRET` from `apps/api/.dev.vars`. To see the demo UI locally, add
 `DEMO_MODE=1` to `.dev.vars`.
@@ -126,11 +166,15 @@ links use `PARENT_LINK_SECRET` from `apps/api/.dev.vars`. To see the demo UI loc
 
 ## Guarantees (tests)
 
-- `packages/db/test/demo-seed.test.ts`: the dataset's shape, about 85% collection,
+- `packages/db/test/demo-seed.test.ts`: the dataset's shape, about 90% collection,
   `ledger_consistency` empty, the P&L reconciliation ties, every family has a guardian with a
-  number and all numbers are fake. A reset reproduces the same school, a seed cut into one-call
-  slices ends identical, and a reset refuses another school's database.
+  number and all numbers are fake. The seed fits `DEMO_SEED_WRITES` (≤ 35,000). A reset reproduces
+  the same school, a seed cut into one-call slices ends identical, and a reset refuses another
+  school's database. The undo puts back exactly what a visitor changed (edits, a delete, a payment,
+  a reversal) with every trigger restored, runs once a UTC day, and is skipped over 20,000 writes;
+  quota errors are recognised.
 - `apps/api/test/demo.test.ts`: `DEMO_MODE` is set only on `[env.demo]` (never on `env.gsap` or
   the top level). Without it every demo route is 404. With it, the buttons give each fixed user its
   roles, the locked routes answer `demo_locked` (even for the demo principal), uploads are capped,
-  writes mark the demo dirty, only `OWNER_EMAIL` may reset, and the 02:00 tick reseeds once a day.
+  writes mark the demo dirty, only `OWNER_EMAIL` may reseed, and the 02:00 tick undoes a
+  visitor's change once a UTC day.

@@ -69,9 +69,13 @@ crons = ["*/30 * * * *"]
 name = "maktab"
 routes = [{ pattern = "maktab.conceptlix.com", custom_domain = true }]
 
-# Every minute: a running reset advances up to 12 step calls a tick; otherwise one read, plus the usual
-# fee cron and daily pass (apps/api/src/index.ts). Two of the account's five free cron triggers
-# are in use (this and env gsap).
+# Every minute: a running reset advances up to 12 step calls a tick; at 02:00 Karachi the undo log of
+# visitors' changes is played back (one reset a UTC day, capped at 20k row writes); otherwise a
+# couple of reads. No fee cron or daily pass in the demo (apps/api/src/index.ts). After D1 refuses a
+# write for the daily quota, nothing runs until 00:00 UTC. Two of the account's five free cron
+# triggers are in use (this and env gsap).
+# 2026-10-14: deployed with crons = [] after the account hit D1's daily write limit; this line is
+# what the next deploy (after 00:00 UTC / 05:00 PKT) puts back.
 [env.demo.triggers]
 crons = ["* * * * *"]
 

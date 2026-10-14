@@ -10,6 +10,10 @@ export const DEMO_SEED = 20260401;
 export const DEMO_MONTHS = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
 /** Registers are seeded for this month only (see docs/demo.md: the D1 row-write budget). */
 export const ATTENDANCE_MONTH = '2026-09';
+/** Registers for the last week of school days only: a register day costs ~3 writes a student. */
+export const ATTENDANCE_DAYS = 5;
+export const attendanceDays = (): string[] =>
+  daysOf(ATTENDANCE_MONTH).filter(schoolDay).slice(-ATTENDANCE_DAYS);
 export const RECEIPT_PREFIX = 'AN';
 
 /** The fixed demo sign-ins (POST /api/auth/demo). Reserved `.invalid` TLD: never a real mailbox. */
@@ -327,18 +331,18 @@ export const PROGRAMMES: Programme[] = [
 ];
 
 const sized: [string, number[]][] = [
-  ['nursery', [17]],
-  ['prep', [17]],
-  ['c1', [20]],
-  ['c2', [20]],
-  ['c3', [20]],
-  ['c4', [15, 15]],
-  ['c5', [15, 15]],
-  ['c6', [15, 15]],
-  ['c7', [14, 14]],
-  ['c8', [14, 14]],
-  ['c9', [18]],
-  ['c10', [18]],
+  ['nursery', [8]],
+  ['prep', [8]],
+  ['c1', [9]],
+  ['c2', [9]],
+  ['c3', [9]],
+  ['c4', [7, 7]],
+  ['c5', [7, 7]],
+  ['c6', [7, 7]],
+  ['c7', [6, 6]],
+  ['c8', [6, 6]],
+  ['c9', [8]],
+  ['c10', [8]],
 ];
 export const GROUPS: Group[] = [
   ...sized.flatMap(([p, sizes]) =>
@@ -355,7 +359,7 @@ export const GROUPS: Group[] = [
     programme: 'fsc',
     name: 'Morning batch',
     primary: false,
-    size: 24,
+    size: 10,
     days: 'Mon-Sat',
     start: '08:00',
     end: '13:00',
@@ -365,7 +369,7 @@ export const GROUPS: Group[] = [
     programme: 'matric',
     name: 'Evening batch',
     primary: false,
-    size: 14,
+    size: 6,
     days: 'Mon-Fri',
     start: '16:00',
     end: '18:00',
@@ -671,7 +675,7 @@ const JOINERS: [string, string][] = [
   ['fsc-morning', '2026-08-17'],
 ];
 /** Leavers: withdrawn at the end of July (moved city), by student index. */
-export const LEAVER_INDEXES = [41, 133, 207];
+export const LEAVER_INDEXES = [41, 83, 118];
 
 let cached: World | null = null;
 
@@ -699,12 +703,13 @@ export function world(): World {
   for (const g of GROUPS) ids(`grp:${g.key}`);
   for (const s of STAFF) ids(`staff:${s.key}`);
 
-  // 300 seats; 190 families, 57 of them (30%) with siblings.
+  // 135 seats; 84 families, 25 of them (30%) with siblings. Sized to the D1 write budget
+  // (docs/demo.md): every student costs about 85 row writes over the six months.
   const seats = GROUPS.filter((g) => g.key !== 'matric-evening').flatMap((g) =>
     Array.from({ length: g.size }, () => g.key),
   );
-  const nFamilies = 190;
-  const multi = 57;
+  const nFamilies = 84;
+  const multi = 25;
   const sizes: number[] = Array.from({ length: nFamilies }, (_, i) => (i < multi ? 2 : 1));
   let extra = seats.length - sizes.reduce((a, b) => a + b, 0);
   while (extra > 0) {
@@ -874,9 +879,9 @@ export function world(): World {
     const s = students[i];
     if (s && s.start === '2026-04-01') s.leftOn = '2026-07-31';
   }
-  // Matric evening batch: 14 students of Classes 9 and 10.
+  // Matric evening batch: 6 students of Classes 9 and 10.
   const seniors = students.filter((s) => (s.group === 'c9a' || s.group === 'c10a') && !s.leftOn);
-  for (const s of seniors.filter((_, i) => i % 3 === 0).slice(0, 14))
+  for (const s of seniors.filter((_, i) => i % 3 === 0).slice(0, 6))
     s.evening = { enrolmentId: ids(`enrolment:${s.index}:evening`) };
 
   sealed = true;

@@ -2,6 +2,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import type { AppDb } from '../client';
 import { runBatch } from '../ledger/util';
 import { type Step, type StepCtx, seedSteps } from './steps';
+import { estimateUndo, installUndoLog, UNDO_TABLE, undoChunk, undoHead } from './undo';
 import { world } from './world';
 
 /**
@@ -23,6 +24,18 @@ export const DEMO_STATE_TABLE = '_demo_state';
 const KEEP = ['d1_migrations', '__drizzle_migrations', DEMO_STATE_TABLE];
 const LEASE_MS = 45_000;
 export const DEMO_SCHOOL_NAME = 'Al-Noor Community School';
+
+/**
+ * The D1 write budget (docs/demo.md). The account's free plan allows 100,000 rows written a day,
+ * shared with the GSA pilot. A row write is the row plus one per index on its table.
+ * DEMO_SEED_WRITES is a full reseed, measured on the local seed (rows × (1 + indexes) + updates);
+ * demo-seed.test.ts recomputes it and fails if the dataset grows past it.
+ */
+export const DEMO_SEED_WRITES = 33_000;
+/** No full reseed may be planned above this. */
+export const DEMO_SEED_WRITE_CAP = 35_000;
+/** The nightly undo is skipped (and an alarm logged) when playing the log back would cost more. */
+export const DEMO_UNDO_WRITE_CAP = 20_000;
 
 type SchemaRow = { type: string; name: string; tbl_name: string; sql: string };
 
@@ -53,6 +66,7 @@ const snapshotStep: Step = {
     if (st.schema) return null;
     const rows = await db.all<SchemaRow>(sql`SELECT type, name, tbl_name, sql FROM sqlite_master
       WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'
+        AND name NOT LIKE '!_demo!_%' ESCAPE '!' AND tbl_name NOT LIKE '!_demo!_%' ESCAPE '!'
         AND tbl_name NOT IN (SELECT value FROM json_each(${JSON.stringify(KEEP)}))
       ORDER BY rowid`);
     if (!rows.some((r) => r.type === 'table' && r.name === 'school'))
@@ -75,6 +89,8 @@ const dropStep: Step = {
       stmts.push(sql.raw(`DROP VIEW IF EXISTS ${q(r.name)}`));
     for (const r of [...rows].reverse().filter((x) => x.type === 'table'))
       stmts.push(sql.raw(`DROP TABLE IF EXISTS ${q(r.name)}`));
+    // The undo log (its triggers went with their tables): the reseed must not be logged.
+    stmts.push(sql.raw(`DROP TABLE IF EXISTS ${UNDO_TABLE}`));
     await runBatch(db, stmts);
     return null;
   },
@@ -100,9 +116,18 @@ const createStep: Step = {
 
 const WIPE: Step[] = [snapshotStep, dropStep, createStep];
 
+/** Last: from now on every change is logged, so the nightly reset can undo just that (undo.ts). */
+const undoInstallStep: Step = {
+  name: 'undo:install',
+  run: async ({ db }) => {
+    await installUndoLog(db);
+    return null;
+  },
+};
+
 let all: Step[] | null = null;
 export function demoPlan(): Step[] {
-  if (!all) all = [...WIPE, ...seedSteps()];
+  if (!all) all = [...WIPE, ...seedSteps(), undoInstallStep];
   return all;
 }
 
@@ -127,8 +152,11 @@ export function demoPlanSignature(): string {
 // ---- state ----------------------------------------------------------------------------------------
 
 export type DemoStatus = {
-  /** idle = never seeded here; running = a reset is under way; done = seeded. */
-  phase: 'idle' | 'running' | 'done';
+  /**
+   * idle = never seeded here; running = a full reseed is under way; undoing = the nightly undo of
+   * visitors' changes is under way; done = seeded.
+   */
+  phase: 'idle' | 'running' | 'undoing' | 'done';
   step: number;
   total: number;
   step_name: string | null;
@@ -137,6 +165,8 @@ export type DemoStatus = {
   /** Someone changed data since the last seed (the nightly reset only runs then). */
   dirty: boolean;
   last_error: string | null;
+  /** Set after D1 refused a write for the account's daily limit: nothing runs before then. */
+  backoff_until: string | null;
 };
 
 export async function demoStatus(db: AppDb): Promise<DemoStatus> {
@@ -154,8 +184,45 @@ export async function demoStatus(db: AppDb): Promise<DemoStatus> {
     finished_at: st.finished_at ?? null,
     dirty: st.dirty === '1',
     last_error: st.last_error ?? null,
+    backoff_until: st.backoff_until ?? null,
   };
 }
+
+// ---- the daily budget guards --------------------------------------------------------------------
+
+const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const nextUtcMidnight = (ms: number) =>
+  new Date(Date.parse(`${utcDay(ms)}T00:00:00Z`) + 86_400_000).toISOString();
+
+/** D1's answer once the account's daily rows read / written are used up (or the DB is full). */
+export function isQuotaError(err: unknown): boolean {
+  const msgs: string[] = [];
+  for (let e: unknown = err, i = 0; e && i < 5; i++) {
+    msgs.push(e instanceof Error ? e.message : String(e));
+    e = e instanceof Error ? (e as Error & { cause?: unknown }).cause : undefined;
+  }
+  return /exceeded|quota|daily limit|limit (?:has been )?reached|usage limit/i.test(msgs.join(' '));
+}
+
+/** Per isolate: the state write below fails too while the quota is used up. */
+let memBackoff = 0;
+
+/** Stop every demo write until the next UTC midnight, when D1's daily counters reset. */
+export async function demoQuotaBackoff(db: AppDb, nowMs = Date.now()): Promise<string> {
+  const until = nextUtcMidnight(nowMs);
+  memBackoff = Date.parse(until);
+  console.error(JSON.stringify({ demo_alarm: 'd1_quota', backoff_until: until }));
+  await runBatch(db, setState({ backoff_until: until })).catch(() => {});
+  return until;
+}
+
+export function demoBackedOff(s: Pick<DemoStatus, 'backoff_until'>, nowMs = Date.now()): boolean {
+  return nowMs < memBackoff || (!!s.backoff_until && nowMs < Date.parse(s.backoff_until));
+}
+
+/** A reset (full or undo) already started this UTC day: at most one a day. */
+const resetToday = (st: Record<string, string>, nowMs: number) =>
+  st.last_reset_day === utcDay(nowMs);
 
 /**
  * Starts a reset (or the first seed). Refuses a database that holds another school unless it is
@@ -164,9 +231,14 @@ export async function demoStatus(db: AppDb): Promise<DemoStatus> {
  */
 export async function startDemoReset(
   db: AppDb,
-  o: { reason: string; now?: Date; force?: boolean },
+  o: { reason: string; now?: Date; force?: boolean; daily?: boolean },
 ): Promise<DemoStatus> {
   await ensureState(db);
+  if (DEMO_SEED_WRITES > DEMO_SEED_WRITE_CAP)
+    throw new Error(`demo reset refused: a reseed would write ~${DEMO_SEED_WRITES} rows`);
+  const nowMs = (o.now ?? new Date()).getTime();
+  if (o.daily !== false && resetToday(await getState(db), nowMs))
+    throw new Error('demo reset refused: one reset a UTC day (the D1 write budget)');
   let school: { name: string } | undefined;
   try {
     [school] = await db.all<{ name: string }>(sql`SELECT name FROM school LIMIT 1`);
@@ -191,9 +263,54 @@ export async function startDemoReset(
       dirty: '0',
       force: null,
       plan: demoPlanSignature(),
+      last_reset_day: utcDay(nowMs),
     }),
   );
+  console.log(JSON.stringify({ demo_reset: o.reason, planned_writes: DEMO_SEED_WRITES }));
   return demoStatus(db);
+}
+
+export type UndoStart =
+  | { started: true; entries: number; writes: number }
+  | { started: false; reason: 'empty' | 'today' | 'over_budget' | 'busy'; writes?: number };
+
+/**
+ * The nightly reset: plays the undo log back (undo.ts). Never more than one reset a UTC day, and
+ * never above DEMO_UNDO_WRITE_CAP: then it logs an alarm and leaves the demo as it is (the owner can
+ * reseed by hand on a quiet day).
+ */
+export async function startDemoUndo(
+  db: AppDb,
+  o: { now?: number; daily?: boolean } = {},
+): Promise<UndoStart> {
+  await ensureState(db);
+  const nowMs = o.now ?? Date.now();
+  const st = await getState(db);
+  if (st.phase === 'running' || st.phase === 'undoing') return { started: false, reason: 'busy' };
+  if (o.daily !== false && resetToday(st, nowMs)) return { started: false, reason: 'today' };
+  const upTo = await undoHead(db);
+  if (!upTo) return { started: false, reason: 'empty' };
+  const est = await estimateUndo(db, upTo);
+  if (est.writes > DEMO_UNDO_WRITE_CAP) {
+    const msg = `undo skipped: ${est.entries} changes would cost ~${est.writes} row writes (cap ${DEMO_UNDO_WRITE_CAP})`;
+    console.error(JSON.stringify({ demo_alarm: 'undo_over_budget', ...est }));
+    await runBatch(db, setState({ last_error: msg, last_reset_day: utcDay(nowMs) }));
+    return { started: false, reason: 'over_budget', writes: est.writes };
+  }
+  await runBatch(
+    db,
+    setState({
+      phase: 'undoing',
+      undo_upto: String(upTo),
+      started_at: new Date(nowMs).toISOString(),
+      finished_at: null,
+      last_error: null,
+      reason: 'nightly undo',
+      last_reset_day: utcDay(nowMs),
+    }),
+  );
+  console.log(JSON.stringify({ demo_undo: est }));
+  return { started: true, entries: est.entries, writes: est.writes };
 }
 
 /**
@@ -212,25 +329,31 @@ export async function markDemoDirty(db: AppDb): Promise<void> {
 
 export type AdvanceResult = DemoStatus & { calls: number; leased: boolean };
 
+type AdvanceOpts = {
+  deadline: number;
+  maxCalls?: number;
+  parentSecret?: string;
+  ownerEmail?: string;
+  now?: () => number;
+};
+
+/** A heavy undo chunk (one batch of up to UNDO_CHUNK restores) counts as this many step calls. */
+const UNDO_CHUNK_COST = 4;
+
 /**
- * Runs steps until `deadline` (ms since epoch) or `maxCalls` step calls, holding a lease so a cron
- * tick and an HTTP step never run the same step at once. Progress is saved after every finished
- * step and at the end; a call cut off in the middle is repeated next time (steps are idempotent).
+ * Runs a reset forward until `deadline` (ms since epoch) or `maxCalls` step calls, holding a lease
+ * so a cron tick and an HTTP step never run the same work at once: the full reseed's steps
+ * (phase running) or the undo log's chunks (phase undoing). Progress is saved after every finished
+ * step and at the end; a call cut off in the middle is repeated next time (steps are idempotent,
+ * an undo chunk is one transaction). A D1 quota error stops everything until the next UTC midnight.
  */
-export async function advanceDemoSeed(
-  db: AppDb,
-  o: {
-    deadline: number;
-    maxCalls?: number;
-    parentSecret?: string;
-    ownerEmail?: string;
-    now?: () => number;
-  },
-): Promise<AdvanceResult> {
+export async function advanceDemoSeed(db: AppDb, o: AdvanceOpts): Promise<AdvanceResult> {
   await ensureState(db);
   const now = o.now ?? Date.now;
   const st0 = await getState(db);
-  if (st0.phase !== 'running') return { ...(await demoStatus(db)), calls: 0, leased: false };
+  const idle = async () => ({ ...(await demoStatus(db)), calls: 0, leased: false });
+  if (st0.phase !== 'running' && st0.phase !== 'undoing') return idle();
+  if (demoBackedOff({ backoff_until: st0.backoff_until ?? null }, now())) return idle();
   const token = `${new Date(now() + LEASE_MS).toISOString()}|${Math.random().toString(36).slice(2)}`;
   await db.run(
     sql`INSERT INTO _demo_state (key, value) VALUES ('lease', '0') ON CONFLICT (key) DO NOTHING`,
@@ -240,8 +363,32 @@ export async function advanceDemoSeed(
   const [lease] = await db.all<{ value: string }>(
     sql`SELECT value FROM _demo_state WHERE key = 'lease'`,
   );
-  if (lease?.value !== token) return { ...(await demoStatus(db)), calls: 0, leased: false };
+  if (lease?.value !== token) return idle();
+  let calls = 0;
+  try {
+    calls =
+      st0.phase === 'undoing' ? await runUndo(db, st0, o, now) : await runSeed(db, st0, o, now);
+  } catch (err) {
+    if (isQuotaError(err)) await demoQuotaBackoff(db, now());
+    throw err;
+  } finally {
+    try {
+      await db.run(
+        sql`UPDATE _demo_state SET value = '0' WHERE key = 'lease' AND value = ${token}`,
+      );
+    } catch {
+      // Quota or a lost connection: the lease expires by itself (LEASE_MS).
+    }
+  }
+  return { ...(await demoStatus(db)), calls, leased: true };
+}
 
+async function runSeed(
+  db: AppDb,
+  st0: Record<string, string>,
+  o: AdvanceOpts,
+  now: () => number,
+): Promise<number> {
   const plan = demoPlan();
   if (st0.plan !== demoPlanSignature()) {
     // Started by another version of the plan: begin again from the wipe (see demoPlanSignature).
@@ -259,7 +406,7 @@ export async function advanceDemoSeed(
     while (step < plan.length && now() < o.deadline && calls < (o.maxCalls ?? Infinity)) {
       const s = plan[step] as Step;
       const next = await s.run(ctx, sub);
-      calls++;
+      calls += s.cost ?? 1;
       if (next === null) {
         step++;
         sub = 0;
@@ -278,10 +425,41 @@ export async function advanceDemoSeed(
     const msg = `${plan[step]?.name ?? '?'}#${sub}: ${err instanceof Error ? err.message : String(err)}`;
     await save({ last_error: msg.slice(0, 1000) }).catch(() => {});
     throw err;
-  } finally {
-    await db.run(sql`UPDATE _demo_state SET value = '0' WHERE key = 'lease' AND value = ${token}`);
   }
-  return { ...(await demoStatus(db)), calls, leased: true };
+  return calls;
+}
+
+async function runUndo(
+  db: AppDb,
+  st0: Record<string, string>,
+  o: AdvanceOpts,
+  now: () => number,
+): Promise<number> {
+  const upTo = Number(st0.undo_upto ?? 0);
+  let calls = 0;
+  try {
+    while (now() < o.deadline && calls < (o.maxCalls ?? Infinity)) {
+      const n = await undoChunk(db, upTo);
+      calls += UNDO_CHUNK_COST;
+      if (n === 0) {
+        await runBatch(
+          db,
+          setState({
+            phase: 'done',
+            finished_at: new Date(now()).toISOString(),
+            undo_upto: null,
+            dirty: '0',
+          }),
+        );
+        break;
+      }
+    }
+  } catch (err) {
+    const msg = `undo: ${err instanceof Error ? err.message : String(err)}`;
+    await runBatch(db, setState({ last_error: msg.slice(0, 1000) })).catch(() => {});
+    throw err;
+  }
+  return calls;
 }
 
 /** The whole reset in one process (local script and tests): no deadline. */
@@ -289,7 +467,7 @@ export async function seedDemo(
   db: AppDb,
   o: { parentSecret?: string; ownerEmail?: string; force?: boolean } = {},
 ): Promise<AdvanceResult> {
-  await startDemoReset(db, { reason: 'local seed', force: o.force });
+  await startDemoReset(db, { reason: 'local seed', force: o.force, daily: false });
   let r: AdvanceResult;
   do r = await advanceDemoSeed(db, { deadline: Number.POSITIVE_INFINITY, ...o });
   while (r.phase === 'running' && r.leased);
