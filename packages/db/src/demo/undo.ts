@@ -32,15 +32,16 @@ const path = (c: string) => lit(`$.${q(c)}`);
 
 /** The tables the undo log covers, with their columns (generated columns excluded) and keys. */
 export async function trackedTables(db: AppDb, only?: string[]): Promise<Tracked[]> {
+  // `only`: the columns of just those tables (one read of sqlite_master, not a table_info of all).
   const rows = await db.all<Col>(sql`SELECT m.name AS tbl, p.name AS col, p.pk AS pk
     FROM sqlite_master m, pragma_table_info(m.name) p
     WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite!_%' ESCAPE '!'
       AND m.name NOT LIKE '!_cf!_%' ESCAPE '!' AND m.name NOT LIKE '!_demo!_%' ESCAPE '!'
       AND m.name NOT IN (SELECT value FROM json_each(${JSON.stringify(UNTRACKED)}))
+      AND (${only ? 1 : 0} = 0 OR m.name IN (SELECT value FROM json_each(${JSON.stringify(only ?? [])})))
     ORDER BY m.name, p.cid`);
   const by = new Map<string, Tracked>();
   for (const r of rows) {
-    if (only && !only.includes(r.tbl)) continue;
     let t = by.get(r.tbl);
     if (!t) {
       t = { name: r.tbl, cols: [], pk: [] };
@@ -70,8 +71,10 @@ export function undoTriggers(t: Tracked): string[] {
   ];
 }
 
-const dropUndoTriggers = (t: string) =>
-  triggerNames(t).map((n) => sql.raw(`DROP TRIGGER IF EXISTS ${q(n)}`));
+const dropUndoTriggers = (t: string, ops: Op[] = ['I', 'U', 'D']) =>
+  triggerNames(t)
+    .filter((_, i) => ops.includes((['I', 'U', 'D'] as const)[i] as Op))
+    .map((n) => sql.raw(`DROP TRIGGER IF EXISTS ${q(n)}`));
 
 /** Turns the undo log on (the last step of a full seed). About 200 schema writes, once. */
 export async function installUndoLog(db: AppDb): Promise<void> {
@@ -94,14 +97,29 @@ export async function installUndoLog(db: AppDb): Promise<void> {
 
 /** Drops the log and its triggers (the start of a full reset, so the reseed is not logged). */
 export function removeUndoLogStatements(tables: string[]): SQL[] {
-  return [...tables.flatMap(dropUndoTriggers), sql.raw(`DROP TABLE IF EXISTS ${UNDO_TABLE}`)];
+  return [
+    ...tables.flatMap((t) => dropUndoTriggers(t)),
+    sql.raw(`DROP TABLE IF EXISTS ${UNDO_TABLE}`),
+  ];
 }
 
-async function undoLogExists(db: AppDb): Promise<boolean> {
-  const r = await db.all(
-    sql`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ${UNDO_TABLE}`,
-  );
-  return r.length > 0;
+/**
+ * Reads the log, or null when there is none (before the first seed, during a reset). Not a look in
+ * sqlite_master: D1 counts every row of a scan as read, and sqlite_master holds ~470 rows (tables,
+ * indexes, ~280 triggers) — every minute's tick would read it.
+ */
+async function fromLog<T>(read: () => T | Promise<T>): Promise<T | null> {
+  try {
+    return await read();
+  } catch (err) {
+    const msgs: string[] = [];
+    for (let e: unknown = err, i = 0; e && i < 5; i++) {
+      msgs.push(e instanceof Error ? e.message : String(e));
+      e = e instanceof Error ? (e as Error & { cause?: unknown }).cause : undefined;
+    }
+    if (msgs.some((m) => m.includes(`no such table: ${UNDO_TABLE}`))) return null;
+    throw err;
+  }
 }
 
 export type UndoEstimate = { entries: number; writes: number; tables: number };
@@ -112,13 +130,23 @@ export type UndoEstimate = { entries: number; writes: number; tables: number };
  * One grouped read of the log (no table scans of the data).
  */
 export async function estimateUndo(db: AppDb, upTo?: number): Promise<UndoEstimate> {
-  if (!(await undoLogExists(db))) return { entries: 0, writes: 0, tables: 0 };
-  const rows = await db.all<{ tbl: string; n: number; idx: number; trg: number }>(sql`
-    SELECT u.tbl, u.n,
-      (SELECT count(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = u.tbl) AS idx,
-      (SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND tbl_name = u.tbl) AS trg
-    FROM (SELECT tbl, count(*) AS n FROM _demo_undo WHERE id <= ${upTo ?? Number.MAX_SAFE_INTEGER}
-          GROUP BY tbl) u`);
+  const log = await fromLog(() =>
+    db.all<{ tbl: string; n: number }>(sql`SELECT tbl, count(*) AS n FROM _demo_undo
+      WHERE id <= ${upTo ?? Number.MAX_SAFE_INTEGER} GROUP BY tbl`),
+  );
+  if (!log?.length) return { entries: 0, writes: 0, tables: 0 };
+  // One pass over sqlite_master for every table in the log (it has no index on tbl_name).
+  const counts = await db.all<{ tbl: string; idx: number; trg: number }>(sql`
+    SELECT tbl_name AS tbl, sum(type = 'index') AS idx, sum(type = 'trigger') AS trg
+    FROM sqlite_master WHERE type IN ('index', 'trigger')
+      AND tbl_name IN (SELECT value FROM json_each(${JSON.stringify(log.map((r) => r.tbl))}))
+    GROUP BY tbl_name`);
+  const by = new Map(counts.map((c) => [c.tbl, c]));
+  const rows = log.map((r) => ({
+    ...r,
+    idx: Number(by.get(r.tbl)?.idx ?? 0),
+    trg: Number(by.get(r.tbl)?.trg ?? 0),
+  }));
   let entries = 0;
   let writes = 0;
   for (const r of rows) {
@@ -132,18 +160,35 @@ export async function estimateUndo(db: AppDb, upTo?: number): Promise<UndoEstima
 
 /** The highest log id now (the playback stops there; later changes wait for the next night). */
 export async function undoHead(db: AppDb): Promise<number> {
-  if (!(await undoLogExists(db))) return 0;
-  const [r] = await db.all<{ m: number | null }>(sql`SELECT max(id) AS m FROM _demo_undo`);
-  return Number(r?.m ?? 0);
+  const r = await fromLog(() =>
+    db.all<{ m: number | null }>(sql`SELECT max(id) AS m FROM _demo_undo`),
+  );
+  return Number(r?.[0]?.m ?? 0);
 }
 
+type Op = 'I' | 'U' | 'D';
 type Entry = {
   id: number;
   tbl: string;
-  op: 'I' | 'U' | 'D';
+  op: Op;
   pk: string | null;
   old: string | null;
 };
+
+type Restore = 'INSERT' | 'UPDATE' | 'DELETE';
+/** The statement that undoes each kind of logged change. */
+const RESTORE: Record<Op, Restore> = { I: 'DELETE', U: 'UPDATE', D: 'INSERT' };
+/** The undo trigger a restore would fire: undoing an insert deletes (the `_d` trigger), … */
+const logged = (ops: Op[]): Op[] => ops.map((o) => ({ I: 'D', U: 'U', D: 'I' })[o] as Op);
+
+/** The event a trigger fires on, or null if its text is not understood (then it is dropped). */
+export function triggerEvent(text: string): Restore | null {
+  const m =
+    /^\s*CREATE\s+(?:TEMP\w*\s+)?TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]|[\w.]+)\s+(?:BEFORE\s+|AFTER\s+|INSTEAD\s+OF\s+)?(INSERT|UPDATE|DELETE)\b/i.exec(
+      text,
+    );
+  return m ? ((m[1] as string).toUpperCase() as Restore) : null;
+}
 
 function restoreStatement(e: Entry, t: Tracked): string {
   const where = (json: string, alias = '') =>
@@ -162,18 +207,38 @@ function restoreStatement(e: Entry, t: Tracked): string {
  * it restored (0 = the log is played back up to `upTo`).
  */
 export async function undoChunk(db: AppDb, upTo: number): Promise<number> {
-  if (!(await undoLogExists(db))) return 0;
-  const entries = await db.all<Entry>(sql`SELECT id, tbl, op, pk, old FROM _demo_undo
-    WHERE id <= ${upTo} ORDER BY id DESC LIMIT ${UNDO_CHUNK}`);
-  if (!entries.length) return 0;
+  const entries = await fromLog(() =>
+    db.all<Entry>(sql`SELECT id, tbl, op, pk, old FROM _demo_undo
+      WHERE id <= ${upTo} ORDER BY id DESC LIMIT ${UNDO_CHUNK}`),
+  );
+  if (!entries?.length) return 0;
   const names = [...new Set(entries.map((e) => e.tbl))];
+  // What each table's restores do: an insert is undone by a DELETE, a delete by an INSERT, an
+  // update by an UPDATE. Only the triggers on those events are dropped and re-made: each DROP
+  // TRIGGER is a scan of sqlite_master (~470 rows read on D1), so dropping every trigger of a table
+  // the log touched cost ~20,000 rows read for a handful of changes.
+  const events = new Map<string, Set<Restore>>();
+  const ops = new Map<string, Op[]>();
+  for (const e of entries) {
+    const ev = events.get(e.tbl) ?? new Set<Restore>();
+    ev.add(RESTORE[e.op]);
+    events.set(e.tbl, ev);
+    const o = ops.get(e.tbl) ?? [];
+    if (!o.includes(e.op)) o.push(e.op);
+    ops.set(e.tbl, o);
+  }
   const tables = new Map((await trackedTables(db, names)).map((t) => [t.name, t]));
-  const guards = await db.all<{ name: string; sql: string }>(sql`SELECT name, sql FROM sqlite_master
-    WHERE type = 'trigger' AND name NOT LIKE '!_demo!_%' ESCAPE '!'
-      AND tbl_name IN (SELECT value FROM json_each(${JSON.stringify(names)}))`);
+  const guards = (
+    await db.all<{ name: string; tbl: string; sql: string }>(sql`SELECT name, tbl_name AS tbl, sql
+    FROM sqlite_master WHERE type = 'trigger' AND name NOT LIKE '!_demo!_%' ESCAPE '!'
+      AND tbl_name IN (SELECT value FROM json_each(${JSON.stringify(names)}))`)
+  ).filter((g) => {
+    const on = triggerEvent(g.sql);
+    return !on || !!events.get(g.tbl)?.has(on);
+  });
   const stmts: SQL[] = [sql`PRAGMA defer_foreign_keys = ON`];
   for (const g of guards) stmts.push(sql.raw(`DROP TRIGGER IF EXISTS ${q(g.name)}`));
-  for (const n of names) stmts.push(...dropUndoTriggers(n));
+  for (const n of names) stmts.push(...dropUndoTriggers(n, logged(ops.get(n) ?? [])));
   for (const e of entries) {
     const t = tables.get(e.tbl);
     // A table dropped since (a migration): nothing to restore into.
@@ -183,7 +248,14 @@ export async function undoChunk(db: AppDb, upTo: number): Promise<number> {
   if (names.includes('user'))
     stmts.push(sql`DELETE FROM user_session WHERE user_id NOT IN (SELECT id FROM "user")`);
   for (const g of guards) stmts.push(sql.raw(g.sql));
-  for (const t of tables.values()) stmts.push(...undoTriggers(t).map(sql.raw));
+  for (const t of tables.values()) {
+    const again = new Set(logged(ops.get(t.name) ?? []));
+    stmts.push(
+      ...undoTriggers(t)
+        .filter((_, i) => again.has((['I', 'U', 'D'] as const)[i] as Op))
+        .map(sql.raw),
+    );
+  }
   const ids = entries.map((e) => e.id);
   stmts.push(
     sql`DELETE FROM _demo_undo WHERE id BETWEEN ${Math.min(...ids)} AND ${Math.max(...ids)}`,
