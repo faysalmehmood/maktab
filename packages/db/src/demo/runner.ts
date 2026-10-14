@@ -32,6 +32,13 @@ export const DEMO_SCHOOL_NAME = 'Al-Noor Community School';
  * demo-seed.test.ts recomputes it and fails if the dataset grows past it.
  */
 export const DEMO_SEED_WRITES = 33_000;
+/**
+ * The D1 read budget: rows read by a full reseed over the demo, measured on workerd's D1
+ * (apps/api/test/d1-demo-reads.test.ts fails past it). The account allows 5,000,000 a day.
+ */
+export const DEMO_SEED_READS = 400_000;
+/** No full reseed may be planned above this (the target is 1,000,000: a fifth of the daily reads). */
+export const DEMO_SEED_READ_CAP = 1_500_000;
 /** No full reseed may be planned above this. */
 export const DEMO_SEED_WRITE_CAP = 35_000;
 /** The nightly undo is skipped (and an alarm logged) when playing the log back would cost more. */
