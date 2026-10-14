@@ -2,12 +2,12 @@ import { type ComponentType, lazy, type ReactNode, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Route, Routes } from 'react-router';
 import { AppShell } from '@/components/AppShell';
+import { NotFoundPage } from '@/components/not-found';
 import { RequireAuth } from '@/components/RequireAuth';
 import { RequireGrant } from '@/components/RequireGrant';
 import { SetupGate } from '@/components/SetupGate';
 import type { GrantRef } from '@/lib/roles';
 import { Login } from '@/pages/Login';
-import { Placeholder } from '@/pages/Placeholder';
 
 // Office screens are split out so the teacher's phone does not download them up front; the dashboard
 // too (M7: it pulls the fee and attendance widgets, which the login screen never needs).
@@ -316,8 +316,9 @@ export function App() {
             </Loading>
           }
         />
+        {/* Inside the shell: a mistyped address keeps the navigation to get back. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
-      <Route path="*" element={<Placeholder title="common.error" />} />
     </Routes>
   );
 }

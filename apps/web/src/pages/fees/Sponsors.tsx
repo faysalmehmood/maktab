@@ -9,6 +9,7 @@ import { FeeLinesTable } from '@/components/fees/common';
 import { EndSponsorshipDialog, SponsorshipDialog } from '@/components/fees/dialogs';
 import { FeesTabs } from '@/components/fees/FeesTabs';
 import { ErrorNote, Field, Num } from '@/components/form';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import {
   EmptyState,
   ListRow,
@@ -151,6 +152,8 @@ export function SponsorDetail() {
         </Panel>
       </Page>
     );
+  if (isNotFound(q.error))
+    return <NotFoundState back={{ to: '/fees/sponsors', label: t('fee.sponsor.title') }} />;
   const s = q.data;
   if (!s) return <ErrorNote error={q.error} />;
   const today = karachiToday();

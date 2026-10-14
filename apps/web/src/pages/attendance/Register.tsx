@@ -17,6 +17,7 @@ import { Counts, DayOffNote, MarkBar, StatusChip } from '@/components/attendance
 import { Avatar } from '@/components/avatar';
 import { DateText } from '@/components/date-text';
 import { ErrorNote, Num, useErrorText } from '@/components/form';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import { ListSkeleton, Page, PageHeader, Panel, StatusBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import {
@@ -365,6 +366,8 @@ export function RegisterPage() {
         </Panel>
       </Page>
     );
+  if (isNotFound(reg.error))
+    return <NotFoundState back={{ to: '/attendance', label: t('attendance.title') }} />;
   if (!reg.data || !draft || !counts)
     return <ErrorNote error={reg.error ?? new Error('not_found')} />;
   const r = reg.data;

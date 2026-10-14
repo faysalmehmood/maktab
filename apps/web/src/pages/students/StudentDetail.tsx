@@ -49,6 +49,7 @@ import { type RowAction, RowMenu } from '@/components/row-menu';
 import { type TabItem, TabPanel, Tabs } from '@/components/segmented';
 import '@/i18n/screens';
 import { ParentLinkPanel } from '@/components/messages/ParentLinkPanel';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import { StudentAttendanceCard } from '@/components/students/attendance';
 import {
   emptyGuardian,
@@ -499,6 +500,8 @@ export function StudentDetail() {
         </Panel>
       </Page>
     );
+  if (isNotFound(student.error))
+    return <NotFoundState back={{ to: '/students', label: t('nav.students') }} />;
   if (!student.data) return <p role="alert">{t('common.notFound')}</p>;
   const s = student.data;
   const siblings = (family.data?.students ?? []).filter((x) => x.id !== s.id);

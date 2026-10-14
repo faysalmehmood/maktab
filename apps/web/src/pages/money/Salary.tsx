@@ -26,6 +26,7 @@ import {
   PayslipPrint,
 } from '@/components/money/payslip';
 import { MonthInput } from '@/components/month-input';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/sonner';
@@ -350,6 +351,8 @@ export function PayslipPage() {
     },
   });
   if (q.isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (isNotFound(q.error))
+    return <NotFoundState back={{ to: '/salary', label: t('money.salary.title') }} />;
   const slip = q.data?.payslip;
   if (!slip) return <ErrorNote error={q.error} />;
   const draft = slip.status === 'draft';
@@ -479,6 +482,7 @@ export function PayslipPrintPage() {
   const { t, i18n } = useTranslation();
   const { id } = useParams();
   const [params, setParams] = useSearchParams();
+  const roles = useRoles();
   const q = useQuery({
     queryKey: payslipKey(id),
     queryFn: () => getJson<{ payslip: PayslipDetailDto }>(`/api/payslips/${id}`),
@@ -488,6 +492,16 @@ export function PayslipPrintPage() {
   const p = params.get('lang');
   const lang: 'en' | 'ur' = p === 'ur' || p === 'en' ? p : i18n.language === 'ur' ? 'ur' : 'en';
   if (q.isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (isNotFound(q.error))
+    return (
+      <NotFoundState
+        back={
+          canPreparePayroll(roles)
+            ? { to: '/salary', label: t('money.salary.title') }
+            : { to: '/my/payslips', label: t('money.mine.title') }
+        }
+      />
+    );
   const slip = q.data?.payslip;
   if (!slip) return <ErrorNote error={q.error} />;
   const chip = (active: boolean) =>

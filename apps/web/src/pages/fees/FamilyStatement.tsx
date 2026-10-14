@@ -15,6 +15,7 @@ import {
 } from '@/components/fees/dialogs';
 import { ErrorNote, Num, PageTitle } from '@/components/form';
 import { FamilyParentLinks } from '@/components/messages/ParentLinkPanel';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -67,6 +68,7 @@ export function FamilyStatementPage() {
   const [dialog, setDialog] = useState<Dialog>(null);
   const close = (o: boolean) => !o && setDialog(null);
   if (q.isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (isNotFound(q.error)) return <NotFoundState back={{ to: '/fees', label: t('nav.fees') }} />;
   const f = q.data;
   if (!f) return <ErrorNote error={q.error} />;
   const admin = canConcession(roles);
