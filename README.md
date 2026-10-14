@@ -91,7 +91,7 @@ one-tap demo sign-ins as principal, accountant or teacher; data resets nightly
 Built and reviewed, not yet proven in a school. Milestones 0 to 7b are done: attendance, fees,
 expenses and salaries, reports, messaging, settings and backups, hardening, the full Urdu interface
 and the new design. The pilot gate (M7c: live nightly backups and a restore drill, checks on real
-Android phones) is next, followed by a first real month at Global Science Academy, Pakpattan.
+Android phones) is next, followed by a first real month at a community academy in Punjab.
 Details: [docs/PLAN.md](docs/PLAN.md) §15.
 
 **How it was built.** Each milestone was planned with its evidence in [docs/PLAN.md](docs/PLAN.md),
