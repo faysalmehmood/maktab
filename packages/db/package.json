@@ -11,6 +11,7 @@
   "scripts": {
     "generate": "drizzle-kit generate && tsx scripts/sync-custom-sql.ts",
     "seed": "tsx scripts/seed.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts",
     "verify": "tsx scripts/verify-db.ts",
     "backup:keygen": "tsx scripts/backup-keygen.ts",
     "sheet:export": "tsx scripts/sheet-export.ts",

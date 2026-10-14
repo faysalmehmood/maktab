@@ -171,3 +171,66 @@ Then: set the short name, city and colour in Settings → School (GSA: `GSA`, Pa
 `/api/identity*` to the WAF parent rule (docs/deploy.md §7) if the rule predates M7b.
 No other schema change: `GET /api/dashboard/month` gains a `previous` object (last month's income,
 spending, net) for the home strip's comparison, computed from the same five report queries.
+
+# 2026-10-13: two installations (GSA pilot + public demo)
+
+Decision (user): `maktab.conceptlix.com` becomes the public demo; the GSA pilot moves to its own
+installation, **starting empty** (no data copied from the old production database).
+
+## GSA pilot: `--env gsap`
+- D1 `maktab-gsap` (`3e0f42ab-c488-475b-8aea-28e85b5e4549`, WEUR): migrations 0000–0024 applied;
+  `db:verify --remote --env gsap`: 97 triggers (expected 97), 8 views (expected 8). Only the
+  migration-seeded rows (8 expense categories, 12 message templates).
+  (A first D1 of the same name, made while the plan was still "copy production", got a failed
+  import that rolled back and was deleted; the production export file was destroyed with `rm -P`.)
+- R2 `maktab-gsap-files` (new, empty). `BACKUPS` = `maktab-backups`.
+- Worker `maktab-gsap`, custom domain `maktab-gsap.conceptlix.com`, cron `*/30 * * * *`.
+- Vars: `APP_ORIGIN=https://maktab-gsap.conceptlix.com`, `OWNER_EMAIL=shahid.ics.pu@gmail.com`
+  (Shahid Iqbal, GSA's owner: his first Google sign-in claims the empty installation and starts the
+  setup wizard). No `DEMO_MODE`.
+- Secrets (each `openssl rand`, piped, never printed): `SESSION_SECRET`, `PARENT_LINK_SECRET`,
+  `BACKUP_REPORT_TOKEN` (one value, from a 0600 temp file into both the Worker and the GitHub
+  secret, then `rm -P`).
+- GitHub: variables `D1_DATABASE_NAME=maktab-gsap`, `APP_URL=https://maktab-gsap.conceptlix.com`;
+  secret `BACKUP_REPORT_TOKEN` replaced. `nightly-backup.yml` / `restore-drill.yml` export
+  `--env gsap` (`BACKUP_ENABLED` is still `false`).
+- Checks: `/api/health` 200 ok; `/api/identity` `{"school":null}`; `/` 200 HTML;
+  `/api/auth/google/start` 500 `misconfigured` (Google client secrets not set yet; see below).
+
+## Public demo: `--env demo` (Worker `maktab`, D1 `maktab`, R2 `maktab-files`)
+- `[env.production]` renamed `[env.demo]`: same Worker name, route and D1; `DEMO_MODE=1`,
+  `OWNER_EMAIL=thefaysalmehmood@gmail.com`, cron `* * * * *`, no `BACKUPS` binding. Secrets kept
+  (`SESSION_SECRET`, `PARENT_LINK_SECRET`, Google client); the old `BACKUP_REPORT_TOKEN` was
+  deleted from it (the GitHub secret now matches gsap's).
+- The old production rows (GSA's setup: school, 17 programmes, 10 subjects, 3 users) were wiped by
+  the demo reset (`force` flag, docs/demo.md); D1 Time Travel can still return them until
+  2026-10-20 if ever needed. The old logo object stays in `maktab-files` (unreferenced).
+- Seeded remotely by the Worker itself (POST /api/demo/step loop); numbers in the M8/demo report.
+
+## 2026-10-14: D1 daily write limit reached (account-wide)
+- The 2026-10-13 seed (300 students, older plan) finished at 17:24 UTC. A reseed with the current
+  plan started at 02:49 UTC on the 14th (force flag, step loop + cron). Fee generation for May hit
+  error 1102 repeatedly (12 chunks an invocation); fixed by counting a generation chunk as 4 step
+  calls. At step 113 of 191 Cloudflare alerted that the account's free D1 limit (100k rows written
+  a day, shared with gsap) was reached.
+- Stopped: the step loop killed; env demo redeployed with `crons = []` (version b6b65da7), so
+  nothing advances the half-done reset. The demo shows a partial dataset until the next reseed.
+  gsap untouched (its D1 still empty).
+- Redesign (docs/demo.md "The D1 budget"): dataset cut to 135 students / 84 families, one week of
+  registers, ~33k row writes for a full seed; the nightly reset plays back an undo log (cost ≈ what
+  visitors wrote, cap 20k); one reset a UTC day; D1 quota errors stop the demo until 00:00 UTC; the
+  demo runs no fee cron or daily pass.
+- `BACKUP_REPORT_TOKEN`: set on env demo (random, unused there) and regenerated for env gsap and the
+  GitHub secret together (one value, never printed).
+
+## Pending (user)
+1. Google Cloud console → the OAuth client → add redirect URI
+   `https://maktab-gsap.conceptlix.com/api/auth/google/callback`; then
+   `npx wrangler secret put GOOGLE_CLIENT_ID --env gsap` and `GOOGLE_CLIENT_SECRET` (same client).
+2. Tell Shahid Iqbal to sign in at maktab-gsap.conceptlix.com with shahid.ics.pu@gmail.com (he
+   becomes owner and runs the setup wizard); then invite thefaysalmehmood@gmail.com if you need
+   access to the pilot.
+3. WAF rate-limit rule (docs/deploy.md §7): its expressions name the host; extend the existing rule
+   to `maktab-gsap.conceptlix.com` (and keep `maktab.conceptlix.com` for the demo). Turnstile
+   widget hostnames likewise.
+4. M7c pilot gate items now apply to gsap (API token → first nightly run → restore drill).

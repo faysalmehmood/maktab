@@ -2,8 +2,8 @@
 # restore: docs/restore.md, practice: .github/workflows/restore-drill.yml.
 #
 # Enable by setting the repository variable BACKUP_ENABLED=true (forks and clones stay quiet).
-# Variables (optional): D1_DATABASE_NAME (default maktab), BACKUP_R2_BUCKET (default maktab-backups),
-#   APP_URL (default https://maktab.conceptlix.com: where the run is reported),
+# Variables (optional): D1_DATABASE_NAME (default maktab-gsap; informational, the export uses the --env gsap binding), BACKUP_R2_BUCKET (default maktab-backups),
+#   APP_URL (default https://maktab-gsap.conceptlix.com: where the run is reported),
 #   BACKUP_ALLOW_SHRINK=true (accept one dump that is less than half the previous size; set it after
 #   a deliberate big deletion, run, then remove it).
 # Keep-alive: GitHub disables scheduled workflows after 60 days without repository activity, so on the
@@ -29,7 +29,7 @@ permissions:
 concurrency: { group: nightly-backup, cancel-in-progress: false }
 env:
   R2_BUCKET: ${{ vars.BACKUP_R2_BUCKET || 'maktab-backups' }}
-  APP_URL: ${{ vars.APP_URL || 'https://maktab.conceptlix.com' }}
+  APP_URL: ${{ vars.APP_URL || 'https://maktab-gsap.conceptlix.com' }}
   WRANGLER_VERSION: 4.149.0
   WRANGLER_SEND_METRICS: "false"
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
-      # wrangler.toml (the production D1 binding), sql/ (names the dump must contain) and the Sheet
+      # wrangler.toml (the GSA pilot's D1 binding, env gsap; the demo is never backed up), sql/ (names the dump must contain) and the Sheet
       # script. Nothing is built.
       - uses: actions/checkout@v7
         with:
@@ -64,12 +64,12 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq age rclone
           mkdir -p apps/web/dist   # wrangler.toml's [assets] directory; unused by d1 commands
 
-      - name: Export D1 (remote, production)
+      - name: Export D1 (remote, GSA pilot: env gsap)
         working-directory: apps/api
         run: |
           set -euo pipefail
           umask 077
-          wrangler d1 export DB --remote --env production --output "$RUNNER_TEMP/dump.sql"
+          wrangler d1 export DB --remote --env gsap --output "$RUNNER_TEMP/dump.sql"
           D="$RUNNER_TEMP/dump.sql"
           test -s "$D"
           # Sanity: core tables, an owner, and every trigger/view/index packages/db/sql creates.

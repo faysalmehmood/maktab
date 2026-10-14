@@ -1,5 +1,4 @@
-import { formatPkPhone, type SchoolIdentityDto } from '@maktab/shared';
-import { useQuery } from '@tanstack/react-query';
+import { formatPkPhone } from '@maktab/shared';
 import { Phone } from 'lucide-react';
 import { type MouseEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -7,7 +6,8 @@ import { useSearchParams } from 'react-router';
 import { RunsOnMaktab, SchoolMark } from '@/components/brand/SchoolBadge';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { Button } from '@/components/ui/button';
-import { getJson } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
+import { useIdentity } from '@/lib/identity';
 import { useBrand } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { flushLogout, logoutPending } from '@/offline/logout';
@@ -36,13 +36,64 @@ function GoogleMark() {
 }
 
 /** The school's public face for this page (no session): GET /api/identity; null before setup. */
-export const useIdentity = () =>
-  useQuery({
-    queryKey: ['identity'],
-    queryFn: () => getJson<SchoolIdentityDto>('/api/identity'),
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
+export { useIdentity } from '@/lib/identity';
+
+/**
+ * The public demo (DEMO_MODE=1, docs/demo.md): three fixed staff accounts, no Google needed. A
+ * queued sign-out is sent first (as for Google sign-in), then a full navigation into the app.
+ */
+function DemoButtons() {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const go = async (as: 'principal' | 'accountant' | 'teacher') => {
+    setBusy(as);
+    setFailed(false);
+    try {
+      if (logoutPending()) await flushLogout();
+      await apiFetch('/api/auth/demo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ as }),
+      });
+      window.location.assign('/');
+    } catch {
+      setFailed(true);
+      setBusy(null);
+    }
+  };
+  const roles = [
+    ['principal', t('demo.asPrincipal')],
+    ['accountant', t('demo.asAccountant')],
+    ['teacher', t('demo.asTeacher')],
+  ] as const;
+  return (
+    <section
+      id="door-demo"
+      className="flex flex-col gap-2 rounded-xl border border-brand/30 bg-brand-soft p-4"
+    >
+      <h3 className="font-semibold">{t('demo.tryTitle')}</h3>
+      <p className="text-sm text-muted-foreground">{t('demo.tryBody')}</p>
+      {roles.map(([as, label]) => (
+        <Button
+          key={as}
+          id={`demo-${as}`}
+          size="lg"
+          className="w-full"
+          disabled={busy !== null}
+          onClick={() => void go(as)}
+        >
+          {label}
+        </Button>
+      ))}
+      {failed && (
+        <p role="alert" className="text-sm text-bad">
+          {t('demo.failed')}
+        </p>
+      )}
+    </section>
+  );
+}
 
 /**
  * The school's front door (UI plan §7.1): one half is the school in its colour (badge or logo,
@@ -55,7 +106,9 @@ export function Login() {
   const failed = params.has('error');
   const turnstile = params.get('error') === 'turnstile_failed';
   const [needNet, setNeedNet] = useState(false);
-  const school = useIdentity().data?.school ?? null;
+  const identity = useIdentity().data;
+  const school = identity?.school ?? null;
+  const demo = !!identity?.demo;
   useBrand(school ? school.brand_color : null);
   // A sign-out queued offline is sent before a new sign-in. The queued revocation names the old
   // session only (and rides along in a cookie the OAuth callback honours), so a 5xx / 429 now does
@@ -161,6 +214,7 @@ export function Login() {
               {t('auth.connectToSignIn')}
             </p>
           )}
+          {demo && <DemoButtons />}
           {/* A full navigation, not fetch: the OAuth flow is a chain of redirects. */}
           <Button asChild size="lg" variant="outline" className="w-full">
             <a href="/api/auth/google/start" onClick={signInClick}>
@@ -168,7 +222,9 @@ export function Login() {
               {t('auth.signInWithGoogle')}
             </a>
           </Button>
-          <p className="text-sm text-muted-foreground">{t('auth.inviteOnly')}</p>
+          <p className="text-sm text-muted-foreground">
+            {demo ? t('demo.staffNote') : t('auth.inviteOnly')}
+          </p>
           {school && (
             <aside id="door-parents" className="mt-2 rounded-xl bg-muted p-4 text-sm">
               <p className="font-semibold">{t('door.parentTitle')}</p>

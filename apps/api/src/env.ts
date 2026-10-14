@@ -32,6 +32,12 @@ export type Bindings = {
   TURNSTILE_SECRET?: string;
   /** The only address that may claim an empty installation as owner (PLAN §14.1). Empty = nobody. */
   OWNER_EMAIL?: string;
+  /**
+   * "1" = this installation is the public demo (docs/demo.md): demo sign-in buttons, the banner,
+   * locked installation settings, capped uploads and the nightly reset. Never set on a real school's
+   * Worker (apps/api/test/demo.test.ts checks wrangler.toml).
+   */
+  DEMO_MODE?: string;
 };
 
 export type Variables = {

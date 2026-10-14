@@ -37,7 +37,7 @@ private key never goes to GitHub (except the protected drill environment below),
 | `BACKUP_REPORT_TOKEN` | secret | the same random value as the Worker secret of that name (step 3) |
 | `B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET`, `B2_ENDPOINT` | secrets | optional Backblaze B2 copy (S3 endpoint, e.g. `https://s3.us-west-004.backblazeb2.com`) |
 | `GOOGLE_SA_JSON`, `SHEET_ID` | secrets | optional Google Sheet copy (section 6) |
-| `APP_URL` | variable | optional; default `https://maktab.conceptlix.com` |
+| `APP_URL` | variable | optional; default `https://maktab-gsap.conceptlix.com` |
 | `BACKUP_R2_BUCKET` | variable | optional; default `maktab-backups` (both workflows) |
 | `BACKUP_ALLOW_SHRINK` | variable | optional; `true` accepts a dump less than half the previous size (section 5); remove it again afterwards |
 
@@ -54,7 +54,7 @@ and, without pasting it anywhere else:
 
     # one value for both sides, never displayed
     umask 077; openssl rand -hex 32 > /tmp/brt
-    npx wrangler secret put BACKUP_REPORT_TOKEN --env production < /tmp/brt     # from apps/api
+    npx wrangler secret put BACKUP_REPORT_TOKEN --env gsap < /tmp/brt     # from apps/api
     gh secret set BACKUP_REPORT_TOKEN -R faysalmehmood/maktab < /tmp/brt
     shred -u /tmp/brt 2>/dev/null || rm -P /tmp/brt
 
@@ -74,7 +74,7 @@ the workflow itself (90 daily, 24 monthly).
 
 ## 5. What the nightly job does (`.github/workflows/nightly-backup.yml`, 02:30 PKT)
 
-1. `wrangler d1 export DB --remote --env production` (the database is briefly locked: queries can fail
+1. `wrangler d1 export DB --remote --env gsap` (the database is briefly locked: queries can fail
    with D1 error 7500; the app retries once, and nobody works at 02:30).
 2. Sanity: core tables, an owner, `message_template`, `parent_link`, every trigger / view / index of
    `packages/db/sql`.

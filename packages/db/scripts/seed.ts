@@ -14,7 +14,7 @@ import { getDb } from '../src/node';
 import * as t from '../src/schema';
 import { seedAtomically } from './seed-data';
 
-function localD1File(): string {
+export function localD1File(): string {
   const dir = fileURLToPath(
     new URL('../../../apps/api/.wrangler/state/v3/d1/miniflare-D1DatabaseObject', import.meta.url),
   );
@@ -42,7 +42,8 @@ async function main() {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1])
+  main().catch((err: unknown) => {
+    console.error(err);
+    process.exit(1);
+  });

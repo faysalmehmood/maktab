@@ -1,0 +1,180 @@
+# The public demo
+
+**https://maktab.conceptlix.com**: a made-up school anyone can open, with no account. The real
+pilot (Global Science Academy) runs on its own installation, **https://maktab-gsap.conceptlix.com**
+(docs/deploy.md). The two share no database, files, secrets or backups.
+
+## What it is
+
+- **Al-Noor Community School, Lahore** (badge AN, maroon, النور کمیونٹی اسکول), school and academy
+  mode, session 2026-27, with six months of history (April–September 2026). Everything is invented:
+  names are common Pakistani names, phone numbers are in the fake `03XX 555 NNNN` and
+  `042 3555 NNNN` blocks, and CNICs use the 555 block too.
+- 135 students in 84 families (25 with siblings). Classes run from Nursery to Class 10, with A/B
+  sections for Classes 4–8, plus an FSc Pre-Medical morning batch and a Matric evening batch. There
+  are 14 staff, with class and subject teachers assigned.
+- Fees: tuition by programme, academy tuition, admission fee (mid-session joiners only), exam fee
+  (Classes 5–10, second term) and an activity fund (Nursery–Class 3). There are 12 concessions, 3
+  sponsors and 10 opening balances.
+- Six monthly billing runs (about 1,200 charges). About 420 receipts (cash, bank, JazzCash, one
+  cheque), about 90% collected and roughly 25 families with dues. Some payments are partial and some
+  in advance. There are four reversals (a typo re-entered, a JazzCash transfer reversed, an entry
+  typed twice, a bounced cheque) and one refund.
+- Late fines and waivers. The accountant's drawer is closed every office day, some days with small
+  variances, and cash is deposited at the bank every Saturday.
+- Expenses by category, including one voided. 84 payslips approved and paid, and two salary
+  advances recovered through payslips.
+- Registers for the **last week of September** (5 school days), with 5–8% absence. Messages
+  (about 165): absence rows (sent, skipped and queued), fee-due and overdue reminders, a notice to
+  every family and payment receipts. 40 guardians have parent links.
+- The school's calendar stops at 30 September 2026: the demo runs no fee cron, late fines or daily
+  pass, so nothing writes rows on its own.
+
+## The D1 budget
+
+The Cloudflare account's free D1 plan allows **100,000 rows written and 5,000,000 rows read a day**,
+reset at 00:00 UTC (05:00 PKT), for **all its databases together**: the demo and the GSA pilot share
+it. On 2026-10-14 a full reseed of the first, larger dataset (300 students, ~86k writes) on top of
+the previous day's run used it up, and D1 refused writes for the rest of the UTC day. So:
+
+- **A row write is the row plus one per index on its table.** That makes some tables dear:
+  `charge` has 9 indexes (10 writes a row), `receipt` 6, `message` 5, `receipt_allocation` 3,
+  `att_mark` and `audit` 2. Updates count too.
+- **A full reseed is budgeted at 33,000 row writes** (`DEMO_SEED_WRITES`; the cap is 35,000).
+  Measured on the local seed: 6,069 rows, ~32,450 writes, of which charges ~12,000, receipts and
+  allocations ~6,900, audit ~2,600, registers ~2,500, messages ~1,000. `npm run seed:demo` prints
+  the plan before it starts and the measured figure after; `packages/db/test/demo-seed.test.ts`
+  fails if the dataset grows past the budget.
+- Why not more attendance: a register day costs about 3 writes a student (mark + 2 indexes) plus
+  the register rows, ~420 writes a day here. Three months of registers would be ~25,000 writes on
+  their own, so the demo keeps one week. Six months of money history is kept, because that is
+  what the reports show.
+- **Nightly reset = undo, not reseed** (below): it costs about what visitors wrote that day
+  (a visitor's afternoon of edits, a payment and a reversal: ~135 writes). It is skipped, with an
+  alarm in the logs (`demo_alarm: undo_over_budget`), if it would cost more than **20,000**.
+- **At most one reset a UTC day** (full or undo), whoever asks.
+- **Quota guard:** if D1 refuses a write for a limit (`exceeded`, `quota`, `daily limit`), the demo
+  logs `demo_alarm: d1_quota` and runs nothing until the next 00:00 UTC (`backoff_until` in
+  `GET /api/demo`).
+- Reads: the step loop reads `_demo_state` and the current step's own rows; nothing scans
+  `att_mark` repeatedly. To check a seeded demo remotely, run one count query per table, once.
+
+**Sign-in.** The sign-in page has three buttons: **Try as principal** (owner), **Try as
+accountant** and **Try as teacher** (Ayesha Siddiqa, class teacher of Class 5 A, who also teaches
+English in several classes). Each calls `POST /api/auth/demo`, which is rate limited per IP. The
+installation owner (`OWNER_EMAIL`, thefaysalmehmood@gmail.com) can also sign in with Google.
+`maktab.conceptlix.com/api/auth/google/callback` is already an authorised redirect URI, because
+this was the first production host. A banner on every screen says the data is made up and reset
+nightly.
+
+**Locked in the demo** (403 `demo_locked`): staff invites, user roles and enabling or disabling
+users, backups ("download everything", drills) and "Revoke all parent links". Uploads (logo, student
+photos, bill photos) are capped at 200 KB and 10 an hour per IP. Everything else works.
+
+## Reset schedule
+
+- Any successful write by a visitor marks the demo **dirty**, and every change to school data is
+  logged in `_demo_undo` (`packages/db/src/demo/undo.ts`): after the seed, each data table has
+  three `_demo_undo_<table>_{i,u,d}` triggers that record the key of an inserted row or the old
+  values of an updated or deleted one. Sign-in sessions (`user_session`) are not logged.
+- The demo's cron runs **every minute**. At **02:00 Asia/Karachi**, if the log has entries and no
+  reset ran this UTC day, it estimates the cost (one grouped read of the log), and if that is under
+  20,000 it **plays the log back**, newest first, 100 entries per D1 batch: each batch drops the
+  touched tables' guard and undo triggers, restores the rows, re-creates the triggers and deletes
+  the log rows, in one transaction, so the money guards are never off between batches. Changes made
+  while it runs wait for the next night. A night nobody touched the demo costs a few reads.
+- The owner (`OWNER_EMAIL` only, not the demo principal) can start a **full reseed** by hand:
+  `POST /api/demo/reset` (2 an hour, and refused if a reset already ran this UTC day). It costs
+  ~33,000 writes and signs everyone out. Use it only on a quiet day, for example when an undo was
+  skipped for its size.
+- Progress: `GET /api/demo` returns `{phase, step, total, step_name, started_at, finished_at, dirty,
+  last_error, backoff_until}`. `phase` is `running` (full reseed), `undoing` (nightly undo) or
+  `done`.
+
+How a full reseed works (`packages/db/src/demo/runner.ts`):
+
+1. A snapshot of `sqlite_master` (without the demo's own `_demo_*` objects) is saved in
+   `_demo_state`.
+2. Every table, index, view and trigger is **dropped and re-created** from that snapshot, and the
+   undo log is dropped. `d1_migrations` and `_demo_state` are kept. This is not `DELETE`: D1 counts
+   every deleted row and index entry as a row written, while a `DROP TABLE` costs a handful.
+   Measured on 2026-10-13: `DELETE` of 1,000 indexed rows counted more than 1,000; `DROP TABLE`
+   counted 4.
+3. The dataset is rebuilt in about 140 resumable, idempotent steps
+   (`packages/db/src/demo/steps.ts`). Ids are deterministic, receipts use idempotency keys, and
+   every step checks whether its work is already done, so a call cut short by the CPU limit or a
+   lost response is simply run again. A lease stops the cron and the step route from running the
+   same step at once. Money is written only through the ledger helpers. Each invocation runs up to
+   12 step calls; a fee-generation chunk counts as 4, because 12 of them in one invocation exceeded
+   the free plan's CPU limit (error 1102).
+4. The last step installs the undo-log triggers (about 180 schema writes).
+
+`db:verify` ignores the `_demo_*` triggers.
+
+## Re-deploy and re-seed
+
+```sh
+npm run build
+cd apps/api && npx wrangler deploy --env demo          # Worker `maktab`, D1 `maktab`, R2 maktab-files
+npx wrangler d1 migrations apply DB --remote --env demo
+npm run db:verify -- --remote --env demo               # from the repo root
+```
+
+To re-seed now, either:
+
+- sign in as the owner and `POST /api/demo/reset`, or
+- drive it from a terminal (the cron does the same, once a minute). Check the budget first: a
+  full reseed is ~33,000 of the account's 100,000 daily writes, shared with the GSA pilot:
+
+  ```sh
+  until curl -s -X POST https://maktab.conceptlix.com/api/demo/step \
+      -H 'origin: https://maktab.conceptlix.com' -H 'content-type: application/json' -d '{}' \
+      | grep -q '"phase":"done"'; do :; done
+  ```
+
+`POST /api/demo/step` is public and rate limited (60 a minute per IP). It only advances a reset that
+is already running, or seeds an empty database. It never starts a wipe of a seeded demo.
+
+A reset refuses a database whose school is not "Al-Noor Community School". To take over a database
+that still holds another school (as on 2026-10-13, when the first production database became the
+demo), set the flag by hand. The next tick or step then wipes it:
+
+```sh
+npx wrangler d1 execute DB --remote --env demo --command \
+  "CREATE TABLE IF NOT EXISTS _demo_state (key TEXT PRIMARY KEY, value TEXT);
+   INSERT INTO _demo_state VALUES ('force', '1') ON CONFLICT (key) DO UPDATE SET value = '1';"
+```
+
+Locally: `npm run db:migrate:local && npm run seed:demo -w @maktab/db` takes about 2 s. It wipes the
+local database first. Use `SEED_OWNER_EMAIL=<gmail>` to add your Google account as an owner. Parent
+links use `PARENT_LINK_SECRET` from `apps/api/.dev.vars`. To see the demo UI locally, add
+`DEMO_MODE=1` to `.dev.vars`.
+
+## Google sign-in
+
+- **Demo** (maktab.conceptlix.com): nothing to do. The redirect URI
+  `https://maktab.conceptlix.com/api/auth/google/callback` is already on the OAuth client, and the
+  demo buttons need no Google at all.
+- **GSA pilot** (maktab-gsap.conceptlix.com): two steps the owner must do by hand.
+  1. In Google Cloud console, open APIs & Services → Credentials → the OAuth client and add the
+     authorised redirect URI `https://maktab-gsap.conceptlix.com/api/auth/google/callback`.
+  2. Set that Worker's client secrets:
+     `cd apps/api && npx wrangler secret put GOOGLE_CLIENT_ID --env gsap` and the same for
+     `GOOGLE_CLIENT_SECRET`. Use the same OAuth client's values.
+
+  Until both are done, `GET /api/auth/google/start` on gsap answers 500 `misconfigured`.
+
+## Guarantees (tests)
+
+- `packages/db/test/demo-seed.test.ts`: the dataset's shape, about 90% collection,
+  `ledger_consistency` empty, the P&L reconciliation ties, every family has a guardian with a
+  number and all numbers are fake. The seed fits `DEMO_SEED_WRITES` (≤ 35,000). A reset reproduces
+  the same school, a seed cut into one-call slices ends identical, and a reset refuses another
+  school's database. The undo puts back exactly what a visitor changed (edits, a delete, a payment,
+  a reversal) with every trigger restored, runs once a UTC day, and is skipped over 20,000 writes;
+  quota errors are recognised.
+- `apps/api/test/demo.test.ts`: `DEMO_MODE` is set only on `[env.demo]` (never on `env.gsap` or
+  the top level). Without it every demo route is 404. With it, the buttons give each fixed user its
+  roles, the locked routes answer `demo_locked` (even for the demo principal), uploads are capped,
+  writes mark the demo dirty, only `OWNER_EMAIL` may reseed, and the 02:00 tick undoes a
+  visitor's change once a UTC day.

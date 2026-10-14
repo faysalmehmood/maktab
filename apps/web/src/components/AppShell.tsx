@@ -42,6 +42,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { getJson, useMe } from '@/lib/api';
+import { useIdentity } from '@/lib/identity';
 import { useIsPhone } from '@/lib/media';
 import { useSchool } from '@/lib/queries';
 import { type GrantRef, holds, isTeacherOnly, useRoles } from '@/lib/roles';
@@ -551,6 +552,22 @@ function TabLink({ item, count }: { item: NavItem; count?: number }) {
  * with the badge and search, a bottom tab bar with the role's daily tasks and "More" (a sheet with
  * the rest and the account). In Urdu the whole frame mirrors (<html dir="rtl">).
  */
+/** The public demo (DEMO_MODE=1): a thin strip on every screen, in the page's language. */
+function DemoBanner() {
+  const { t } = useTranslation();
+  const demo = useIdentity().data?.demo;
+  if (!demo) return null;
+  return (
+    <p
+      id="demo-banner"
+      role="note"
+      className="bg-warn-soft px-3 py-1.5 text-center text-sm text-warn md:px-6 print:hidden"
+    >
+      {t('demo.banner')}
+    </p>
+  );
+}
+
 export function AppShell() {
   const { t } = useTranslation();
   const [more, setMore] = useState(false);
@@ -648,6 +665,7 @@ export function AppShell() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
+          <DemoBanner />
           <header
             data-tour-bar
             className="sticky top-0 z-20 flex min-h-14 items-center gap-2 border-b bg-card px-3 pt-[env(safe-area-inset-top)] md:gap-3 md:px-6 print:hidden"
