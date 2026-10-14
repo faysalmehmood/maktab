@@ -276,17 +276,28 @@ const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const nextUtcMidnight = (ms: number) =>
   new Date(Date.parse(`${utcDay(ms)}T00:00:00Z`) + 86_400_000).toISOString();
 
-/** D1's answer once the account's daily rows read / written are used up (or the DB is full). */
+/**
+ * D1's answer once the account's daily rows read or written are used up (or the DB is full), e.g.
+ * "Exceeded maximum rows written per day" or, for reads, code 7500 "exceeded D1's free tier daily
+ * row read limit". Every query fails then, reads included, until 00:00 UTC.
+ */
 export function isQuotaError(err: unknown): boolean {
   const msgs: string[] = [];
   for (let e: unknown = err, i = 0; e && i < 5; i++) {
     msgs.push(e instanceof Error ? e.message : String(e));
+    const code = (e as { code?: unknown } | null)?.code;
+    if (code !== undefined) msgs.push(`code ${String(code)}`);
     e = e instanceof Error ? (e as Error & { cause?: unknown }).cause : undefined;
   }
-  return /exceeded|quota|daily limit|limit (?:has been )?reached|usage limit/i.test(msgs.join(' '));
+  return /exceeded|quota|daily limit|limit (?:has been )?reached|usage limit|row (?:read|write) limit|\bcode\W{0,3}7500\b/i.test(
+    msgs.join(' '),
+  );
 }
 
-/** Per isolate: the state write below fails too while the quota is used up. */
+/**
+ * Per isolate: the state write below fails too while the quota is used up, and once the READ limit
+ * is reached even `_demo_state` cannot be read, so the tick checks this before touching D1.
+ */
 let memBackoff = 0;
 
 /** Stop every demo write until the next UTC midnight, when D1's daily counters reset. */
@@ -325,6 +336,8 @@ export async function startDemoReset(
   await ensureState(db);
   if (DEMO_SEED_WRITES > DEMO_SEED_WRITE_CAP)
     throw new Error(`demo reset refused: a reseed would write ~${DEMO_SEED_WRITES} rows`);
+  if (DEMO_SEED_READS > DEMO_SEED_READ_CAP)
+    throw new Error(`demo reset refused: a reseed would read ~${DEMO_SEED_READS} rows`);
   const nowMs = (o.now ?? new Date()).getTime();
   if (o.daily !== false && resetToday(await getState(db), nowMs))
     throw new Error('demo reset refused: one reset a UTC day (the D1 write budget)');
