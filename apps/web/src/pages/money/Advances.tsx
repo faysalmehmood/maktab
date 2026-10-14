@@ -205,9 +205,7 @@ export function AdvanceTables({ onGive }: { onGive?: (staffId: string) => void }
       id: 'outstanding',
       header: t('money.advance.outstanding'),
       numeric: true,
-      cell: (b) => (
-        <Mny paisa={b.outstanding} className={b.outstanding > 0 ? 'font-semibold' : undefined} />
-      ),
+      cell: (b) => <Mny paisa={b.outstanding} className="font-semibold" />,
     },
     {
       id: 'advanced',
@@ -253,7 +251,9 @@ export function AdvanceTables({ onGive }: { onGive?: (staffId: string) => void }
       cell: (a) => <Mny paisa={a.amount} />,
     },
   ];
-  const total = (q.data?.balances ?? []).reduce((n, b) => n + b.outstanding, 0);
+  // Fully recovered staff leave this list; "Advances given" below keeps their history.
+  const owing = q.data?.balances.filter((b) => b.outstanding > 0);
+  const total = (owing ?? []).reduce((n, b) => n + b.outstanding, 0);
   return (
     <>
       <MoneyErrorNote error={q.error} />
@@ -261,7 +261,7 @@ export function AdvanceTables({ onGive }: { onGive?: (staffId: string) => void }
         id="advance-balances-panel"
         title={t('money.advance.outstanding')}
         action={
-          q.data && q.data.balances.length > 0 ? (
+          owing && owing.length > 0 ? (
             <span id="advance-total" className="text-sm font-semibold">
               <Mny paisa={total} />
             </span>
@@ -272,7 +272,7 @@ export function AdvanceTables({ onGive }: { onGive?: (staffId: string) => void }
           id="advance-balances"
           caption={t('money.advance.outstanding')}
           columns={balances}
-          rows={q.data?.balances}
+          rows={owing}
           rowKey={(b) => b.staff_id}
           loading={q.isPending}
           rowActions={
@@ -293,7 +293,16 @@ export function AdvanceTables({ onGive }: { onGive?: (staffId: string) => void }
                 )
               : undefined
           }
-          empty={<EmptyState icon={HandCoins} title={t('money.advance.empty')} />}
+          empty={
+            <EmptyState
+              icon={HandCoins}
+              title={t(
+                q.data && q.data.advances.length > 0
+                  ? 'money.advance.noneOwed'
+                  : 'money.advance.empty',
+              )}
+            />
+          }
         />
       </Panel>
       {q.data && q.data.advances.length > 0 && (

@@ -265,4 +265,46 @@ describe('advances (rebuilt)', () => {
     const staff = (await byId('advance-staff')) as HTMLSelectElement;
     await waitFor(() => expect(staff.value).toBe('ST'));
   });
+
+  const repaid = {
+    staff_id: 'SR',
+    staff_name: 'Sadia',
+    advanced: RS(2000),
+    recovered: RS(2000),
+    outstanding: 0,
+    last_advance: '2026-08-01',
+  };
+  const given = {
+    id: 'AD1',
+    staff_id: 'SR',
+    staff_name: 'Sadia',
+    date: '2026-08-01',
+    amount: RS(2000),
+    account_name: 'Drawers',
+    note: null,
+  };
+
+  it('"Outstanding" lists only who still owes; the history keeps the repaid', async () => {
+    mockApi({
+      ...routes,
+      'GET /api/advances': {
+        balances: [...routes['GET /api/advances'].balances, repaid],
+        advances: [given],
+      },
+    });
+    renderAt('/advances', '/advances', <AdvancesPage />, ['accountant']);
+    const owing = await byId('advance-balances');
+    await waitFor(() => expect(owing.textContent).toContain('Bilal'));
+    expect(owing.textContent).not.toContain('Sadia');
+    expect(document.getElementById('advance-history')?.textContent).toContain('Sadia');
+  });
+
+  it('nobody owing anything shows an empty state, not PKR 0 rows', async () => {
+    mockApi({ ...routes, 'GET /api/advances': { balances: [repaid], advances: [given] } });
+    renderAt('/advances', '/advances', <AdvancesPage />, ['accountant']);
+    expect(
+      await screen.findByText('Nobody owes anything: every advance has been recovered.'),
+    ).toBeTruthy();
+    expect(document.getElementById('advance-total')).toBeNull();
+  });
 });
