@@ -1298,8 +1298,6 @@ export const shellUr: Shape<typeof shellEn> = {
   compare: {
     up: '{{pct}}% زیادہ',
     down: '{{pct}}% کم',
-    upNoPct: 'زیادہ',
-    downNoPct: 'کم',
     same: 'کوئی فرق نہیں',
     vs: '{{month}} کے مقابلے میں',
   },

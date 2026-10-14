@@ -755,8 +755,11 @@ describe('shared parts for part 2', () => {
   it('StatStrip: a comparison with direction, percentage and the right tone', () => {
     expect(changeOf(120, 100)).toEqual({ dir: 'up', pct: 20 });
     expect(changeOf(50, 100)).toEqual({ dir: 'down', pct: 50 });
-    expect(changeOf(5, 0)).toEqual({ dir: 'up', pct: null });
     expect(changeOf(7, 7)).toEqual({ dir: 'same', pct: 0 });
+    // An empty month on either side: no percentage, no arrow ("Down 100%" said nothing).
+    expect(changeOf(5, 0)).toEqual({ dir: 'none', pct: null });
+    expect(changeOf(0, 5)).toEqual({ dir: 'none', pct: null });
+    expect(changeOf(0, 0)).toEqual({ dir: 'none', pct: null });
     const { container } = renderAt(
       '/',
       '/',
@@ -782,6 +785,9 @@ describe('shared parts for part 2', () => {
     expect(inc.textContent).toBe('Up 20%vs Sep');
     expect(inc.className).toContain('text-ok');
     expect(container.querySelector('#out [data-compare]')?.className).toContain('text-bad');
-    expect(container.querySelector('#n [data-compare]')?.textContent).toContain('No change');
+    const net = container.querySelector('#n [data-compare]') as HTMLElement;
+    expect(net.textContent).toBe('—vs Sep');
+    expect(net.className).toContain('text-muted-foreground');
+    expect(net.querySelector('svg')).toBeNull();
   });
 });

@@ -40,8 +40,6 @@ export const shellEn = {
   compare: {
     up: 'Up {{pct}}%',
     down: 'Down {{pct}}%',
-    upNoPct: 'Up',
-    downNoPct: 'Down',
     same: 'No change',
     vs: 'vs {{month}}',
   },

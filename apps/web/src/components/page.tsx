@@ -127,7 +127,7 @@ export function Panel({
 
 /**
  * A figure compared with an earlier one ("▲ 12% vs Sep"). `higherIsBetter` (default true) picks the
- * tone: income up is good, spending up is not. `before` of 0 shows no percentage.
+ * tone: income up is good, spending up is not. A zero on either side shows "—", not a percentage.
  */
 export type StatCompare = {
   now: number;
@@ -146,26 +146,30 @@ export type StatItem = {
   compare?: StatCompare;
 };
 
-/** Direction and whole-number percentage of a change (pure; tested). */
+/**
+ * Direction and whole-number percentage of a change (pure; tested). A month with no activity on
+ * either side is `none`: "Down 100%" against an empty month says nothing about how it went.
+ */
 export function changeOf(
   now: number,
   before: number,
-): { dir: 'up' | 'down' | 'same'; pct: number | null } {
+): { dir: 'up' | 'down' | 'same'; pct: number } | { dir: 'none'; pct: null } {
+  if (now === 0 || before === 0) return { dir: 'none', pct: null };
   const dir = now > before ? 'up' : now < before ? 'down' : 'same';
-  const pct = before === 0 ? null : Math.round((Math.abs(now - before) / Math.abs(before)) * 100);
-  return { dir, pct };
+  return { dir, pct: Math.round((Math.abs(now - before) / Math.abs(before)) * 100) };
 }
 
 function Compare({ c }: { c: StatCompare }) {
   const { t } = useTranslation();
   const { dir, pct } = changeOf(c.now, c.before);
-  const good = dir === 'same' ? null : (dir === 'up') === (c.higherIsBetter ?? true);
-  const Icon = dir === 'up' ? ArrowUp : dir === 'down' ? ArrowDown : Minus;
+  const good =
+    dir === 'same' || dir === 'none' ? null : (dir === 'up') === (c.higherIsBetter ?? true);
+  const Icon = dir === 'up' ? ArrowUp : dir === 'down' ? ArrowDown : dir === 'same' ? Minus : null;
   const words =
-    dir === 'same'
-      ? t('shell.compare.same')
-      : pct === null
-        ? t(`shell.compare.${dir}NoPct`)
+    dir === 'none'
+      ? '—'
+      : dir === 'same'
+        ? t('shell.compare.same')
         : t(`shell.compare.${dir}`, { pct });
   return (
     <dd
@@ -175,7 +179,7 @@ function Compare({ c }: { c: StatCompare }) {
         good === true ? 'text-ok' : good === false ? 'text-bad' : 'text-muted-foreground',
       )}
     >
-      <Icon className="size-3.5 shrink-0" aria-hidden />
+      {Icon && <Icon className="size-3.5 shrink-0" aria-hidden />}
       <span className="font-semibold">{words}</span>
       <span className="text-muted-foreground">{c.label}</span>
     </dd>
