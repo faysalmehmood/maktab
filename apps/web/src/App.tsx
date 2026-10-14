@@ -2,7 +2,6 @@ import { type ComponentType, lazy, type ReactNode, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Route, Routes } from 'react-router';
 import { AppShell } from '@/components/AppShell';
-import { NotFoundPage } from '@/components/not-found';
 import { RequireAuth } from '@/components/RequireAuth';
 import { RequireGrant } from '@/components/RequireGrant';
 import { SetupGate } from '@/components/SetupGate';
@@ -49,6 +48,9 @@ const ComposePage = lazy(() =>
 );
 const ParentPage = lazy(() =>
   import('@/pages/parent/ParentPage').then((m) => ({ default: m.ParentPage })),
+);
+const NotFoundPage = lazy(() =>
+  import('@/components/not-found').then((m) => ({ default: m.NotFoundPage })),
 );
 const GroupsPage = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupsPage })));
 const GroupDetail = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupDetail })));
@@ -317,7 +319,14 @@ export function App() {
           }
         />
         {/* Inside the shell: a mistyped address keeps the navigation to get back. */}
-        <Route path="*" element={<NotFoundPage />} />
+        <Route
+          path="*"
+          element={
+            <Loading>
+              <NotFoundPage />
+            </Loading>
+          }
+        />
       </Route>
     </Routes>
   );
