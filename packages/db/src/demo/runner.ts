@@ -84,16 +84,34 @@ const q = (name: string) => `"${name.replace(/"/g, '""')}"`;
  * defer_foreign_keys) any table with outstanding references; D1 counts those deleted rows and
  * index entries as writes (~7,000 over a seeded demo). Dropping each table only once nothing else
  * refers to it avoids that, except for a table that references itself (charge, receipt,
- * enrolment, …): those rows are still deleted, so their indexes go first.
+ * enrolment, …): those rows are still deleted, so their indexes go first, all but one.
+ *
+ * The one kept is an index led by the self-referencing column (charge_parent,
+ * receipt_reverses_id_unique): each implicit delete looks for rows that still point at the deleted
+ * one, and without such an index that is a scan of the whole table per row. D1 counts every row a
+ * scan visits as read: dropping `charge` cost ~563,000 rows read for ~1,000 charges (measured
+ * 2026-10-15, apps/api/test/d1-demo-reads.test.ts), half of a reseed's reads; with the index ~3,000.
  */
 async function dropOrder(
   db: AppDb,
   tables: string[],
-): Promise<{ order: string[]; selfRef: Set<string> }> {
-  const fks = await db.all<{ child: string; parent: string }>(sql`
-    SELECT t.value AS child, f."table" AS parent
+): Promise<{ order: string[]; selfRef: Set<string>; keepIndex: Set<string> }> {
+  const fks = await db.all<{ child: string; parent: string; col: string }>(sql`
+    SELECT t.value AS child, f."table" AS parent, f."from" AS col
     FROM json_each(${JSON.stringify(tables)}) t, pragma_foreign_key_list(t.value) f`);
-  const selfRef = new Set(fks.filter((f) => f.child === f.parent).map((f) => f.child));
+  const self = fks.filter((f) => f.child === f.parent);
+  const selfRef = new Set(self.map((f) => f.child));
+  // A full (not partial) index whose first column is the self-referencing one.
+  const lead = await db.all<{ tbl: string; idx: string; col: string }>(sql`
+    SELECT t.value AS tbl, l.name AS idx, i.name AS col
+    FROM json_each(${JSON.stringify([...selfRef])}) t, pragma_index_list(t.value) l,
+      pragma_index_info(l.name) i
+    WHERE i.seqno = 0 AND l.partial = 0`);
+  const keepIndex = new Set<string>();
+  for (const f of self) {
+    const hit = lead.find((x) => x.tbl === f.child && x.col === f.col);
+    if (hit) keepIndex.add(hit.idx);
+  }
   const left = new Set(tables);
   const order: string[] = [];
   while (left.size) {
@@ -107,7 +125,7 @@ async function dropOrder(
       order.push(t);
     }
   }
-  return { order, selfRef };
+  return { order, selfRef, keepIndex };
 }
 
 const dropStep: Step = {
@@ -120,12 +138,15 @@ const dropStep: Step = {
     for (const r of [...rows].reverse().filter((x) => x.type === 'view'))
       stmts.push(sql.raw(`DROP VIEW IF EXISTS ${q(r.name)}`));
     const tables = rows.filter((x) => x.type === 'table').map((x) => x.name);
-    const { order, selfRef } = await dropOrder(db, tables);
+    const { order, selfRef, keepIndex } = await dropOrder(db, tables);
     for (const t of order) {
       // A table that references itself is deleted row by row before it is dropped (below); without
-      // its indexes each of those deletes is one write, not one per index.
+      // its other indexes each of those deletes is one write (plus the kept index's), not one per
+      // index.
       if (selfRef.has(t))
-        for (const i of rows.filter((x) => x.type === 'index' && x.tbl_name === t))
+        for (const i of rows.filter(
+          (x) => x.type === 'index' && x.tbl_name === t && !keepIndex.has(x.name),
+        ))
           stmts.push(sql.raw(`DROP INDEX IF EXISTS ${q(i.name)}`));
       stmts.push(sql.raw(`DROP TABLE IF EXISTS ${q(t)}`));
     }
