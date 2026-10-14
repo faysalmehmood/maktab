@@ -215,11 +215,27 @@ export function demoRoutes(app: Hono<AppEnv>, table: RouteTable): void {
   );
 }
 
+/** Karachi weekday of the weekly full reseed (0 = Sunday … 6 = Saturday): see demoReseedDue. */
+export const DEMO_RESEED_WEEKDAY = 1;
+
+/**
+ * The dataset is dated from its seed day (packages/db/src/demo/world.ts), so as days pass the demo
+ * drifts into the past: no registers or receipts "today", a new month unbilled. Once a week, and
+ * on the 1st of a month (so a new month is billed), the 02:00 tick reseeds instead of undoing.
+ * Monday, not Sunday: Sunday is the school's weekly off, and a Sunday seed day has no counter and
+ * no registers, so the demo would never show a working "today".
+ */
+export function demoReseedDue(nowMs: number): boolean {
+  const karachi = new Date(nowMs + 5 * 3_600_000);
+  return karachi.getUTCDay() === DEMO_RESEED_WEEKDAY || karachi.getUTCDate() === 1;
+}
+
 /**
  * The demo cron (every minute; docs/demo.md): continue a running reset; at 02:00 Karachi play back
  * the undo log of what visitors changed (one reset a UTC day, capped at DEMO_UNDO_WRITE_CAP row
- * writes); seed an empty database. Returns true while a reset is running. Nothing at all while D1's
- * daily quota is used up (backoff until the next UTC midnight).
+ * writes), or on a reseed day (demoReseedDue) run a full reseed (~DEMO_SEED_WRITES) instead; seed
+ * an empty database. Returns true while a reset is running. Nothing at all while D1's daily quota
+ * is used up (backoff until the next UTC midnight).
  */
 export async function demoTick(db: AppDb, env: Bindings, nowMs = Date.now()): Promise<boolean> {
   try {
@@ -242,6 +258,17 @@ export async function demoTick(db: AppDb, env: Bindings, nowMs = Date.now()): Pr
     }
     const karachiHour = new Date(nowMs + 5 * 3_600_000).getUTCHours();
     if (karachiHour !== 2) return false;
+    if (demoReseedDue(nowMs)) {
+      try {
+        // Still one reset a UTC day: startDemoReset refuses the second (and the rest of the hour).
+        await startDemoReset(db, { reason: 'weekly reseed', now: new Date(nowMs) });
+      } catch (err) {
+        if (err instanceof Error && /one reset a UTC day/.test(err.message)) return false;
+        throw err;
+      }
+      await advanceOnce(db, env);
+      return true;
+    }
     const u = await startDemoUndo(db, { now: nowMs });
     if (!u.started) return false;
     await advanceOnce(db, env);

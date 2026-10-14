@@ -3,7 +3,7 @@ import { type AppDb, DEMO_USERS, demoStatus, seedDemo } from '@maktab/db';
 import { createTestDb } from '@maktab/db/node';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { DEMO_LOCKED, demoTick } from '../src/routes/demo';
+import { DEMO_LOCKED, demoReseedDue, demoTick } from '../src/routes/demo';
 import { env, ORIGIN, PARENT_SECRET, SECRET, signedInAs, testApp } from './helpers';
 
 /** The keys of each `[section]` of wrangler.toml (a line-level reader; enough for vars). */
@@ -283,5 +283,32 @@ describe('DEMO_MODE=1', () => {
     expect(await demoTick(db, { ...env, ...demoEnv }, at + 10 * 60_000)).toBe(false);
     expect((await demoStatus(db)).phase).toBe('done');
     expect(SECRET.length).toBeGreaterThan(31);
+  }, 180_000);
+
+  it('reseeds in full (dated from that day) at 02:00 on Mondays and on the 1st, once a UTC day', async () => {
+    // 02:00 Karachi = 21:00 UTC the evening before.
+    expect(demoReseedDue(Date.parse('2027-01-10T21:00:00Z'))).toBe(true); // Mon 11 Jan
+    expect(demoReseedDue(Date.parse('2027-01-31T21:00:00Z'))).toBe(true); // Mon 1 Feb
+    expect(demoReseedDue(Date.parse('2027-02-28T21:00:00Z'))).toBe(true); // Mon 1 Mar
+    expect(demoReseedDue(Date.parse('2027-03-31T21:00:00Z'))).toBe(true); // Thu 1 Apr
+    expect(demoReseedDue(Date.parse('2027-01-09T21:00:00Z'))).toBe(false); // Sun 10 Jan
+    expect(demoReseedDue(Date.parse('2027-01-12T21:00:00Z'))).toBe(false); // Wed 13 Jan
+
+    const at = Date.parse('2027-01-10T21:00:30Z');
+    expect(await demoTick(db, { ...env, ...demoEnv }, at)).toBe(true);
+    const anchor = async () =>
+      (await db.all<{ value: string }>(sql`SELECT value FROM _demo_state WHERE key = 'anchor'`))[0]
+        ?.value;
+    expect(await anchor()).toBe('2027-01-11');
+    for (let i = 1; i < 400 && (await demoStatus(db)).phase !== 'done'; i++)
+      await demoTick(db, { ...env, ...demoEnv }, at + i * 1000);
+    expect((await demoStatus(db)).phase).toBe('done');
+    expect(await db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
+    const [last] = await db.all<{ d: string }>(sql`SELECT max(business_date) AS d FROM receipt`);
+    expect(last?.d).toBe('2027-01-11');
+    // Later the same night (same UTC day): no second reset, reseed or undo.
+    await db.run(sql`UPDATE _demo_state SET value = '1' WHERE key = 'dirty'`);
+    expect(await demoTick(db, { ...env, ...demoEnv }, at + 30 * 60_000)).toBe(false);
+    expect(await anchor()).toBe('2027-01-11');
   }, 180_000);
 });

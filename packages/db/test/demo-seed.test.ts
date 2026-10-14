@@ -7,6 +7,7 @@ import {
   DEMO_SEED_WRITES,
   DEMO_UNDO_WRITE_CAP,
   DEMO_USERS,
+  demoCalendar,
   demoPlan,
   demoStatus,
   estimateUndo,
@@ -20,8 +21,31 @@ import { collect, incomeExpense, reverseReceipt } from '../src/ledger';
 import { createTestDb } from '../src/node';
 
 const SECRET = 'test-parent-link-secret-at-least-32-characters';
+/** The seed day the tests pin (a Wednesday mid-month); the dataset is laid out around it. */
+const TODAY = '2026-10-14';
+const CAL = demoCalendar(TODAY);
 const n = async (db: AppDb, q: string) =>
   Number((await db.all<{ n: number }>(sql.raw(q)))[0]?.n ?? 0);
+
+/**
+ * What a seed cost on D1: a row write = the row + one per index on its table; updates and the
+ * runner's own state writes (`changes` beyond the rows) are counted twice (row + index), which
+ * over-counts a little.
+ */
+async function writesOf(db: AppDb, changes: number): Promise<number> {
+  const tables = await db.all<{ name: string; idx: number }>(sql`SELECT m.name,
+      (SELECT count(*) FROM sqlite_master i WHERE i.type = 'index' AND i.tbl_name = m.name) AS idx
+    FROM sqlite_master m WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite%'
+      AND m.name NOT IN ('d1_migrations', '__drizzle_migrations', '_demo_state', '_demo_undo')`);
+  let rows = 0;
+  let writes = 0;
+  for (const t of tables) {
+    const c = await n(db, `SELECT count(*) n FROM "${t.name}"`);
+    rows += c;
+    writes += c * (1 + t.idx);
+  }
+  return writes + Math.max(0, changes - rows) * 2;
+}
 
 /** What a reseed must reproduce exactly (ids minted by the ledger helpers excluded). */
 async function fingerprint(db: AppDb) {
@@ -57,7 +81,11 @@ describe('demo dataset', () => {
     db = createTestDb();
     const t0 = Date.now();
     changes0 = await n(db, 'SELECT total_changes() n');
-    const r = await seedDemo(db, { parentSecret: SECRET, ownerEmail: 'Owner@Example.com' });
+    const r = await seedDemo(db, {
+      parentSecret: SECRET,
+      ownerEmail: 'Owner@Example.com',
+      today: TODAY,
+    });
     changes = (await n(db, 'SELECT total_changes() n')) - changes0;
     expect(r.phase).toBe('done');
     // The brief: a local seed in well under two minutes.
@@ -83,7 +111,8 @@ describe('demo dataset', () => {
     expect(await n(db, 'SELECT count(*) n FROM opening_balance')).toBe(10);
     expect(await n(db, 'SELECT count(*) n FROM parent_link')).toBe(40);
     expect(await n(db, 'SELECT count(*) n FROM staff_advance')).toBe(2);
-    expect(await n(db, "SELECT count(*) n FROM payslip WHERE status = 'paid'")).toBe(84);
+    // Payslips through last month (14 staff × 5 months); this month's are not prepared yet.
+    expect(await n(db, "SELECT count(*) n FROM payslip WHERE status = 'paid'")).toBe(70);
     expect(await n(db, "SELECT count(*) n FROM receipt WHERE kind = 'reversal'")).toBe(4);
     expect(await n(db, "SELECT count(*) n FROM receipt WHERE kind = 'refund'")).toBe(1);
     expect(await n(db, "SELECT count(*) n FROM charge WHERE kind = 'fine'")).toBeGreaterThan(40);
@@ -96,12 +125,19 @@ describe('demo dataset', () => {
     expect(await n(db, "SELECT count(DISTINCT method) n FROM receipt WHERE kind = 'payment'")).toBe(
       4,
     );
-    expect(await n(db, 'SELECT count(*) n FROM cash_session WHERE closed_at IS NULL')).toBe(0);
+    // Only today's drawer is still open.
+    expect(await n(db, `SELECT count(*) n FROM cash_session WHERE closed_at IS NULL`)).toBe(1);
+    expect(
+      await n(
+        db,
+        `SELECT count(*) n FROM cash_session WHERE closed_at IS NULL AND business_date = '${TODAY}'`,
+      ),
+    ).toBe(1);
     expect(await n(db, 'SELECT count(*) n FROM cash_session WHERE variance <> 0')).toBeGreaterThan(
       5,
     );
     expect(await n(db, 'SELECT count(*) n FROM expense WHERE voided_by IS NOT NULL')).toBe(1);
-    // One week of registers (the write budget): 5 school days × 19 groups.
+    // One week of registers (the write budget): 5 school days × 19 groups, today's partly taken.
     expect(await n(db, 'SELECT count(DISTINCT date) n FROM att_register')).toBe(5);
     expect(await n(db, 'SELECT count(*) n FROM att_register')).toBeGreaterThan(80);
     expect(await n(db, 'SELECT count(DISTINCT status) n FROM message')).toBe(3);
@@ -115,41 +151,119 @@ describe('demo dataset', () => {
       ).toBe(1);
   });
 
-  it('collects about 85% and has real defaulters', async () => {
-    const pct = await n(
-      db,
-      "SELECT round(100.0 * sum(paid) / sum(net)) n FROM charge_net WHERE payer_type = 'family'",
-    );
-    expect(pct).toBeGreaterThanOrEqual(80);
-    expect(pct).toBeLessThanOrEqual(92);
+  it('collects most of the past months, part of this one, and has real defaulters', async () => {
+    const pct = async (cmp: string) =>
+      n(
+        db,
+        `SELECT round(100.0 * sum(paid) / sum(net)) n FROM charge_net
+         WHERE payer_type = 'family' AND period_key ${cmp} '${CAL.current}'`,
+      );
+    const past = await pct('<');
+    expect(past).toBeGreaterThanOrEqual(85);
+    expect(past).toBeLessThanOrEqual(97);
+    // Mid-month: on-time payers are in, late payers still trickling in.
+    const now = await pct('=');
+    expect(now).toBeGreaterThanOrEqual(40);
+    expect(now).toBeLessThanOrEqual(85);
     expect(
       await n(
         db,
         "SELECT count(DISTINCT payer_id) n FROM charge_status WHERE payer_type = 'family' AND due > 0",
       ),
     ).toBeGreaterThan(20);
-    // Absence 5–8% on the September registers.
+    // Absence about 5% (3–8%) on the week's registers.
     const abs = await n(db, "SELECT round(1000.0 * sum(status = 'A') / count(*)) n FROM att_mark");
-    expect(abs).toBeGreaterThanOrEqual(40);
+    expect(abs).toBeGreaterThanOrEqual(30);
     expect(abs).toBeLessThanOrEqual(80);
   });
 
-  it('fits the D1 write budget (docs/demo.md): a full seed ≤ DEMO_SEED_WRITES ≤ the cap', async () => {
-    // A D1 row write = the row + one per index on its table; updates and the runner's own state
-    // writes are counted twice (row + index), which over-counts a little.
-    const tables = await db.all<{ name: string; idx: number }>(sql`SELECT m.name,
-        (SELECT count(*) FROM sqlite_master i WHERE i.type = 'index' AND i.tbl_name = m.name) AS idx
-      FROM sqlite_master m WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite%'
-        AND m.name NOT IN ('d1_migrations', '__drizzle_migrations', '_demo_state', '_demo_undo')`);
-    let rows = 0;
-    let writes = 0;
-    for (const t of tables) {
-      const c = await n(db, `SELECT count(*) n FROM "${t.name}"`);
-      rows += c;
-      writes += c * (1 + t.idx);
+  it('is laid out around the seed day: today is a working day in the middle of its month', async () => {
+    const one = async (q: string) =>
+      String((await db.all<{ v: string | number | null }>(sql.raw(q)))[0]?.v);
+    // Nothing is dated after today.
+    for (const q of [
+      'SELECT max(business_date) v FROM receipt',
+      'SELECT max(date) v FROM expense',
+      'SELECT max(date) v FROM att_register',
+      'SELECT max(substr(created_at, 1, 10)) v FROM message',
+      'SELECT max(business_date) v FROM cash_session',
+    ])
+      expect(await one(q), q).toBe(TODAY);
+    // Six months billed, ending with this one; payslips through last month only.
+    expect(await one('SELECT group_concat(DISTINCT period_key) v FROM charge')).toBe(
+      CAL.months.join(','),
+    );
+    expect(await one('SELECT max(period_key) v FROM payslip')).toBe(CAL.months.at(-2));
+    // Collected today (cash, in today's open drawer).
+    expect(
+      await n(
+        db,
+        `SELECT count(*) n FROM receipt r JOIN cash_session s ON s.id = r.cash_session_id
+         WHERE r.business_date = '${TODAY}' AND r.kind = 'payment' AND s.closed_at IS NULL`,
+      ),
+    ).toBeGreaterThanOrEqual(3);
+    // Today's registers partly taken (12 of 19), the week's earlier days complete.
+    expect(await n(db, `SELECT count(*) n FROM att_register WHERE date = '${TODAY}'`)).toBe(12);
+    expect(
+      await n(
+        db,
+        `SELECT count(*) n FROM att_register r JOIN grp g ON g.id = r.grp_id
+         WHERE r.date = '${TODAY}' AND g.name = 'A' AND g.programme_id = (SELECT id FROM programme WHERE name = 'Class 5')`,
+      ),
+    ).toBe(0);
+    // Today's absences are queued for sending; reminders and expenses in this month too.
+    expect(
+      await n(
+        db,
+        `SELECT count(*) n FROM message WHERE template_key = 'absence' AND status = 'queued'
+         AND json_extract(payload, '$.date') = '${TODAY}'`,
+      ),
+    ).toBeGreaterThan(0);
+    expect(
+      await n(db, `SELECT count(*) n FROM expense WHERE date LIKE '${CAL.current}-%'`),
+    ).toBeGreaterThan(2);
+    expect(
+      await n(db, `SELECT count(*) n FROM message WHERE template_key = 'fee_overdue'`),
+    ).toBeGreaterThan(0);
+    // Sponsors owe the months since they last paid.
+    expect(
+      await n(
+        db,
+        "SELECT count(DISTINCT payer_id) n FROM charge_status WHERE payer_type = 'sponsor' AND due > 0",
+      ),
+    ).toBe(3);
+    // The session still is 2026-27 and contains today.
+    expect(await one("SELECT name || ' ' || start_date || ' ' || end_date v FROM session")).toBe(
+      '2026-27 2026-04-01 2027-03-31',
+    );
+  });
+
+  it('works for any seed day: a month end, a Sunday, and a day past the session', async () => {
+    for (const today of ['2026-10-31', '2026-11-01', '2027-05-03']) {
+      const d = createTestDb();
+      const c0 = await n(d, 'SELECT total_changes() n');
+      const r = await seedDemo(d, { parentSecret: SECRET, today });
+      expect(r.phase, today).toBe('done');
+      expect(await d.all(sql`SELECT * FROM ledger_consistency`), today).toEqual([]);
+      expect(
+        await writesOf(d, (await n(d, 'SELECT total_changes() n')) - c0),
+        today,
+      ).toBeLessThanOrEqual(DEMO_SEED_WRITES);
+      const [sess] = await d.all<{ name: string; end_date: string }>(
+        sql`SELECT name, end_date FROM session`,
+      );
+      expect(sess?.name).toBe('2026-27');
+      expect((sess?.end_date ?? '') >= today).toBe(true);
+      expect(await n(d, `SELECT count(*) n FROM receipt WHERE business_date > '${today}'`)).toBe(0);
+      // A Sunday: no counter and no registers today, nothing left open.
+      if (today === '2026-11-01')
+        expect(await n(d, 'SELECT count(*) n FROM cash_session WHERE closed_at IS NULL')).toBe(0);
     }
-    writes += Math.max(0, changes - rows) * 2;
-    console.log(`demo seed: ${rows} rows, ~${writes} D1 row writes (budget ${DEMO_SEED_WRITES})`);
+  }, 180_000);
+
+  it('fits the D1 write budget (docs/demo.md): a full seed ≤ DEMO_SEED_WRITES ≤ the cap', async () => {
+    const writes = await writesOf(db, changes);
+    console.log(`demo seed: ~${writes} D1 row writes (budget ${DEMO_SEED_WRITES})`);
     expect(writes).toBeLessThanOrEqual(DEMO_SEED_WRITES);
     expect(DEMO_SEED_WRITES).toBeLessThanOrEqual(DEMO_SEED_WRITE_CAP);
     // Not so far under that the constant stops meaning anything.
@@ -159,7 +273,7 @@ describe('demo dataset', () => {
   it('keeps every money rule: ledger_consistency empty, the P&L ties, no FK problem', async () => {
     expect(await db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
     expect(await db.all(sql`PRAGMA foreign_key_check`)).toEqual([]);
-    const ie = await incomeExpense(db, { from: '2026-04', to: '2026-09' });
+    const ie = await incomeExpense(db, { from: CAL.months[0] as string, to: CAL.current });
     expect(ie.reconciliation.ties).toBe(true);
     expect(ie.income.total).toBeGreaterThan(0);
     expect(ie.expenses.total).toBeGreaterThan(0);
@@ -187,7 +301,11 @@ describe('demo dataset', () => {
     const before = await fingerprint(db);
     await markDemoDirty(db);
     expect((await demoStatus(db)).dirty).toBe(true);
-    const r = await seedDemo(db, { parentSecret: SECRET, ownerEmail: 'owner@example.com' });
+    const r = await seedDemo(db, {
+      parentSecret: SECRET,
+      ownerEmail: 'owner@example.com',
+      today: TODAY,
+    });
     expect(r.phase).toBe('done');
     expect(r.dirty).toBe(false);
     expect(await fingerprint(db)).toEqual(before);
@@ -204,7 +322,7 @@ describe('demo dataset', () => {
 
   it('resumes after being cut off at any point, without writing anything twice', async () => {
     const db2 = createTestDb();
-    await startDemoReset(db2, { reason: 'test' });
+    await startDemoReset(db2, { reason: 'test', today: TODAY });
     let calls = 0;
     // Tiny slices (one step call each), as a Worker tick that runs out of time would leave it.
     for (let i = 0; i < 5000; i++) {
@@ -217,7 +335,7 @@ describe('demo dataset', () => {
       if (r.phase === 'done') break;
     }
     expect((await demoStatus(db2)).phase).toBe('done');
-    expect(calls).toBeGreaterThan(demoPlan().length);
+    expect(calls).toBeGreaterThan(demoPlan(TODAY).length);
     expect(await fingerprint(db2)).toEqual(await fingerprint(db));
   }, 180_000);
 
@@ -226,15 +344,14 @@ describe('demo dataset', () => {
     const fresh = async (order: string[]) => {
       vi.resetModules();
       const m = await import('../src/demo/world');
-      const w = m.world();
-      return Object.fromEntries(order.map((k) => [k, w.ids(k)]));
+      return Object.fromEntries(order.map((k) => [k, m.demoIds(k)]));
     };
     expect(await fresh([...keys].reverse())).toEqual(await fresh(keys));
   });
 
   it('a reset started by another version of the plan begins again from the wipe', async () => {
     const db3 = createTestDb();
-    await startDemoReset(db3, { reason: 'test' });
+    await startDemoReset(db3, { reason: 'test', today: TODAY });
     await advanceDemoSeed(db3, { deadline: Number.POSITIVE_INFINITY, maxCalls: 8 });
     await db3.run(sql`UPDATE _demo_state SET value = 'old-plan' WHERE key = 'plan'`);
     await db3.run(sql`UPDATE _demo_state SET value = '40' WHERE key = 'step'`);
@@ -278,8 +395,8 @@ describe('demo dataset', () => {
       reference: 'TEST-1',
       collectorId: accountant,
       idempotencyKey: 'visitor:1',
-      businessDate: '2026-09-30',
-      today: '2026-09-30',
+      businessDate: TODAY,
+      today: TODAY,
     });
     const target = await one(
       "SELECT id v FROM receipt WHERE kind = 'payment' AND method = 'bank' AND id NOT IN (SELECT reverses_id FROM receipt WHERE reverses_id IS NOT NULL) LIMIT 1",
@@ -290,7 +407,7 @@ describe('demo dataset', () => {
       reason: 'visitor test',
       series: { series: 'AN', year: 2026 },
       reversalId: 'VISITOR-REVERSAL-1',
-      businessDate: '2026-09-30',
+      businessDate: TODAY,
       cashSessionId: null,
     });
     expect(await extra()).not.toBe(before2);

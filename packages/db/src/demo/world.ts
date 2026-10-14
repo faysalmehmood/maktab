@@ -1,19 +1,17 @@
 /**
- * The demo school, as pure data (no database): "Al-Noor Community School, Lahore", session 2026-27,
- * April–September 2026. Everything here is a function of DEMO_SEED, so every reseed (and every
- * resumed step of one) sees the same people, ids and plans. Names are common Pakistani names; phone
- * numbers are visibly fake (`03XX 555 NNNN`); CNICs use the 555 block too. Nothing here is a real
- * person or organisation.
+ * The demo school, as pure data (no database): "Al-Noor Community School, Lahore", session 2026-27.
+ * The people are a function of DEMO_SEED alone; every date is laid out relative to the seed day
+ * (`DemoCalendar`, below), so the demo always looks like a school in the middle of its current month
+ * (docs/demo.md). For one seed day every reseed (and every resumed step of one) sees the same people,
+ * ids and plans. Names are common Pakistani names; phone numbers are visibly fake (`03XX 555 NNNN`);
+ * CNICs use the 555 block too. Nothing here is a real person or organisation.
  */
 
 export const DEMO_SEED = 20260401;
-export const DEMO_MONTHS = ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
-/** Registers are seeded for this month only (see docs/demo.md: the D1 row-write budget). */
-export const ATTENDANCE_MONTH = '2026-09';
+/** Months of money history, the last one being the seed day's own (partly collected) month. */
+export const DEMO_MONTH_COUNT = 6;
 /** Registers for the last week of school days only: a register day costs ~3 writes a student. */
 export const ATTENDANCE_DAYS = 5;
-export const attendanceDays = (): string[] =>
-  daysOf(ATTENDANCE_MONTH).filter(schoolDay).slice(-ATTENDANCE_DAYS);
 export const RECEIPT_PREFIX = 'AN';
 
 /** The fixed demo sign-ins (POST /api/auth/demo). Reserved `.invalid` TLD: never a real mailbox. */
@@ -123,6 +121,96 @@ export function officeDayFrom(d: string): string {
   const days = officeDays(d.slice(0, 7));
   return days.find((x) => x >= d) ?? (days.at(-1) as string);
 }
+
+/** `YYYY-MM` plus n months (n may be negative). */
+export function addMonths(period: string, n: number): string {
+  const t = Number(period.slice(0, 4)) * 12 + Number(period.slice(5, 7)) - 1 + n;
+  return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
+}
+export { addDay };
+
+/** The seed day: today in Asia/Karachi (UTC+5, no DST), the school's calendar day. */
+export const demoToday = (nowMs = Date.now()): string =>
+  new Date(nowMs + 5 * 3_600_000).toISOString().slice(0, 10);
+
+/**
+ * Where the dataset sits in time. Everything dated is derived from `today` (the seed day), so the
+ * home screens show a school mid-month: the current month billed and partly collected, today's
+ * drawer open, today's registers partly taken. The session stays 2026-27; it is stretched to
+ * contain the six months when the seed day falls outside it (the demo never invents a new session).
+ */
+export type DemoCalendar = {
+  today: string;
+  /** DEMO_MONTH_COUNT months, oldest first; the last is today's. */
+  months: string[];
+  current: string;
+  /** First day of the history: continuing students' enrolments, openings and concessions. */
+  start: string;
+  sessionStart: string;
+  sessionEnd: string;
+  /** The last ATTENDANCE_DAYS school days up to and including today. */
+  attendanceDays: string[];
+};
+
+const calendars = new Map<string, DemoCalendar>();
+export function demoCalendar(today: string): DemoCalendar {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today) || Number.isNaN(Date.parse(`${today}T00:00:00Z`)))
+    throw new Error(`demo calendar: bad date ${today}`);
+  const hit = calendars.get(today);
+  if (hit) return hit;
+  const current = today.slice(0, 7);
+  const months = Array.from({ length: DEMO_MONTH_COUNT }, (_, i) =>
+    addMonths(current, i - DEMO_MONTH_COUNT + 1),
+  );
+  const start = `${months[0]}-01`;
+  const end = daysOf(current).at(-1) as string;
+  const attendance: string[] = [];
+  for (let d = today; attendance.length < ATTENDANCE_DAYS; d = addDay(d, -1))
+    if (schoolDay(d)) attendance.unshift(d);
+  const cal: DemoCalendar = {
+    today,
+    months,
+    current,
+    start,
+    sessionStart: start < '2026-04-01' ? start : '2026-04-01',
+    sessionEnd: end > '2027-03-31' ? end : '2027-03-31',
+    attendanceDays: attendance,
+  };
+  calendars.set(today, cal);
+  return cal;
+}
+
+const MONTHS_EN = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+const MONTHS_UR = [
+  'جنوری',
+  'فروری',
+  'مارچ',
+  'اپریل',
+  'مئی',
+  'جون',
+  'جولائی',
+  'اگست',
+  'ستمبر',
+  'اکتوبر',
+  'نومبر',
+  'دسمبر',
+];
+/** A month's name, for the few free texts (notes, a notice) that mention a date. */
+export const monthName = (period: string, lang: 'en' | 'ur' = 'en') =>
+  (lang === 'ur' ? MONTHS_UR : MONTHS_EN)[Number(period.slice(5, 7)) - 1] as string;
 
 // ---- Names ------------------------------------------------------------------------------------
 
@@ -646,6 +734,8 @@ export type Student = {
   group: string;
   rollNo: number;
   enrolmentId: string;
+  /** Joined mid-session (admission fee billed); everyone else was enrolled from `cal.start`. */
+  joiner: boolean;
   start: string;
   /** Withdrawn at the end of this date (enrolment end + student left). */
   leftOn: string | null;
@@ -661,26 +751,71 @@ export type World = {
   ids: (key: string) => string;
 };
 
-/** Mid-session joiners: [group key, start date]. Their admission fee is billed in that month. */
-const JOINERS: [string, string][] = [
-  ['c1a', '2026-05-11'],
-  ['c3a', '2026-05-18'],
-  ['c6b', '2026-08-17'],
-  ['nurserya', '2026-08-17'],
-  ['c4a', '2026-08-24'],
-  ['c8a', '2026-09-01'],
-  ['prepa', '2026-09-07'],
-  ['c2a', '2026-09-14'],
-  ['fsc-morning', '2026-05-04'],
-  ['fsc-morning', '2026-08-17'],
+/**
+ * Mid-session joiners: [group key, month index in `cal.months`, day of month]. Their admission fee
+ * is billed in that month. Only completed months (never today's), so no one joins in the future.
+ */
+const JOINERS: [string, number, number][] = [
+  ['c1a', 1, 11],
+  ['c3a', 1, 18],
+  ['c6b', 3, 17],
+  ['nurserya', 3, 17],
+  ['c4a', 3, 24],
+  ['c8a', 4, 1],
+  ['prepa', 4, 7],
+  ['c2a', 4, 14],
+  ['fsc-morning', 1, 4],
+  ['fsc-morning', 3, 17],
 ];
-/** Leavers: withdrawn at the end of July (moved city), by student index. */
+/** Leavers: withdrawn at the end of the fourth month (moved city), by student index. */
 export const LEAVER_INDEXES = [41, 83, 118];
+/** The leavers' last month, as an index in `cal.months`. */
+export const LEAVER_MONTH = 3;
 
-let cached: World | null = null;
+type Base = World & { joins: Map<string, [number, number]>; leavers: Set<string> };
+let base: Base | null = null;
 
-export function world(): World {
-  if (cached) return cached;
+/** The ids of every seeded entity: they depend on the key alone, never on the seed day. */
+export const demoIds = (key: string): string => people().ids(key);
+
+/** The school dated for a seed day (cheap: the people are built once per isolate). */
+const dated = new Map<string, World>();
+export function world(cal: DemoCalendar): World {
+  const hit = dated.get(cal.today);
+  if (hit) return hit;
+  const b = people();
+  const leftOn = daysOf(cal.months[LEAVER_MONTH] as string).at(-1) as string;
+  const byId = new Map<string, Student>();
+  const students = b.students.map((s0) => {
+    const join = b.joins.get(s0.id);
+    const start = join
+      ? officeDayFrom(`${cal.months[join[0]]}-${String(join[1]).padStart(2, '0')}`)
+      : cal.start;
+    const s: Student = {
+      ...s0,
+      start,
+      // Earlier years were admitted in their April; this year's from the start of the history.
+      admissionDate: join
+        ? start
+        : s0.admissionNo.startsWith('2026-')
+          ? cal.start
+          : s0.admissionDate,
+      leftOn: b.leavers.has(s0.id) ? leftOn : null,
+    };
+    byId.set(s.id, s);
+    return s;
+  });
+  const families = b.families.map((f) => ({
+    ...f,
+    students: f.students.map((s) => byId.get(s.id) as Student),
+  }));
+  const w: World = { families, students, ids: b.ids };
+  dated.set(cal.today, w);
+  return w;
+}
+
+function people(): Base {
+  if (base) return base;
   const r = rng(DEMO_SEED);
   const idMap = new Map<string, string>();
   let seq = 0;
@@ -854,7 +989,8 @@ export function world(): World {
         group: g,
         rollNo: roll,
         enrolmentId: ids(`enrolment:${index}`),
-        start: '2026-04-01',
+        joiner: false,
+        start: '',
         leftOn: null,
         evening: null,
         absence: r.chance(0.08) ? 0.16 : r.chance(0.3) ? 0.06 : 0.03,
@@ -866,27 +1002,31 @@ export function world(): World {
   });
 
   // Joiners: the last student of each listed group starts mid-session (admitted that day).
-  for (const [g, start] of JOINERS) {
-    const s = [...students].reverse().find((x) => x.group === g && x.start === '2026-04-01');
+  const joins = new Map<string, [number, number]>();
+  for (const [g, month, day] of JOINERS) {
+    const s = [...students].reverse().find((x) => x.group === g && !x.joiner);
     if (!s) continue;
-    s.start = start;
-    s.admissionDate = start;
+    s.joiner = true;
+    joins.set(s.id, [month, day]);
     const n = (admissionCounters.get('2026') ?? 0) + 1;
     admissionCounters.set('2026', n);
     s.admissionNo = `2026-${String(n).padStart(4, '0')}`;
   }
+  const leavers = new Set<string>();
   for (const i of LEAVER_INDEXES) {
     const s = students[i];
-    if (s && s.start === '2026-04-01') s.leftOn = '2026-07-31';
+    if (s && !s.joiner) leavers.add(s.id);
   }
   // Matric evening batch: 6 students of Classes 9 and 10.
-  const seniors = students.filter((s) => (s.group === 'c9a' || s.group === 'c10a') && !s.leftOn);
+  const seniors = students.filter(
+    (s) => (s.group === 'c9a' || s.group === 'c10a') && !leavers.has(s.id),
+  );
   for (const s of seniors.filter((_, i) => i % 3 === 0).slice(0, 6))
     s.evening = { enrolmentId: ids(`enrolment:${s.index}:evening`) };
 
   sealed = true;
-  cached = { families, students, ids };
-  return cached;
+  base = { families, students, ids, joins, leavers };
+  return base;
 }
 
 /** Admission series rows: the highest number used per year (admission_series.last_no). */

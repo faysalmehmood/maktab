@@ -3,7 +3,7 @@ import type { AppDb } from '../client';
 import { runBatch } from '../ledger/util';
 import { type Step, type StepCtx, seedSteps } from './steps';
 import { estimateUndo, installUndoLog, UNDO_TABLE, undoChunk, undoHead } from './undo';
-import { world } from './world';
+import { demoCalendar, demoToday, world } from './world';
 
 /**
  * The demo reset (docs/demo.md): wipe → reseed, as a list of resumable steps driven by the cron (and
@@ -125,28 +125,39 @@ const undoInstallStep: Step = {
   },
 };
 
-let all: Step[] | null = null;
-export function demoPlan(): Step[] {
-  if (!all) all = [...WIPE, ...seedSteps(), undoInstallStep];
-  return all;
+const plans = new Map<string, Step[]>();
+/**
+ * The reset for a seed day (`anchor`, YYYY-MM-DD in Asia/Karachi; default today). The anchor is
+ * fixed when a reset starts (`_demo_state.anchor`), so a reset that runs past midnight keeps
+ * building the same dataset.
+ */
+export function demoPlan(anchor = demoToday()): Step[] {
+  let p = plans.get(anchor);
+  if (!p) {
+    p = [...WIPE, ...seedSteps(demoCalendar(anchor)), undoInstallStep];
+    plans.set(anchor, p);
+  }
+  return p;
 }
 
-let signature: string | null = null;
+const signatures = new Map<string, string>();
 /**
  * Names of every step, hashed: stored when a reset starts. A deploy that changes the plan while a
  * reset is running would make the saved step index point at another step, so the runner restarts
  * the reset from the wipe instead (every step is idempotent, nothing is lost but time).
  */
-export function demoPlanSignature(): string {
-  if (!signature) {
+export function demoPlanSignature(anchor = demoToday()): string {
+  let sig = signatures.get(anchor);
+  if (!sig) {
     let h = 2166136261;
-    for (const c of demoPlan()
+    for (const c of demoPlan(anchor)
       .map((s) => s.name)
       .join('|'))
       h = Math.imul(h ^ c.charCodeAt(0), 16777619);
-    signature = `${demoPlan().length}:${(h >>> 0).toString(36)}`;
+    sig = `${demoPlan(anchor).length}:${(h >>> 0).toString(36)}`;
+    signatures.set(anchor, sig);
   }
-  return signature;
+  return sig;
 }
 
 // ---- state ----------------------------------------------------------------------------------------
@@ -172,7 +183,7 @@ export type DemoStatus = {
 export async function demoStatus(db: AppDb): Promise<DemoStatus> {
   await ensureState(db);
   const st = await getState(db);
-  const plan = demoPlan();
+  const plan = demoPlan(st.anchor ?? demoToday());
   const step = Number(st.step ?? 0);
   const phase = (st.phase as DemoStatus['phase']) ?? 'idle';
   return {
@@ -231,7 +242,14 @@ const resetToday = (st: Record<string, string>, nowMs: number) =>
  */
 export async function startDemoReset(
   db: AppDb,
-  o: { reason: string; now?: Date; force?: boolean; daily?: boolean },
+  o: {
+    reason: string;
+    now?: Date;
+    force?: boolean;
+    daily?: boolean;
+    /** The seed day (YYYY-MM-DD); default today in Asia/Karachi. Tests pin it. */
+    today?: string;
+  },
 ): Promise<DemoStatus> {
   await ensureState(db);
   if (DEMO_SEED_WRITES > DEMO_SEED_WRITE_CAP)
@@ -249,6 +267,8 @@ export async function startDemoReset(
   if (school && school.name !== DEMO_SCHOOL_NAME && !force)
     throw new Error(`demo reset refused: this database belongs to "${school.name}"`);
   const now = (o.now ?? new Date()).toISOString();
+  const anchor = o.today ?? demoToday(nowMs);
+  demoCalendar(anchor); // refuses a malformed date before anything is wiped
   await runBatch(
     db,
     setState({
@@ -262,11 +282,12 @@ export async function startDemoReset(
       reason: o.reason,
       dirty: '0',
       force: null,
-      plan: demoPlanSignature(),
+      anchor,
+      plan: demoPlanSignature(anchor),
       last_reset_day: utcDay(nowMs),
     }),
   );
-  console.log(JSON.stringify({ demo_reset: o.reason, planned_writes: DEMO_SEED_WRITES }));
+  console.log(JSON.stringify({ demo_reset: o.reason, anchor, planned_writes: DEMO_SEED_WRITES }));
   return demoStatus(db);
 }
 
@@ -389,14 +410,26 @@ async function runSeed(
   o: AdvanceOpts,
   now: () => number,
 ): Promise<number> {
-  const plan = demoPlan();
-  if (st0.plan !== demoPlanSignature()) {
+  // A reset started before the anchor existed is re-planned for today (and so restarts below).
+  const anchor = st0.anchor ?? demoToday(now());
+  const plan = demoPlan(anchor);
+  if (st0.plan !== demoPlanSignature(anchor)) {
     // Started by another version of the plan: begin again from the wipe (see demoPlanSignature).
     st0.step = '0';
     st0.sub = '0';
-    await runBatch(db, setState({ step: '0', sub: '0', schema: null, plan: demoPlanSignature() }));
+    await runBatch(
+      db,
+      setState({ step: '0', sub: '0', schema: null, anchor, plan: demoPlanSignature(anchor) }),
+    );
   }
-  const ctx: StepCtx = { db, w: world(), parentSecret: o.parentSecret, ownerEmail: o.ownerEmail };
+  const cal = demoCalendar(anchor);
+  const ctx: StepCtx = {
+    db,
+    w: world(cal),
+    cal,
+    parentSecret: o.parentSecret,
+    ownerEmail: o.ownerEmail,
+  };
   let step = Number(st0.step ?? 0);
   let sub = Number(st0.sub ?? 0);
   let calls = 0;
@@ -465,9 +498,9 @@ async function runUndo(
 /** The whole reset in one process (local script and tests): no deadline. */
 export async function seedDemo(
   db: AppDb,
-  o: { parentSecret?: string; ownerEmail?: string; force?: boolean } = {},
+  o: { parentSecret?: string; ownerEmail?: string; force?: boolean; today?: string } = {},
 ): Promise<AdvanceResult> {
-  await startDemoReset(db, { reason: 'local seed', force: o.force, daily: false });
+  await startDemoReset(db, { reason: 'local seed', force: o.force, daily: false, today: o.today });
   let r: AdvanceResult;
   do r = await advanceDemoSeed(db, { deadline: Number.POSITIVE_INFINITY, ...o });
   while (r.phase === 'running' && r.leased);

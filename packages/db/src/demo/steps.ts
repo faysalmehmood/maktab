@@ -30,19 +30,23 @@ import {
   waiveFine,
 } from '../ledger';
 import {
-  attendanceDays,
+  addDay,
   CLASS_TEACHER,
-  DEMO_MONTHS,
   DEMO_SEED,
   DEMO_USERS,
+  type DemoCalendar,
   daysOf,
   demoAdmissionSeries,
+  demoIds,
   type Family,
   GROUPS,
   hashSeed,
   holidays,
+  LEAVER_MONTH,
+  monthName,
   officeDayFrom,
   officeDays,
+  officeOpen,
   PROGRAMMES,
   RECEIPT_PREFIX,
   rng,
@@ -72,6 +76,8 @@ import {
 export type StepCtx = {
   db: AppDb;
   w: World;
+  /** The seed day and everything dated from it (world.ts). */
+  cal: DemoCalendar;
   /** PARENT_LINK_SECRET: parent links are made only when it is known. */
   parentSecret?: string;
   /** The installation owner's Google address (OWNER_EMAIL): an extra owner login for the reset. */
@@ -101,7 +107,7 @@ export function dayId(date: string, key: string): string {
   return time + rand;
 }
 
-const ids = () => world().ids;
+const ids = () => demoIds;
 const userId = (k: keyof typeof DEMO_USERS) => ids()(`user:${k}`);
 const staffId = (k: string) => ids()(`staff:${k}`);
 const grpId = (k: string) => ids()(`grp:${k}`);
@@ -176,7 +182,7 @@ const EXPENSE_CATEGORIES = [
 ] as const;
 
 async function baseData(ctx: StepCtx): Promise<void> {
-  const { db } = ctx;
+  const { db, cal } = ctx;
   if (await exists(db, sql`SELECT 1 FROM school`)) return;
   const by = userId('principal');
   const stmts: SQL[] = [];
@@ -217,7 +223,7 @@ async function baseData(ctx: StepCtx): Promise<void> {
           parent_gate, reminder_cooldown_days, announcement_groups_note, created_by)
         VALUES (${ids()('school')}, 'Al-Noor Community School', 'النور کمیونٹی اسکول', 'both',
           '14-C Main Boulevard, Faisal Town, Lahore', '924235550100', 'en', 'AN', 'Lahore', 'maroon',
-          ${RECEIPT_PREFIX}, '2026-03-28T05:00:00.000Z', 'daily', '[0]',
+          ${RECEIPT_PREFIX}, ${`${addDay(cal.start, -4)}T05:00:00.000Z`}, 'daily', '[0]',
           ${JSON.stringify({ enabled: true, grace_day: 10, type: 'fixed', value: rupees(200), cap: null })},
           'birth_year', 7, 'One WhatsApp group per class, run by the class teacher. Fee matters by direct message only.',
           ${by})`,
@@ -225,14 +231,14 @@ async function baseData(ctx: StepCtx): Promise<void> {
   const session = ids()('session');
   stmts.push(
     sql`INSERT INTO session (id, name, start_date, end_date, is_current, created_by)
-        VALUES (${session}, '2026-27', '2026-04-01', '2027-03-31', 1, ${by})`,
+        VALUES (${session}, '2026-27', ${cal.sessionStart}, ${cal.sessionEnd}, 1, ${by})`,
     ...bulk('term', [
       {
         id: ids()('term:1'),
         session_id: session,
         name: 'First term',
         seq: 1,
-        start_date: '2026-04-01',
+        start_date: cal.sessionStart,
         end_date: '2026-08-31',
         created_by: by,
       },
@@ -242,7 +248,7 @@ async function baseData(ctx: StepCtx): Promise<void> {
         name: 'Second term',
         seq: 2,
         start_date: '2026-09-01',
-        end_date: '2027-03-31',
+        end_date: cal.sessionEnd,
         created_by: by,
       },
     ]),
@@ -401,21 +407,25 @@ async function baseData(ctx: StepCtx): Promise<void> {
     effective_from: from,
     created_by: by,
   });
+  const from = cal.sessionStart;
+  // From the day after the history starts: continuing students (enrolled on that day) are never
+  // billed admission.
+  const joinFrom = addDay(cal.start, 1);
   stmts.push(
     ...bulk('fee_rate', [
-      ...grades.map((p) => rate(HEADS.tuition(), p.key, p.tuition, '2026-04-01')),
-      rate(HEADS.academy(), 'fsc', tuitionOfProgramme('fsc'), '2026-04-01'),
-      rate(HEADS.academy(), 'matric', tuitionOfProgramme('matric'), '2026-04-01'),
-      // From the 2nd: continuing students (enrolled on the 1st) are never billed admission.
-      ...grades.map((p) => rate(HEADS.admission(), p.key, rupees(5000), '2026-04-02')),
-      rate(HEADS.admission(), 'fsc', rupees(3000), '2026-04-02'),
+      ...grades.map((p) => rate(HEADS.tuition(), p.key, p.tuition, from)),
+      rate(HEADS.academy(), 'fsc', tuitionOfProgramme('fsc'), from),
+      rate(HEADS.academy(), 'matric', tuitionOfProgramme('matric'), from),
+      ...grades.map((p) => rate(HEADS.admission(), p.key, rupees(5000), joinFrom)),
+      rate(HEADS.admission(), 'fsc', rupees(3000), joinFrom),
+      // Both per-term heads are billed with the second term (1 September), the one term start that
+      // falls inside the history for most seed days.
       ...['c5', 'c6', 'c7', 'c8', 'c9', 'c10'].map((p) =>
         rate(HEADS.exam(), p, rupees(800), '2026-09-01'),
       ),
-      ...['nursery', 'prep', 'c1', 'c2', 'c3'].flatMap((p) => [
-        rate(HEADS.activity(), p, rupees(1500), '2026-04-01'),
-        rate(HEADS.activity(), p, 0, '2026-09-01'),
-      ]),
+      ...['nursery', 'prep', 'c1', 'c2', 'c3'].map((p) =>
+        rate(HEADS.activity(), p, rupees(1500), '2026-09-01'),
+      ),
     ]),
     ...bulk(
       'expense_category',
@@ -443,7 +453,7 @@ async function baseData(ctx: StepCtx): Promise<void> {
 }
 
 async function people(ctx: StepCtx): Promise<void> {
-  const { db, w } = ctx;
+  const { db, w, cal } = ctx;
   if (await exists(db, sql`SELECT 1 FROM family LIMIT 1`)) return;
   const by = userId('admin');
   const stmts: SQL[] = [
@@ -516,7 +526,7 @@ async function people(ctx: StepCtx): Promise<void> {
           grp_id: grpId('matric-evening'),
           is_primary: 0,
           roll_no: null,
-          start_date: '2026-04-01',
+          start_date: cal.start,
           end_date: null,
           status: 'active',
           end_reason: null,
@@ -542,7 +552,7 @@ export function concessionPicks(w: World): Pick[] {
   const r = rng(DEMO_SEED + 7);
   const taken = new Set<string>();
   const out: Pick[] = [];
-  const eligible = w.students.filter((s) => !s.leftOn && s.start === '2026-04-01');
+  const eligible = w.students.filter((s) => !s.leftOn && !s.joiner);
   const take = (cands: Student[], n: number, f: (s: Student, i: number) => Omit<Pick, 's'>) => {
     for (const s of r.shuffle([...cands])) {
       if (n <= 0) break;
@@ -604,12 +614,7 @@ export function sponsorshipPicks(
 ): { sponsor: string; s: Student; pct: number; tuitionOnly: boolean }[] {
   const conc = new Set(concessionPicks(w).map((p) => p.s.id));
   const pool = w.students.filter(
-    (s) =>
-      !s.leftOn &&
-      s.start === '2026-04-01' &&
-      !conc.has(s.id) &&
-      !s.evening &&
-      s.group !== 'fsc-morning',
+    (s) => !s.leftOn && !s.joiner && !conc.has(s.id) && !s.evening && s.group !== 'fsc-morning',
   );
   const r = rng(DEMO_SEED + 11);
   const picks = r.shuffle([...pool]).slice(0, 7);
@@ -633,14 +638,14 @@ export function openingPicks(w: World): { s: Student; amount: number; note: stri
         i < 8
           ? rupees([2500, 3000, 4500, 6000, 7200, 9000, 3500, 5000][i] as number)
           : -rupees(1500),
-      note: i < 8 ? 'Unpaid dues carried from the 2025-26 register' : 'Advance paid in March 2026',
+      note: i < 8 ? 'Unpaid dues carried from the paper register' : 'Advance paid before Maktab',
     }));
 }
 
 const concessionsStep: Step = {
   name: 'concessions-sponsors-openings',
   run: async (ctx, sub) => {
-    const { db, w } = ctx;
+    const { db, w, cal } = ctx;
     const by = userId('principal');
     const picks = concessionPicks(w);
     if (sub === 0) {
@@ -655,7 +660,7 @@ const concessionsStep: Step = {
             reason: p.reason,
             note: p.note,
             approvedBy: by,
-            validFrom: '2026-04-01',
+            validFrom: cal.start,
           });
       return 1;
     }
@@ -679,7 +684,7 @@ const concessionsStep: Step = {
             student_id: p.s.id,
             fee_head_id: p.tuitionOnly ? HEADS.tuition() : null,
             share_pct: p.pct,
-            valid_from: '2026-04-01',
+            valid_from: cal.start,
             created_by: by,
           })),
         ),
@@ -694,8 +699,8 @@ const concessionsStep: Step = {
         await setAccountOpening(db, {
           accountId: ACCOUNTS.bank(),
           amount: rupees(350000),
-          asOf: '2026-04-01',
-          today: '2026-04-01',
+          asOf: cal.start,
+          today: cal.start,
           by,
         });
       return 3;
@@ -707,7 +712,7 @@ const concessionsStep: Step = {
       await recordOpeningBalance(db, {
         studentId: o.s.id,
         amount: o.amount,
-        asOf: '2026-04-01',
+        asOf: cal.start,
         note: o.note,
         by,
       });
@@ -759,7 +764,7 @@ type Payment = {
 /** The few families the scripted corrections happen to (deterministic). */
 export function scenarioFamilies(w: World) {
   const steady = w.families.filter(
-    (f) => f.reliability > 0.9 && f.students.every((s) => !s.leftOn && s.start === '2026-04-01'),
+    (f) => f.reliability > 0.9 && f.students.every((s) => !s.leftOn && !s.joiner),
   );
   const leaverFamily = w.families.find(
     (f) => f.students.length === 1 && f.students[0]?.leftOn,
@@ -785,10 +790,21 @@ const reference = (m: Method, key: string) =>
         ? `Cheque #${String(hashSeed(key) % 100_000).padStart(6, '0')}`
         : null;
 
-/** Who pays what in a month (85% collection, some late, partial and advance payments). */
-export function paymentsFor(w: World, period: string): Payment[] {
+/** Families paid at the counter today (cash), so the drawer is open with receipts in it. */
+const TODAY_PAYERS = 5;
+
+/**
+ * Who pays what in a month (85% collection, some late, partial and advance payments). In the seed
+ * day's own month only the payments planned up to today happen, so collection there is as far
+ * along as the month (most families pay by the due date, the 10th; late payers trickle in until
+ * the 28th), and a handful of families pay today.
+ */
+export function paymentsFor(w: World, period: string, cal: DemoCalendar): Payment[] {
   const sc = scenarioFamilies(w);
+  const idx = cal.months.indexOf(period);
+  const current = period === cal.current;
   const out: Payment[] = [];
+  const later: Payment[] = [];
   for (const f of w.families) {
     if (!f.students.some((s) => activeIn(s, period))) continue;
     const r = rng(hashSeed(`pay:${f.id}:${period}`));
@@ -799,22 +815,31 @@ export function paymentsFor(w: World, period: string): Payment[] {
       const v = r.next();
       kind = v < 0.06 ? 'partial' : v < 0.12 ? 'advance' : 'full';
     }
-    if (f === sc.leaver && period === '2026-07') kind = 'advance';
-    if (f === sc.leaver && period > '2026-07') kind = 'skip';
-    if ((f === sc.typo && period === '2026-05') || (f === sc.wallet && period === '2026-06'))
-      kind = 'skip'; // scripted below
-    if ((f === sc.duplicate && period === '2026-08') || (f === sc.cheque && period === '2026-09'))
-      kind = 'skip';
+    if (f === sc.leaver && idx === LEAVER_MONTH) kind = 'advance';
+    if (f === sc.leaver && idx > LEAVER_MONTH) kind = 'skip';
+    if ((f === sc.typo && idx === 1) || (f === sc.wallet && idx === 2)) kind = 'skip'; // scripted below
+    if ((f === sc.duplicate && idx === 4) || (f === sc.cheque && idx === 4)) kind = 'skip';
     if (kind === 'skip') continue;
     const late = kind === 'late';
-    const day = officeDayFrom(
-      `${period}-${String(late ? r.int(12, 24) : r.int(1, 10)).padStart(2, '0')}`,
-    );
+    const dom = late ? r.int(12, current ? 28 : 24) : r.int(1, 10);
+    const day = officeDayFrom(`${period}-${String(dom).padStart(2, '0')}`);
     const method: Method = r.chance(0.06) ? 'cash' : f.method;
     // Families that often pay late settle about a month at a time, so their arrears linger.
     const settled: PayKind =
       f.reliability < 0.9 && kind !== 'advance' ? 'month' : late ? 'full' : (kind as PayKind);
-    out.push({ family: f, kind: settled, day, method, key: `pay:${f.id}:${period}` });
+    const p: Payment = { family: f, kind: settled, day, method, key: `pay:${f.id}:${period}` };
+    if (current && settled !== 'advance' && settled !== 'partial') later.push(p);
+    else if (!current || day <= cal.today) out.push(p);
+  }
+  if (current) {
+    // Today's counter: the few payers planned latest in the month come in today (cash), so the
+    // drawer has receipts even on the month's last day; the rest pay on their planned day.
+    later.sort((a, b) =>
+      a.day !== b.day ? (a.day < b.day ? 1 : -1) : hashSeed(a.key) - hashSeed(b.key),
+    );
+    const today = officeOpen(cal.today) ? later.splice(0, TODAY_PAYERS) : [];
+    for (const p of today) out.push({ ...p, day: cal.today, method: 'cash' });
+    for (const p of later) if (p.day <= cal.today) out.push(p);
   }
   return out;
 }
@@ -851,6 +876,8 @@ function payOp(p: Payment): Op {
             : p.kind === 'month'
               ? Math.min(due, tuitionOf(p.family, p.day.slice(0, 7)))
               : due;
+      // The mistyped payment needs a real amount under the typo even when the family paid ahead.
+      if (p.extra && amount <= 0) amount = tuitionOf(p.family, p.day.slice(0, 7));
       amount += p.extra ?? 0;
       if (p.copyOf) {
         const [first] = await db.all<{ amount: number }>(
@@ -896,7 +923,7 @@ function reverseOp(
         receiptId: target,
         byUserId: userId('accountant'),
         reason,
-        series: { series: RECEIPT_PREFIX, year: 2026 },
+        series: { series: RECEIPT_PREFIX, year: Number(day.slice(0, 4)) },
         reversalId: dayId(day, `reversal:${targetKey}`),
         businessDate: day,
         cashSessionId: orig.method === 'cash' ? sessionIdFor(userId('accountant'), day) : null,
@@ -979,7 +1006,12 @@ type Expense = {
   note?: string;
 };
 
-export function expensesFor(period: string): Expense[] {
+/** Electricity by calendar month (Lahore: summer bills are the heaviest). */
+const ELECTRICITY = [
+  32100, 29800, 31500, 38500, 61200, 70950, 73800, 66400, 52300, 41800, 33900, 34600,
+];
+
+export function expensesFor(period: string, idx: number): Expense[] {
   const m = Number(period.slice(5, 7));
   const vacation = m === 6 || m === 7;
   const r = rng(hashSeed(`expenses:${period}`));
@@ -998,7 +1030,7 @@ export function expensesFor(period: string): Expense[] {
       key: 'electricity',
       day: d(14),
       cat: 'expcat_utilities',
-      amount: rupees([38500, 61200, 70950, 73800, 66400, 52300][m - 4] as number),
+      amount: rupees(ELECTRICITY[m - 1] as number),
       account: 'bank',
       vendor: 'LESCO',
       note: 'Electricity bill',
@@ -1089,7 +1121,7 @@ export function expensesFor(period: string): Expense[] {
       vendor: 'Al-Fatah Printers',
       note: 'Second-term question papers',
     });
-  if (m === 4)
+  if (idx === 0)
     out.push({
       key: 'repair',
       day: d(23),
@@ -1203,7 +1235,7 @@ const advanceOp = (
   },
 });
 
-const refundOp = (day: string, f: Family): Op => ({
+const refundOp = (day: string, f: Family, leftMonth: string): Op => ({
   cash: true,
   run: async ({ db }) => {
     const id = dayId(day, `refund:${f.id}`);
@@ -1218,7 +1250,7 @@ const refundOp = (day: string, f: Family): Op => ({
       payerId: f.id,
       amount: c.credit,
       method: 'cash',
-      reason: 'Child withdrew at the end of July; the advance is returned',
+      reason: `Child withdrew at the end of ${monthName(leftMonth)}; the advance is returned`,
       by: userId('accountant'),
       businessDate: day,
       idempotencyKey: `demo:refund:${f.id}`,
@@ -1229,7 +1261,7 @@ const refundOp = (day: string, f: Family): Op => ({
 
 const endConcessionOp = (): Op => ({
   cash: false,
-  run: async ({ db, w }) => {
+  run: async ({ db, w, cal }) => {
     const needy = concessionPicks(w).findIndex((p) => p.reason === 'needy');
     const id = dayId('2026-03-30', `concession:${needy}`);
     const [c] = await db.all<{ ended_at: string | null }>(
@@ -1238,7 +1270,7 @@ const endConcessionOp = (): Op => ({
     if (!c || c.ended_at) return;
     await endConcession(db, {
       id,
-      endedAt: '2026-07-01',
+      endedAt: `${cal.months[3]}-01`,
       reason: 'Father found work again',
       by: userId('principal'),
     });
@@ -1304,20 +1336,30 @@ const closeOp = (day: string): Op => ({
   },
 });
 
-/** Every office day of a month that has something to do, with its ops in order. */
-export function monthDays(w: World, period: string): { day: string; ops: Op[] }[] {
+/**
+ * Every office day of a month that has something to do, with its ops in order. The scripted
+ * corrections sit in the completed months (by index in `cal.months`); nothing is dated after the
+ * seed day, today's drawer stays open, and today's month has no payroll yet.
+ */
+export function monthDays(
+  w: World,
+  period: string,
+  cal: DemoCalendar,
+): { day: string; ops: Op[] }[] {
   const sc = scenarioFamilies(w);
+  const idx = cal.months.indexOf(period);
+  const current = period === cal.current;
   const byDay = new Map<string, Op[]>();
   const add = (day: string, op: Op) => byDay.set(day, [...(byDay.get(day) ?? []), op]);
   const fineDay = officeDayFrom(`${period}-11`);
   add(fineDay, finesOp(fineDay));
-  for (const p of paymentsFor(w, period).sort((a, b) =>
+  for (const p of paymentsFor(w, period, cal).sort((a, b) =>
     a.day < b.day ? -1 : a.day > b.day ? 1 : a.key < b.key ? -1 : 1,
   ))
     add(p.day, payOp(p));
   const sday = (n: number) => officeDayFrom(`${period}-${String(n).padStart(2, '0')}`);
   // Scripted corrections.
-  if (period === '2026-05') {
+  if (idx === 1) {
     const d = sday(6);
     add(
       d,
@@ -1341,7 +1383,7 @@ export function monthDays(w: World, period: string): { day: string; ops: Op[] }[
       advanceOp(sday(12), 'bilal', rupees(20000), 'bank', 'Advance for a family wedding'),
     );
   }
-  if (period === '2026-06') {
+  if (idx === 2) {
     const d = sday(9);
     add(
       d,
@@ -1367,7 +1409,7 @@ export function monthDays(w: World, period: string): { day: string; ops: Op[] }[
     );
     add(sday(25), endConcessionOp());
   }
-  if (period === '2026-08') {
+  if (idx === 4) {
     const d = sday(18);
     add(
       d,
@@ -1385,29 +1427,29 @@ export function monthDays(w: World, period: string): { day: string; ops: Op[] }[
       }),
     );
     add(d, reverseOp(d, `dup2:${period}`, d, 'Entered twice by mistake'));
-    add(sday(20), refundOp(sday(20), sc.leaver));
+    add(sday(20), refundOp(sday(20), sc.leaver, cal.months[LEAVER_MONTH] as string));
     add(
       sday(20),
       advanceOp(sday(20), 'naila', rupees(10000), 'cash', 'Advance against salary (medical)'),
     );
-  }
-  if (period === '2026-09') {
-    const d = sday(8);
+    const c = sday(8);
     add(
-      d,
-      payOp({ family: sc.cheque, kind: 'full', day: d, method: 'cheque', key: `cheque:${period}` }),
+      c,
+      payOp({ family: sc.cheque, kind: 'full', day: c, method: 'cheque', key: `cheque:${period}` }),
     );
-    add(sday(12), reverseOp(sday(12), `cheque:${period}`, d, 'Cheque returned unpaid by the bank'));
+    add(sday(12), reverseOp(sday(12), `cheque:${period}`, c, 'Cheque returned unpaid by the bank'));
   }
-  if (['2026-04', '2026-07', '2026-09'].includes(period))
-    for (const s of SPONSORS) add(sday(15), sponsorOp(sday(15), s.key));
-  if (period >= '2026-05') {
+  // The trust pays every month; the other two sponsors once a quarter, so they owe the months since.
+  if (!current)
+    for (const s of SPONSORS)
+      if (s.key === 'trust' || idx % 3 === 0) add(sday(15), sponsorOp(sday(15), s.key));
+  if (idx >= 1) {
     const late = w.families.filter((f) => f.reliability < 0.8);
     const r = rng(hashSeed(`waive:${period}`));
     for (let n = 0; n < 2; n++) add(sday(20), waiveOp(sday(20), r.pick(late), n));
   }
-  for (const e of expensesFor(period)) add(e.day, expenseOp(period, e));
-  if (period === '2026-04') {
+  for (const e of expensesFor(period, idx)) add(e.day, expenseOp(period, e));
+  if (idx === 0) {
     const d = sday(23);
     const dup: Expense = {
       key: 'repair:dup',
@@ -1421,16 +1463,20 @@ export function monthDays(w: World, period: string): { day: string; ops: Op[] }[
     add(d, expenseOp(period, dup));
     add(d, voidOp(d, period, 'repair'));
   }
+  // Payslips through last month: this month's are not prepared yet.
   const payday = officeDays(period).at(-1) as string;
-  for (const op of payrollOps(period, payday)) add(payday, op);
+  if (!current) for (const op of payrollOps(period, payday)) add(payday, op);
 
   const out: { day: string; ops: Op[] }[] = [];
   for (const day of [...byDay.keys()].sort()) {
+    if (day > cal.today) continue;
     const ops = byDay.get(day) as Op[];
     const cash = ops.some((o) => o.cash);
-    const tail: Op[] = cash
-      ? [...(weekday(day) === 6 || day === payday ? [depositOp(day)] : []), closeOp(day)]
-      : [];
+    // Today's drawer is still open: it is counted and closed at the end of the office day.
+    const tail: Op[] =
+      cash && day !== cal.today
+        ? [...(weekday(day) === 6 || day === payday ? [depositOp(day)] : []), closeOp(day)]
+        : [];
     out.push({ day, ops: [...(cash ? [openOp(day)] : []), ...ops, ...tail] });
   }
   return out;
@@ -1454,19 +1500,40 @@ export function registerRoster(w: World, group: string, day: string): Student[] 
   return w.students.filter((s) => s.group === group && activeOn(s, day));
 }
 
+/**
+ * Registers still to be taken on the seed day itself, so the home screens show real work left
+ * (about 12 of 19 taken). Class 5 A is the demo teacher's: she has her own register to take; the
+ * evening batch meets at 16:00.
+ */
+export const NOT_YET_TAKEN = new Set([
+  'c5a',
+  'c2a',
+  'c4b',
+  'c7b',
+  'c9a',
+  'prepa',
+  'matric-evening',
+]);
+
+/** The groups whose register exists for a day (all of them, except today's not-yet-taken ones). */
+export const registerGroups = (cal: DemoCalendar, day: string) =>
+  GROUPS.filter((g) => day !== cal.today || !NOT_YET_TAKEN.has(g.key));
+
 function attendanceStep(day: string): Step {
   return {
     name: `attendance:${day}`,
-    run: async ({ db, w }) => {
+    run: async ({ db, w, cal }) => {
+      const groups = registerGroups(cal, day);
       if (
         await exists(
           db,
-          sql`SELECT 1 FROM att_register WHERE client_id = ${`demo:${GROUPS[0]?.key}:${day}`}`,
+          sql`SELECT 1 FROM att_register WHERE client_id = ${`demo:${groups[0]?.key}:${day}`}`,
         )
       )
         return null;
       const stmts: SQL[] = [];
-      GROUPS.forEach((g, gi) => {
+      groups.forEach((g) => {
+        const gi = GROUPS.indexOf(g);
         const roster = registerRoster(w, g.key, day);
         if (!roster.length) return;
         const reg = dayId(day, `register:${g.key}`);
@@ -1547,12 +1614,48 @@ function messageRow(o: {
   };
 }
 
+/** About a week before the seed day (an office day): when the notice went out. */
+const noticeDay = (cal: DemoCalendar) => {
+  let d = addDay(cal.today, -7);
+  while (!officeOpen(d)) d = addDay(d, -1);
+  return d;
+};
+/** The first Saturday after the seed day. */
+const meetingDay = (cal: DemoCalendar) => {
+  let d = addDay(cal.today, 1);
+  while (weekday(d) !== 6) d = addDay(d, 1);
+  return d;
+};
+
+/** The office day on or before `d`. */
+const officeDayBefore = (d: string) => {
+  let x = d;
+  while (!officeOpen(x)) x = addDay(x, -1);
+  return x;
+};
+
+/**
+ * Reminder days: "fee due" on the 3rd of the month being reminded about, "overdue" two days ago
+ * (after the fine's grace day, the 10th). Before the 14th of the month both are last month's.
+ */
+export function reminderDays(cal: DemoCalendar): {
+  period: string;
+  dueDay: string;
+  overdueDay: string;
+} {
+  const dom = Number(cal.today.slice(8, 10));
+  const period = dom >= 14 ? cal.current : (cal.months.at(-2) as string);
+  const overdueDay =
+    dom >= 14 ? officeDayBefore(addDay(cal.today, -2)) : officeDayFrom(`${period}-21`);
+  return { period, dueDay: officeDayFrom(`${period}-03`), overdueDay };
+}
+
 const names = (f: Family, day: string) =>
   f.students.filter((s) => activeOn(s, day)).map((s) => s.name);
 
 const messagesStep: Step = {
   name: 'messages',
-  run: async ({ db, w }, sub) => {
+  run: async ({ db, w, cal }, sub) => {
     const by = userId('admin');
     const fate = (key: string, pSent: number, pSkip: number): 'sent' | 'skipped' | 'queued' => {
       const u = rng(hashSeed(`fate:${key}`)).next();
@@ -1561,14 +1664,16 @@ const messagesStep: Step = {
     const famById = new Map(w.families.map((f) => [f.id, f]));
     if (sub === 0) {
       if (await exists(db, sql`SELECT 1 FROM message LIMIT 1`)) return null;
-      // Absence: the last five school days of September, one row per family per day.
-      const days = attendanceDays().slice(-5);
+      // Absence: the registers' days (the last one today's when it is a school day), one row per
+      // family per day; the last day's rows are still queued.
+      const days = cal.attendanceDays;
       const rows: MsgRow[] = [];
       const lastSent = new Map<string, string>();
       for (const day of days) {
         const byFam = new Map<string, Student[]>();
+        const taken = new Set(registerGroups(cal, day).map((g) => g.key));
         for (const s of w.students)
-          if (activeOn(s, day) && markFor(s, day) === 'A')
+          if (activeOn(s, day) && taken.has(s.group) && markFor(s, day) === 'A')
             byFam.set(s.familyId, [...(byFam.get(s.familyId) ?? []), s]);
         for (const [fid, kids] of byFam) {
           const f = famById.get(fid) as Family;
@@ -1612,8 +1717,10 @@ const messagesStep: Step = {
       return 1;
     }
     if (sub === 1) {
-      // Notice to every family (15 September): the second-term exam schedule.
-      const day = '2026-09-15';
+      // Notice to every family a week ago: a parent-teacher meeting on the Saturday after today.
+      const day = noticeDay(cal);
+      const meet = meetingDay(cal);
+      const [dd, mm] = [Number(meet.slice(8, 10)), meet.slice(0, 7)];
       const rows = w.families
         .filter((f) => names(f, day).length)
         .map((f) =>
@@ -1626,10 +1733,8 @@ const messagesStep: Step = {
             fate: fate(`notice:${f.id}`, 0.74, 0.08),
             payload: {
               notice_id: 'demo-notice-exams',
-              body_en:
-                'Second-term examinations start on Tuesday 22 September. Date sheets were sent home with the children today. School closes at 12:30 during exam days.',
-              body_ur:
-                'دوسری ٹرم کے امتحانات منگل 22 ستمبر سے شروع ہوں گے۔ ڈیٹ شیٹ آج بچوں کے ہاتھ گھر بھیج دی گئی ہے۔ امتحانات کے دنوں میں چھٹی ساڑھے بارہ بجے ہوگی۔',
+              body_en: `Parent-teacher meeting on Saturday ${dd} ${monthName(mm)}, 9:00 to 12:00. Class teachers will share the term's progress reports. Please bring the fee card.`,
+              body_ur: `والدین اور اساتذہ کی میٹنگ ہفتہ ${dd} ${monthName(mm, 'ur')} کو صبح 9 سے 12 بجے تک ہوگی۔ کلاس ٹیچر ٹرم کی رپورٹ دکھائیں گے۔ براہِ کرم فیس کارڈ ساتھ لائیں۔`,
               student_names: names(f, day),
               date: day,
             },
@@ -1639,14 +1744,16 @@ const messagesStep: Step = {
       return 2;
     }
     if (sub === 2) {
-      // Fee reminders: due on 3 September (sent), overdue on 21 September (half still queued).
+      // Fee reminders: "due" early in the month whose dues they are (sent), "overdue" a few days
+      // ago (half still queued). Early in a month both are about last month.
+      const { dueDay, overdueDay, period } = reminderDays(cal);
       const due = await db.all<{ family_id: string; due: number }>(sql`
         SELECT cs.payer_id AS family_id, sum(cs.due) AS due FROM charge_status cs
-        WHERE cs.payer_type = 'family' AND cs.period_key = '2026-09' AND cs.due > 0
+        WHERE cs.payer_type = 'family' AND cs.period_key = ${period} AND cs.due > 0
         GROUP BY cs.payer_id ORDER BY cs.payer_id LIMIT 60`);
       const overdue = await db.all<{ family_id: string; overdue: number; months: number }>(sql`
         SELECT cs.payer_id AS family_id, sum(cs.due) AS overdue, count(DISTINCT cs.period_key) AS months
-        FROM charge_status cs WHERE cs.payer_type = 'family' AND cs.due > 0 AND cs.due_date < '2026-09-21'
+        FROM charge_status cs WHERE cs.payer_type = 'family' AND cs.due > 0 AND cs.due_date < ${overdueDay}
         GROUP BY cs.payer_id ORDER BY cs.payer_id`);
       const rows: MsgRow[] = [];
       for (const d of due) {
@@ -1656,11 +1763,11 @@ const messagesStep: Step = {
           messageRow({
             f,
             template: 'fee_due',
-            day: '2026-09-03',
+            day: dueDay,
             key: `fee_due:${f.id}`,
             by: userId('accountant'),
             fate: fate(`fee_due:${f.id}`, 0.9, 0.05),
-            payload: { student_names: names(f, '2026-09-03'), due: d.due, date: '2026-09-03' },
+            payload: { student_names: names(f, dueDay), due: d.due, date: dueDay },
           }),
         );
       }
@@ -1671,16 +1778,16 @@ const messagesStep: Step = {
           messageRow({
             f,
             template: 'fee_overdue',
-            day: '2026-09-21',
+            day: overdueDay,
             key: `fee_overdue:${f.id}`,
             by: userId('accountant'),
             fate: fate(`fee_overdue:${f.id}`, 0.5, 0.05),
             skipReason: 'Father promised to pay on Friday',
             payload: {
-              student_names: names(f, '2026-09-21'),
+              student_names: names(f, overdueDay),
               overdue: d.overdue,
               months_overdue: d.months,
-              date: '2026-09-21',
+              date: overdueDay,
             },
           }),
         );
@@ -1693,20 +1800,20 @@ const messagesStep: Step = {
             .map((d) => ({
               family_id: d.family_id,
               template_key: 'fee_due',
-              last_sent_on: '2026-09-03',
+              last_sent_on: dueDay,
             })),
           ...overdue
             .filter((d) => famById.has(d.family_id))
             .map((d) => ({
               family_id: d.family_id,
               template_key: 'fee_overdue',
-              last_sent_on: '2026-09-21',
+              last_sent_on: overdueDay,
             })),
         ]),
       ]);
       return 3;
     }
-    // Payment received: family payments of the second half of September.
+    // Payment received: family payments of the last ten days.
     const receipts = await db.all<{
       id: string;
       receipt_no: string;
@@ -1715,7 +1822,7 @@ const messagesStep: Step = {
       payer_id: string;
     }>(sql`
       SELECT id, receipt_no, amount, business_date, payer_id FROM receipt
-      WHERE kind = 'payment' AND payer_type = 'family' AND business_date >= '2026-09-15'
+      WHERE kind = 'payment' AND payer_type = 'family' AND business_date >= ${addDay(cal.today, -10)}
         AND id NOT IN (SELECT reverses_id FROM receipt WHERE reverses_id IS NOT NULL)
       ORDER BY id`);
     const rows = receipts.flatMap((r) => {
@@ -1767,7 +1874,7 @@ export async function demoLinkToken(secret: string, salt: string): Promise<strin
 
 const parentLinksStep: Step = {
   name: 'parent-links',
-  run: async ({ db, w, parentSecret }) => {
+  run: async ({ db, w, cal, parentSecret }) => {
     if (!parentSecret || parentSecret.trim().length < 32) return null;
     if (await exists(db, sql`SELECT 1 FROM parent_link LIMIT 1`)) return null;
     const guardians = w.families
@@ -1782,15 +1889,15 @@ const parentLinksStep: Step = {
       const token = await demoLinkToken(parentSecret.trim(), salt);
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
       const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-      const day = `2026-09-${String(1 + (i % 25)).padStart(2, '0')}`;
+      // Made over the last month; two in three opened in the last fortnight.
+      const day = addDay(cal.today, -30 + (i % 25));
       rows.push({
         id: dayId(day, `link:${g.id}`),
         guardian_id: g.id,
         token_hash: hash,
         token_salt: salt,
-        expires_at: '2027-03-31T19:00:00.000Z',
-        last_seen_at:
-          i % 3 ? `2026-09-${String(10 + (i % 18)).padStart(2, '0')}T15:20:00.000Z` : null,
+        expires_at: `${cal.sessionEnd}T19:00:00.000Z`,
+        last_seen_at: i % 3 ? `${addDay(cal.today, -14 + (i % 14))}T15:20:00.000Z` : null,
         created_at: `${day}T05:00:00.000Z`,
         created_by: userId('admin'),
       });
@@ -1802,26 +1909,24 @@ const parentLinksStep: Step = {
 
 // ---- the plan ---------------------------------------------------------------------------------
 
-let cachedSteps: Step[] | null = null;
-
-/** The whole dataset, in order (wipe steps are prepended by the runner). */
-const monthPlans = new Map<string, Map<string, Op[]>>();
 /** A month's ops by day, computed the first time a step of that month runs (not at start-up). */
-function monthPlan(period: string): Map<string, Op[]> {
-  let m = monthPlans.get(period);
+const monthPlans = new Map<string, Map<string, Op[]>>();
+function monthPlan(cal: DemoCalendar, period: string): Map<string, Op[]> {
+  const key = `${cal.today}|${period}`;
+  let m = monthPlans.get(key);
   if (!m) {
-    m = new Map(monthDays(world(), period).map((d) => [d.day, d.ops]));
-    monthPlans.set(period, m);
+    m = new Map(monthDays(world(cal), period, cal).map((d) => [d.day, d.ops]));
+    monthPlans.set(key, m);
   }
   return m;
 }
 
 /** One step per office day (fixed list, cheap to build); days with nothing to do finish at once. */
-function dayStep(period: string, day: string): Step {
+function dayStep(cal: DemoCalendar, period: string, day: string): Step {
   return {
     name: `day:${day}`,
     run: async (ctx, sub) => {
-      const ops = monthPlan(period).get(day) ?? [];
+      const ops = monthPlan(cal, period).get(day) ?? [];
       const op = ops[sub];
       if (op) await op.run(ctx);
       return sub + 1 < ops.length ? sub + 1 : null;
@@ -1829,20 +1934,23 @@ function dayStep(period: string, day: string): Step {
   };
 }
 
+const plans = new Map<string, Step[]>();
 /**
- * The whole dataset, in order (wipe steps are prepended by the runner). Building the list is cheap
- * on purpose: a cold Worker isolate on the free plan has ~10 ms of CPU, so the payment schedules
- * are worked out per month only when that month's steps run.
+ * The whole dataset for a seed day, in order (wipe steps are prepended by the runner). Building the
+ * list is cheap on purpose: a cold Worker isolate on the free plan has ~10 ms of CPU, so the payment
+ * schedules are worked out per month only when that month's steps run.
  */
-export function seedSteps(): Step[] {
-  if (cachedSteps) return cachedSteps;
+export function seedSteps(cal: DemoCalendar): Step[] {
+  const hit = plans.get(cal.today);
+  if (hit) return hit;
   const steps: Step[] = [opsStep('base', [baseData]), opsStep('people', [people]), concessionsStep];
-  for (const period of DEMO_MONTHS) {
+  for (const period of cal.months) {
     steps.push(generateStep(period));
-    for (const day of officeDays(period)) steps.push(dayStep(period, day));
+    for (const day of officeDays(period))
+      if (day <= cal.today) steps.push(dayStep(cal, period, day));
   }
-  for (const day of attendanceDays()) steps.push(attendanceStep(day));
+  for (const day of cal.attendanceDays) steps.push(attendanceStep(day));
   steps.push(messagesStep, parentLinksStep);
-  cachedSteps = steps;
+  plans.set(cal.today, steps);
   return steps;
 }
