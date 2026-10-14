@@ -9,6 +9,7 @@ import { FeeLinesTable } from '@/components/fees/common';
 import { EndSponsorshipDialog, SponsorshipDialog } from '@/components/fees/dialogs';
 import { FeesTabs } from '@/components/fees/FeesTabs';
 import { ErrorNote, Field, Num } from '@/components/form';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import {
   EmptyState,
   ListRow,
@@ -27,6 +28,7 @@ import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson } from '@/lib/api';
 import { canCollect, canManageFees, karachiToday } from '@/lib/fees';
 import { useRoles } from '@/lib/roles';
+import { cn } from '@/lib/utils';
 
 function AddSponsor() {
   const { t } = useTranslation();
@@ -117,7 +119,19 @@ export function SponsorsPage() {
                     {t('fee.sponsor.activeStudents')} <Num>{s.active_students}</Num>
                   </>
                 }
-                trailing={<Mny paisa={s.due} className="font-semibold" />}
+                trailing={
+                  // A bare "PKR 0" did not say what it was: the sponsor's outstanding due.
+                  <span
+                    className={cn(
+                      'flex flex-col items-end text-end',
+                      s.due === 0 && 'text-muted-foreground',
+                    )}
+                    data-sponsor-due={s.due}
+                  >
+                    <span className="text-meta text-muted-foreground">{t('fee.col.due')}</span>
+                    <Mny paisa={s.due} className={cn(s.due > 0 && 'font-semibold')} />
+                  </span>
+                }
               />
             ))}
           </RowList>
@@ -151,6 +165,8 @@ export function SponsorDetail() {
         </Panel>
       </Page>
     );
+  if (isNotFound(q.error))
+    return <NotFoundState back={{ to: '/fees/sponsors', label: t('fee.sponsor.title') }} />;
   const s = q.data;
   if (!s) return <ErrorNote error={q.error} />;
   const today = karachiToday();
@@ -200,16 +216,19 @@ export function SponsorDetail() {
               key={sp.id}
               className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2"
             >
-              <Link to={`/students/${sp.student_id}`} className="font-medium hover:underline">
+              <Link
+                to={`/students/${sp.student_id}`}
+                className="inline-flex min-h-11 items-center font-medium hover:underline"
+              >
                 <bdi>{sp.student_name}</bdi>
               </Link>
               <Num>{`${sp.share_pct}%`}</Num>
               <span className="text-sm text-muted-foreground">
-                <Num>{sp.valid_from}</Num>
+                <DateText iso={sp.valid_from} />
                 {sp.valid_to && (
                   <>
-                    {' → '}
-                    <Num>{sp.valid_to}</Num>
+                    {' – '}
+                    <DateText iso={sp.valid_to} />
                   </>
                 )}
               </span>

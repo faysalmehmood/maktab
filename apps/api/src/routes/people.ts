@@ -91,6 +91,10 @@ const STUDENT_ITEM = {
   groupName: sql<string | null>`(SELECT g.name FROM enrolment e JOIN grp g ON g.id = e.grp_id
     WHERE e.student_id = ${student.id} AND e.status = 'active'
     ORDER BY e.is_primary DESC, e.start_date LIMIT 1)`,
+  programmeName: sql<string | null>`(SELECT p.name FROM enrolment e JOIN grp g ON g.id = e.grp_id
+    JOIN programme p ON p.id = g.programme_id
+    WHERE e.student_id = ${student.id} AND e.status = 'active'
+    ORDER BY e.is_primary DESC, e.start_date LIMIT 1)`,
   rollNo: sql<string | null>`(SELECT e.roll_no FROM enrolment e
     WHERE e.student_id = ${student.id} AND e.status = 'active'
     ORDER BY e.is_primary DESC, e.start_date LIMIT 1)`,
@@ -103,6 +107,7 @@ type ItemRow = {
   familyName: string;
   groupId: string | null;
   groupName: string | null;
+  programmeName: string | null;
   rollNo: string | null;
   guardianPhone: string | null;
 };
@@ -119,6 +124,7 @@ const toItem = (r: ItemRow): StudentListItem => ({
   has_photo: !!r.s.photoKey,
   group_id: r.groupId,
   group_name: r.groupName,
+  programme_name: r.programmeName,
   roll_no: r.rollNo,
   guardian_phone: r.guardianPhone,
 });

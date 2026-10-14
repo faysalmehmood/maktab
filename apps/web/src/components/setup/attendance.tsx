@@ -3,7 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ErrorNote, Num } from '@/components/form';
+import { DateText } from '@/components/date-text';
+import { ErrorNote } from '@/components/form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +12,7 @@ import { Select } from '@/components/ui/select';
 import { toast } from '@/components/ui/sonner';
 import { sendJson } from '@/lib/api';
 import { useHolidays } from '@/lib/attendance';
+import { shortDate } from '@/lib/dates';
 import { cn } from '@/lib/utils';
 
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0] as const;
@@ -115,14 +117,14 @@ export function HolidaysEditor() {
         <ul className="flex flex-col divide-y rounded-md border">
           {list.map((h) => (
             <li key={h.date} className="flex min-h-11 items-center gap-3 ps-3">
-              <Num>{h.date}</Num>
+              <DateText iso={h.date} />
               <bdi className="flex-1">
                 {i18n.language === 'ur' && h.name_ur ? h.name_ur : h.name_en}
               </bdi>
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={`${t('common.remove')} ${h.date}`}
+                aria-label={`${t('common.remove')} ${shortDate(h.date, i18n.language)}`}
                 disabled={remove.isPending}
                 onClick={() => remove.mutate(h.date)}
               >

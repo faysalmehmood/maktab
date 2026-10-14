@@ -7,7 +7,6 @@ import { RequireGrant } from '@/components/RequireGrant';
 import { SetupGate } from '@/components/SetupGate';
 import type { GrantRef } from '@/lib/roles';
 import { Login } from '@/pages/Login';
-import { Placeholder } from '@/pages/Placeholder';
 
 // Office screens are split out so the teacher's phone does not download them up front; the dashboard
 // too (M7: it pulls the fee and attendance widgets, which the login screen never needs).
@@ -49,6 +48,9 @@ const ComposePage = lazy(() =>
 );
 const ParentPage = lazy(() =>
   import('@/pages/parent/ParentPage').then((m) => ({ default: m.ParentPage })),
+);
+const NotFoundPage = lazy(() =>
+  import('@/components/not-found').then((m) => ({ default: m.NotFoundPage })),
 );
 const GroupsPage = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupsPage })));
 const GroupDetail = lazy(() => import('@/pages/Groups').then((m) => ({ default: m.GroupDetail })));
@@ -316,8 +318,16 @@ export function App() {
             </Loading>
           }
         />
+        {/* Inside the shell: a mistyped address keeps the navigation to get back. */}
+        <Route
+          path="*"
+          element={
+            <Loading>
+              <NotFoundPage />
+            </Loading>
+          }
+        />
       </Route>
-      <Route path="*" element={<Placeholder title="common.error" />} />
     </Routes>
   );
 }

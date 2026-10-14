@@ -12,6 +12,7 @@ import { ErrorNote, Field, Num } from '@/components/form';
 import { GoLink, ListSkeleton, Mny, Page, Panel, StatusBadge } from '@/components/page';
 import { RowMenu } from '@/components/row-menu';
 import '@/i18n/screens';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/components/ui/sonner';
@@ -178,6 +179,7 @@ export function ReceiptPage() {
         </Panel>
       </Page>
     );
+  if (isNotFound(q.error)) return <NotFoundState back={{ to: '/fees', label: t('nav.fees') }} />;
   if (!data) return <ErrorNote error={q.error} />;
   const r = data.receipt;
   const share = async () => {

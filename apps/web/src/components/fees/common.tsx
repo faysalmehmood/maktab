@@ -2,6 +2,7 @@ import type { FeeLineDto } from '@maktab/shared';
 import { Delete } from 'lucide-react';
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DateText } from '@/components/date-text';
 import { ErrorNote, Field } from '@/components/form';
 import { type Tone, StatusBadge as ToneBadge } from '@/components/page';
 import { Button } from '@/components/ui/button';
@@ -194,7 +195,7 @@ export function FeeLinesTable({
                 </TableCell>
               )}
               <TableCell>
-                <bdi className="num">{l.period_key}</bdi>
+                <DateText iso={l.period_key} kind="month" />
               </TableCell>
               <TableCell>
                 <bdi>{headLabel(l, i18n.language)}</bdi>

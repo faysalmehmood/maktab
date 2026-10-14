@@ -14,8 +14,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
+import { DateText } from '@/components/date-text';
 import { AmountInput, MethodChips, Money, ReasonDialog } from '@/components/fees/common';
-import { ErrorNote, Field, Num } from '@/components/form';
+import { ErrorNote, Field } from '@/components/form';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -741,7 +742,7 @@ export function VoidChargeDialog({
           {unit.map((l) => (
             <li key={l.id} className="flex flex-wrap gap-2">
               <bdi>{l.student_name}</bdi>
-              <Num>{l.period_key}</Num>
+              <DateText iso={l.period_key} kind="month" />
               <bdi>{headLabel(l, i18n.language)}</bdi>
               <span className="text-muted-foreground">
                 {l.payer_type === 'sponsor' ? t('fee.col.sponsor') : t('fee.col.family')}
@@ -805,7 +806,7 @@ export function WaiveFineDialog({
     >
       <p className="flex flex-wrap gap-2 text-sm" id="waive-line">
         {line && <bdi>{line.student_name}</bdi>}
-        <Num>{fine.period_key}</Num>
+        <DateText iso={fine.period_key} kind="month" />
         {line && <bdi>{headLabel(line, i18n.language)}</bdi>}
         <span className="ms-auto">
           <Money paisa={fine.left} />

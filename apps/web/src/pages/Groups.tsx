@@ -8,6 +8,7 @@ import { todayPk } from '@/components/attendance/common';
 import { Avatar } from '@/components/avatar';
 import { type Column, DataTable } from '@/components/data-table';
 import { ErrorNote, Num } from '@/components/form';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import {
   ConfirmDialog,
   EmptyState,
@@ -249,6 +250,15 @@ export function GroupDetail() {
           <ListSkeleton rows={5} />
         </Panel>
       </Page>
+    );
+  if (isNotFound(group.error))
+    return (
+      <NotFoundState
+        back={{
+          to: '/groups',
+          label: isTeacherOnly(roles) ? t('nav.myGroups') : t('shell.nav.classes'),
+        }}
+      />
     );
   if (!group.data) return <p role="alert">{t('common.notFound')}</p>;
   const g = group.data;

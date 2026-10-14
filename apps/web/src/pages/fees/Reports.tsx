@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { type Column, DataTable } from '@/components/data-table';
+import { DateText } from '@/components/date-text';
 import { ConcessionValue, StatusBadge as FeeStatus } from '@/components/fees/common';
 import { EndConcessionDialog, ReduceFeeDialog } from '@/components/fees/dialogs';
 import { FeesTabs } from '@/components/fees/FeesTabs';
@@ -156,7 +157,7 @@ export function FeeRegisterPage() {
       {/* On paper the choice is the heading: which class, which month. */}
       {grp && (
         <p className="hidden text-section font-semibold print:block">
-          <bdi>{groupName}</bdi> · <Num>{period}</Num>
+          <bdi>{groupName}</bdi> · <DateText iso={period} kind="month" />
         </p>
       )}
       <ErrorNote error={q.error} />
@@ -399,11 +400,11 @@ export function ConcessionRegisterPage() {
       header: t('fee.col.from'),
       cell: (c) => (
         <span className="whitespace-nowrap">
-          <Num>{c.valid_from}</Num>
+          <DateText iso={c.valid_from} />
           {(c.ended_at ?? c.valid_to) && (
             <>
               {' – '}
-              <Num>{(c.ended_at ?? c.valid_to) as string}</Num>
+              <DateText iso={(c.ended_at ?? c.valid_to) as string} />
             </>
           )}
         </span>

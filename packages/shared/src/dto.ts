@@ -167,9 +167,10 @@ export type StudentListItem = {
   gender: 'm' | 'f' | null;
   status: StudentStatus;
   has_photo: boolean;
-  /** The active primary enrolment's group, if any. */
+  /** The active primary enrolment's group, if any; shown as "Class 2 A" (programme + group). */
   group_id: string | null;
   group_name: string | null;
+  programme_name: string | null;
   roll_no: string | null;
   /** First-priority guardian's phone. */
   guardian_phone: string | null;

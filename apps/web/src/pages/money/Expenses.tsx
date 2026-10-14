@@ -4,6 +4,7 @@ import { Ban, Camera, ImageIcon, Plus, ReceiptText } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type Column, DataTable } from '@/components/data-table';
+import { DateText } from '@/components/date-text';
 import { AmountInput, ReasonDialog } from '@/components/fees/common';
 import { type ActiveFilter, FilterBar } from '@/components/filter-bar';
 import { Field } from '@/components/form';
@@ -351,7 +352,7 @@ function ExpenseTable({
     {
       id: 'date',
       header: t('money.common.date'),
-      cell: (e) => <bdi className="num whitespace-nowrap">{e.date}</bdi>,
+      cell: (e) => <DateText iso={e.date} className="whitespace-nowrap" />,
     },
     {
       id: 'account',

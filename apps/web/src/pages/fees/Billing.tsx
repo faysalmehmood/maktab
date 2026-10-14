@@ -22,9 +22,10 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/sonner';
 import { getJson, sendJson } from '@/lib/api';
+import { monthLabel } from '@/lib/dates';
 import { karachiToday } from '@/lib/fees';
 import { useGroups } from '@/lib/queries';
-import { cn } from '@/lib/utils';
+import { cn, isolate } from '@/lib/utils';
 import '@/i18n/screens';
 
 type Counts = GenerateResultDto['counts'];
@@ -136,13 +137,6 @@ type PlannedFine = {
 };
 type Fines = { enabled: boolean; planned: PlannedFine[]; applied: number; dry_run: boolean };
 
-/** An ISO instant (UTC) as the school's wall clock, Asia/Karachi (UTC+5, no DST): "YYYY-MM-DD HH:mm". */
-export function karachiTime(iso: string): string {
-  const ms = Date.parse(iso.endsWith('Z') || /[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`);
-  if (Number.isNaN(ms)) return iso;
-  return new Date(ms + 5 * 3600_000).toISOString().slice(0, 16).replace('T', ' ');
-}
-
 const CODES = ['duplicate_charge', 'conflict', 'foreign_key', 'constraint', 'internal'] as const;
 type BillingCode = (typeof CODES)[number] | 'unknown';
 /** A billing error code as a sentence (en/ur); unknown codes get a generic word. */
@@ -161,7 +155,7 @@ type Unbilled = UnbilledDto['items'][number];
  * above the work; the month's work and the side jobs (fines, unbilled) sit side by side on desktop.
  */
 export function BillingPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const groups = useGroups().data?.items ?? [];
   const name = (id: string) => {
@@ -281,7 +275,11 @@ export function BillingPage() {
         </span>
       ),
     },
-    { id: 'period', header: t('fee.col.period'), cell: (f) => <Num>{f.period_key}</Num> },
+    {
+      id: 'period',
+      header: t('fee.col.period'),
+      cell: (f) => <DateText iso={f.period_key} kind="month" />,
+    },
     {
       id: 'amount',
       header: t('fee.col.fine'),
@@ -325,7 +323,11 @@ export function BillingPage() {
       primary: true,
       cell: (c) => <bdi>{c.grp_id ? name(c.grp_id) : '—'}</bdi>,
     },
-    { id: 'when', header: t('fee.col.date'), cell: (c) => <Num>{karachiTime(c.created_at)}</Num> },
+    {
+      id: 'when',
+      header: t('fee.col.date'),
+      cell: (c) => <DateText iso={c.created_at} kind="time" />,
+    },
     { id: 'status', header: t('fee.col.status'), cell: chunkStatus },
     { id: 'fees', header: t('fee.col.head'), numeric: true, cell: (c) => <Num>{c.fees}</Num> },
     {
@@ -387,7 +389,7 @@ export function BillingPage() {
                   </span>
                   {f.retry_after && (
                     <span className="text-meta text-muted-foreground">
-                      {t('fee.billing.retryAfter')} <Num>{karachiTime(f.retry_after)}</Num>
+                      {t('fee.billing.retryAfter')} <DateText iso={f.retry_after} kind="time" />
                     </span>
                   )}
                 </li>
@@ -662,7 +664,7 @@ export function BillingPage() {
             <DialogDescription id="billing-confirm-body">
               {previewed &&
                 t('fee.billing.confirmBody', {
-                  period: `⁨${period}⁩`,
+                  period: isolate(monthLabel(period, i18n.language)),
                   ...previewed.totals,
                 })}
             </DialogDescription>

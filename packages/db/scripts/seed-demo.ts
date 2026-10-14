@@ -1,8 +1,10 @@
 /**
- * The rich demo dataset (docs/demo.md): "Al-Noor Community School, Lahore", ~300 students, April–
- * September 2026, into the local wrangler D1 file (after `npm run db:migrate:local`) or SEED_DB=<path>.
- * Wipes whatever is there first (DROP + re-CREATE from the schema), so it can be re-run; refuses a
- * database that holds another school unless DEMO_FORCE=1. Deterministic (fixed PRNG seed).
+ * The rich demo dataset (docs/demo.md): "Al-Noor Community School, Lahore", 135 students, six months
+ * of history ending today (Asia/Karachi), into the local wrangler D1 file (after
+ * `npm run db:migrate:local`) or SEED_DB=<path>. Wipes whatever is there first (DROP + re-CREATE
+ * from the schema), so it can be re-run; refuses a database that holds another school unless
+ * DEMO_FORCE=1. Deterministic for a seed day (fixed PRNG seed).
+ *   DEMO_TODAY=YYYY-MM-DD      seed as if today were that day
  *   SEED_OWNER_EMAIL=<gmail>   also an owner login (Google sign-in) besides the demo buttons
  *   PARENT_LINK_SECRET=<…>     the same value as apps/api/.dev.vars, for the 40 parent links
  *                              (read from apps/api/.dev.vars when unset)
@@ -40,6 +42,7 @@ async function main() {
     parentSecret: process.env.PARENT_LINK_SECRET ?? devVar('PARENT_LINK_SECRET'),
     ownerEmail: process.env.SEED_OWNER_EMAIL,
     force: process.env.DEMO_FORCE === '1',
+    today: process.env.DEMO_TODAY || undefined,
   });
   console.log(
     `Seeded the demo into ${path}: ${r.calls} step calls in ${((Date.now() - t0) / 1000).toFixed(1)} s`,

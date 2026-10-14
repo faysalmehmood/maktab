@@ -168,6 +168,7 @@ export const moneyEn = {
     outstanding: 'Outstanding',
     last: 'Last advance',
     empty: 'No advances given.',
+    noneOwed: 'Nobody owes anything: every advance has been recovered.',
     history: 'Advances given',
     hint: 'An advance is money owed back by the staff member, recovered from later payslips. It is not an expense.',
   },

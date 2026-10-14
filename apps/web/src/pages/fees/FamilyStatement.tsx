@@ -3,6 +3,7 @@ import { Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
+import { DateText } from '@/components/date-text';
 import { FeeLinesTable, Figure, Money } from '@/components/fees/common';
 import {
   OpeningBalanceDialog,
@@ -15,6 +16,7 @@ import {
 } from '@/components/fees/dialogs';
 import { ErrorNote, Num, PageTitle } from '@/components/form';
 import { FamilyParentLinks } from '@/components/messages/ParentLinkPanel';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -67,6 +69,7 @@ export function FamilyStatementPage() {
   const [dialog, setDialog] = useState<Dialog>(null);
   const close = (o: boolean) => !o && setDialog(null);
   if (q.isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (isNotFound(q.error)) return <NotFoundState back={{ to: '/fees', label: t('nav.fees') }} />;
   const f = q.data;
   if (!f) return <ErrorNote error={q.error} />;
   const admin = canConcession(roles);
@@ -247,7 +250,7 @@ export function FamilyStatementPage() {
               {timeline(f.charges, f.receipts).map((e) =>
                 e.type === 'receipt' ? (
                   <li key={`r${e.receipt.id}`} className="flex flex-wrap items-center gap-2 py-1">
-                    <Num>{e.at}</Num>
+                    <DateText iso={e.at} />
                     <Link
                       to={`/receipts/${e.receipt.id}`}
                       className="flex min-h-11 items-center font-medium underline"
@@ -272,9 +275,9 @@ export function FamilyStatementPage() {
                     key={`c${e.line.id}`}
                     className="flex min-h-11 flex-wrap items-center gap-2 py-1 text-sm text-muted-foreground"
                   >
-                    <Num>{e.at}</Num>
+                    <DateText iso={e.at} />
                     <bdi>{e.line.student_name}</bdi>
-                    <Num>{e.line.period_key}</Num>
+                    <DateText iso={e.line.period_key} kind="month" />
                     <bdi>{headLabel(e.line, i18n.language)}</bdi>
                     <span className="ms-auto">
                       <Money paisa={e.line.net} />

@@ -15,6 +15,7 @@ import {
   parseYesNo,
   renderTemplate,
   type TemplateKey,
+  telHref,
   templateProblems,
   toCsvLine,
   wasFor,
@@ -57,7 +58,21 @@ describe('PK phone normaliser (PLAN §12 exp4)', () => {
     expect(normalizePkPhone('0300-1234567')).toEqual({ number: '923001234567', mobile: true });
     expect(normalizePkPhone('12345')).toBeNull();
     expect(formatPkPhone('923001234567')).toBe('0300 1234567');
-    expect(formatPkPhone('924235761234')).toBe('04235761234');
+    expect(formatPkPhone('924235761234')).toBe('042 3576 1234');
+  });
+
+  it.each([
+    ['924235550100', '042 3555 0100'],
+    ['04235550100', '042 3555 0100'],
+    ['+92 42 3555 0100', '042 3555 0100'],
+    ['92512345678', '051 234 5678'],
+    ['03365551217', '0336 5551217'],
+    ['923365551217', '0336 5551217'],
+    ['12345', '12345'],
+    ['+1 202 555 0100', '+1 202 555 0100'],
+    ['', ''],
+  ])('formats %s for display as %s', (input, shown) => {
+    expect(formatPkPhone(input)).toBe(shown);
   });
 
   it('admission schema normalises guardian phones and defaults consent off', () => {
@@ -162,5 +177,17 @@ describe('M5 fix pass: mobile check, template rules, plural verb', () => {
     expect(wasFor(2, 'en')).toBe('were');
     expect(wasFor(1, 'ur')).toBe('تھے');
     expect(wasFor(3, 'ur')).toBe('تھے');
+  });
+});
+
+describe('telHref', () => {
+  it('dials PK numbers internationally, however they were stored', () => {
+    expect(telHref('04235550100')).toBe('tel:+924235550100');
+    expect(telHref('924235550100')).toBe('tel:+924235550100');
+    expect(telHref('0336-5551217')).toBe('tel:+923365551217');
+    expect(telHref('923365551217')).toBe('tel:+923365551217');
+    // Not a PK number: its own digits, a country code left alone.
+    expect(telHref('+44 20 7946 0000')).toBe('tel:+442079460000');
+    expect(telHref('1122')).toBe('tel:1122');
   });
 });

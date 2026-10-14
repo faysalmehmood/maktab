@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { todayPk } from '@/components/attendance/common';
+import { DateText } from '@/components/date-text';
 import { ErrorNote, Num } from '@/components/form';
 import { MonthInput } from '@/components/month-input';
 import { Button } from '@/components/ui/button';
@@ -91,7 +92,7 @@ export function ReportPage() {
         <div className="attendance-report flex flex-col gap-2">
           <h2 className="font-medium">
             <bdi>{school?.name}</bdi> — <bdi>{r.programme_name}</bdi> · <bdi>{r.grp_name}</bdi> —{' '}
-            <Num>{r.month}</Num>
+            <DateText iso={r.month} kind="month" />
           </h2>
           <div className="overflow-x-auto rounded-md border print:overflow-visible print:border-0">
             <table className="w-full border-collapse text-xs">

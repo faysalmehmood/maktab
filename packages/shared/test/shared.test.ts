@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attendanceSubmissionSchema, formatPKR, newId, parsePKR } from '../src';
+import { attendanceSubmissionSchema, firstName, formatPKR, newId, parsePKR } from '../src';
 
 describe('formatPKR', () => {
   it('formats whole rupees with Latin digits and grouping', () => {
@@ -50,5 +50,25 @@ describe('attendanceSubmissionSchema', () => {
       ],
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe('firstName (the parent page calling name)', () => {
+  it('is the first word, or Muhammad + the next name', () => {
+    expect(firstName('Ali Khan')).toBe('Ali');
+    expect(firstName('  Ayesha   Siddiqa ')).toBe('Ayesha');
+    expect(firstName('Muhammad Ali Khan')).toBe('Muhammad Ali');
+    for (const m of ['Mohammad', 'Muhammed', 'Mohammed', 'Mohd', 'Mohd.', 'Md', 'MD.', 'MUHAMMAD'])
+      expect(firstName(`${m} Hamza Butt`), m).toBe(`${m} Hamza`);
+    expect(firstName('محمد علی خان')).toBe('محمد علی');
+    expect(firstName('علی خان')).toBe('علی');
+    // Two words keep one (the second may be the surname); Muhammad alone, or a name that only
+    // starts with the letters, stays one word.
+    expect(firstName('Muhammad Bilal')).toBe('Muhammad');
+    expect(firstName('Muhammad Khan')).toBe('Muhammad');
+    expect(firstName('محمد خان')).toBe('محمد');
+    expect(firstName('Muhammad')).toBe('Muhammad');
+    expect(firstName('Mohdish Raza')).toBe('Mohdish');
+    expect(firstName('')).toBe('');
   });
 });

@@ -350,17 +350,22 @@ function CopyClassTexts({ grpId, grpName }: { grpId: string; grpName: string }) 
     }
   };
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex min-w-0 max-w-full flex-col gap-2">
       <Button
         variant="outline"
         size="sm"
-        className="self-start"
+        // A long class name ("FSc Pre-Medical Morning batch", wider still in Urdu) is cut with an
+        // ellipsis inside the button; the button never widens the page.
+        className="max-w-full self-start"
         disabled={busy}
         aria-label={t('msg.queue.copyAllGroup')}
+        title={grpName}
         onClick={() => void run()}
       >
         <ClipboardCopy aria-hidden />
-        {t('msg.queue.copyAll')} · <bdi>{grpName}</bdi>
+        <span className="min-w-0 truncate">
+          {t('msg.queue.copyAll')} · <bdi>{grpName}</bdi>
+        </span>
       </Button>
       {fallback !== null && (
         <div className="flex flex-col gap-1">

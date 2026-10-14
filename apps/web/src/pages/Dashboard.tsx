@@ -1,6 +1,7 @@
 import {
   type CashSessionDto,
   type FirstWeekDto,
+  firstName,
   formatPkPhone,
   type MessageListDto,
 } from '@maktab/shared';
@@ -65,7 +66,8 @@ function Greeting({ action }: { action?: ReactNode }) {
   const me = useMe().data;
   const h = karachiHour();
   const key = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
-  const first = (me?.user.name || me?.user.email || '').split(/\s+/)[0] ?? '';
+  // The calling name: "Muhammad" alone greets half the staff room.
+  const first = firstName(me?.user.name || me?.user.email || '');
   return (
     <PageHeader
       title={t(`home.greeting.${key}`, { name: first })}

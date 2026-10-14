@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
 import { ErrorNote, Field, PageTitle } from '@/components/form';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import { CustomFieldInputs, type Extra } from '@/components/students/fields';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -143,6 +144,8 @@ export function StudentEdit() {
   const { id } = useParams();
   const student = useStudent(id);
   if (student.isPending) return <p className="text-muted-foreground">{t('common.loading')}</p>;
+  if (isNotFound(student.error))
+    return <NotFoundState back={{ to: '/students', label: t('nav.students') }} />;
   if (!student.data) return <p role="alert">{t('common.notFound')}</p>;
   return <EditForm s={student.data} />;
 }

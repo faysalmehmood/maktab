@@ -3,7 +3,7 @@ import type { AppDb } from '../client';
 import { runBatch } from '../ledger/util';
 import { type Step, type StepCtx, seedSteps } from './steps';
 import { estimateUndo, installUndoLog, UNDO_TABLE, undoChunk, undoHead } from './undo';
-import { world } from './world';
+import { demoCalendar, demoToday, world } from './world';
 
 /**
  * The demo reset (docs/demo.md): wipe → reseed, as a list of resumable steps driven by the cron (and
@@ -78,17 +78,57 @@ const snapshotStep: Step = {
 
 const q = (name: string) => `"${name.replace(/"/g, '""')}"`;
 
+/**
+ * Children before parents. With foreign keys on (always, on D1) SQLite runs an implicit DELETE of
+ * every row before dropping a table that another table still references, or (with
+ * defer_foreign_keys) any table with outstanding references; D1 counts those deleted rows and
+ * index entries as writes (~7,000 over a seeded demo). Dropping each table only once nothing else
+ * refers to it avoids that, except for a table that references itself (charge, receipt,
+ * enrolment, …): those rows are still deleted, so their indexes go first.
+ */
+async function dropOrder(
+  db: AppDb,
+  tables: string[],
+): Promise<{ order: string[]; selfRef: Set<string> }> {
+  const fks = await db.all<{ child: string; parent: string }>(sql`
+    SELECT t.value AS child, f."table" AS parent
+    FROM json_each(${JSON.stringify(tables)}) t, pragma_foreign_key_list(t.value) f`);
+  const selfRef = new Set(fks.filter((f) => f.child === f.parent).map((f) => f.child));
+  const left = new Set(tables);
+  const order: string[] = [];
+  while (left.size) {
+    const free = [...left].filter(
+      (t) => !fks.some((f) => f.parent === t && f.child !== t && left.has(f.child)),
+    );
+    // A cycle between two tables (none today): drop the rest in schema order, newest first.
+    const next = free.length ? free : [...left].reverse();
+    for (const t of next) {
+      left.delete(t);
+      order.push(t);
+    }
+  }
+  return { order, selfRef };
+}
+
 const dropStep: Step = {
   name: 'wipe:drop',
   run: async ({ db }) => {
     const rows = JSON.parse((await getState(db)).schema ?? '[]') as SchemaRow[];
-    const stmts: SQL[] = [sql`PRAGMA defer_foreign_keys = ON`];
+    const stmts: SQL[] = [];
     for (const r of rows.filter((x) => x.type === 'trigger'))
       stmts.push(sql.raw(`DROP TRIGGER IF EXISTS ${q(r.name)}`));
     for (const r of [...rows].reverse().filter((x) => x.type === 'view'))
       stmts.push(sql.raw(`DROP VIEW IF EXISTS ${q(r.name)}`));
-    for (const r of [...rows].reverse().filter((x) => x.type === 'table'))
-      stmts.push(sql.raw(`DROP TABLE IF EXISTS ${q(r.name)}`));
+    const tables = rows.filter((x) => x.type === 'table').map((x) => x.name);
+    const { order, selfRef } = await dropOrder(db, tables);
+    for (const t of order) {
+      // A table that references itself is deleted row by row before it is dropped (below); without
+      // its indexes each of those deletes is one write, not one per index.
+      if (selfRef.has(t))
+        for (const i of rows.filter((x) => x.type === 'index' && x.tbl_name === t))
+          stmts.push(sql.raw(`DROP INDEX IF EXISTS ${q(i.name)}`));
+      stmts.push(sql.raw(`DROP TABLE IF EXISTS ${q(t)}`));
+    }
     // The undo log (its triggers went with their tables): the reseed must not be logged.
     stmts.push(sql.raw(`DROP TABLE IF EXISTS ${UNDO_TABLE}`));
     await runBatch(db, stmts);
@@ -125,28 +165,39 @@ const undoInstallStep: Step = {
   },
 };
 
-let all: Step[] | null = null;
-export function demoPlan(): Step[] {
-  if (!all) all = [...WIPE, ...seedSteps(), undoInstallStep];
-  return all;
+const plans = new Map<string, Step[]>();
+/**
+ * The reset for a seed day (`anchor`, YYYY-MM-DD in Asia/Karachi; default today). The anchor is
+ * fixed when a reset starts (`_demo_state.anchor`), so a reset that runs past midnight keeps
+ * building the same dataset.
+ */
+export function demoPlan(anchor = demoToday()): Step[] {
+  let p = plans.get(anchor);
+  if (!p) {
+    p = [...WIPE, ...seedSteps(demoCalendar(anchor)), undoInstallStep];
+    plans.set(anchor, p);
+  }
+  return p;
 }
 
-let signature: string | null = null;
+const signatures = new Map<string, string>();
 /**
  * Names of every step, hashed: stored when a reset starts. A deploy that changes the plan while a
  * reset is running would make the saved step index point at another step, so the runner restarts
  * the reset from the wipe instead (every step is idempotent, nothing is lost but time).
  */
-export function demoPlanSignature(): string {
-  if (!signature) {
+export function demoPlanSignature(anchor = demoToday()): string {
+  let sig = signatures.get(anchor);
+  if (!sig) {
     let h = 2166136261;
-    for (const c of demoPlan()
+    for (const c of demoPlan(anchor)
       .map((s) => s.name)
       .join('|'))
       h = Math.imul(h ^ c.charCodeAt(0), 16777619);
-    signature = `${demoPlan().length}:${(h >>> 0).toString(36)}`;
+    sig = `${demoPlan(anchor).length}:${(h >>> 0).toString(36)}`;
+    signatures.set(anchor, sig);
   }
-  return signature;
+  return sig;
 }
 
 // ---- state ----------------------------------------------------------------------------------------
@@ -167,12 +218,14 @@ export type DemoStatus = {
   last_error: string | null;
   /** Set after D1 refused a write for the account's daily limit: nothing runs before then. */
   backoff_until: string | null;
+  /** The seed day the data is dated from (world.ts DemoCalendar); null before the first seed. */
+  anchor: string | null;
 };
 
 export async function demoStatus(db: AppDb): Promise<DemoStatus> {
   await ensureState(db);
   const st = await getState(db);
-  const plan = demoPlan();
+  const plan = demoPlan(st.anchor ?? demoToday());
   const step = Number(st.step ?? 0);
   const phase = (st.phase as DemoStatus['phase']) ?? 'idle';
   return {
@@ -185,6 +238,7 @@ export async function demoStatus(db: AppDb): Promise<DemoStatus> {
     dirty: st.dirty === '1',
     last_error: st.last_error ?? null,
     backoff_until: st.backoff_until ?? null,
+    anchor: st.anchor ?? null,
   };
 }
 
@@ -231,7 +285,14 @@ const resetToday = (st: Record<string, string>, nowMs: number) =>
  */
 export async function startDemoReset(
   db: AppDb,
-  o: { reason: string; now?: Date; force?: boolean; daily?: boolean },
+  o: {
+    reason: string;
+    now?: Date;
+    force?: boolean;
+    daily?: boolean;
+    /** The seed day (YYYY-MM-DD); default today in Asia/Karachi. Tests pin it. */
+    today?: string;
+  },
 ): Promise<DemoStatus> {
   await ensureState(db);
   if (DEMO_SEED_WRITES > DEMO_SEED_WRITE_CAP)
@@ -249,6 +310,8 @@ export async function startDemoReset(
   if (school && school.name !== DEMO_SCHOOL_NAME && !force)
     throw new Error(`demo reset refused: this database belongs to "${school.name}"`);
   const now = (o.now ?? new Date()).toISOString();
+  const anchor = o.today ?? demoToday(nowMs);
+  demoCalendar(anchor); // refuses a malformed date before anything is wiped
   await runBatch(
     db,
     setState({
@@ -262,11 +325,12 @@ export async function startDemoReset(
       reason: o.reason,
       dirty: '0',
       force: null,
-      plan: demoPlanSignature(),
+      anchor,
+      plan: demoPlanSignature(anchor),
       last_reset_day: utcDay(nowMs),
     }),
   );
-  console.log(JSON.stringify({ demo_reset: o.reason, planned_writes: DEMO_SEED_WRITES }));
+  console.log(JSON.stringify({ demo_reset: o.reason, anchor, planned_writes: DEMO_SEED_WRITES }));
   return demoStatus(db);
 }
 
@@ -389,14 +453,26 @@ async function runSeed(
   o: AdvanceOpts,
   now: () => number,
 ): Promise<number> {
-  const plan = demoPlan();
-  if (st0.plan !== demoPlanSignature()) {
+  // A reset started before the anchor existed is re-planned for today (and so restarts below).
+  const anchor = st0.anchor ?? demoToday(now());
+  const plan = demoPlan(anchor);
+  if (st0.plan !== demoPlanSignature(anchor)) {
     // Started by another version of the plan: begin again from the wipe (see demoPlanSignature).
     st0.step = '0';
     st0.sub = '0';
-    await runBatch(db, setState({ step: '0', sub: '0', schema: null, plan: demoPlanSignature() }));
+    await runBatch(
+      db,
+      setState({ step: '0', sub: '0', schema: null, anchor, plan: demoPlanSignature(anchor) }),
+    );
   }
-  const ctx: StepCtx = { db, w: world(), parentSecret: o.parentSecret, ownerEmail: o.ownerEmail };
+  const cal = demoCalendar(anchor);
+  const ctx: StepCtx = {
+    db,
+    w: world(cal),
+    cal,
+    parentSecret: o.parentSecret,
+    ownerEmail: o.ownerEmail,
+  };
   let step = Number(st0.step ?? 0);
   let sub = Number(st0.sub ?? 0);
   let calls = 0;
@@ -465,9 +541,9 @@ async function runUndo(
 /** The whole reset in one process (local script and tests): no deadline. */
 export async function seedDemo(
   db: AppDb,
-  o: { parentSecret?: string; ownerEmail?: string; force?: boolean } = {},
+  o: { parentSecret?: string; ownerEmail?: string; force?: boolean; today?: string } = {},
 ): Promise<AdvanceResult> {
-  await startDemoReset(db, { reason: 'local seed', force: o.force, daily: false });
+  await startDemoReset(db, { reason: 'local seed', force: o.force, daily: false, today: o.today });
   let r: AdvanceResult;
   do r = await advanceDemoSeed(db, { deadline: Number.POSITIVE_INFINITY, ...o });
   while (r.phase === 'running' && r.leased);

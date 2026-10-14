@@ -11,6 +11,7 @@ import {
   type StudentDetailDto,
   type StudentFeesDto,
   studentStatusSchema,
+  telHref,
 } from '@maktab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -49,6 +50,7 @@ import { type RowAction, RowMenu } from '@/components/row-menu';
 import { type TabItem, TabPanel, Tabs } from '@/components/segmented';
 import '@/i18n/screens';
 import { ParentLinkPanel } from '@/components/messages/ParentLinkPanel';
+import { isNotFound, NotFoundState } from '@/components/not-found';
 import { StudentAttendanceCard } from '@/components/students/attendance';
 import {
   emptyGuardian,
@@ -499,6 +501,8 @@ export function StudentDetail() {
         </Panel>
       </Page>
     );
+  if (isNotFound(student.error))
+    return <NotFoundState back={{ to: '/students', label: t('nav.students') }} />;
   if (!student.data) return <p role="alert">{t('common.notFound')}</p>;
   const s = student.data;
   const siblings = (family.data?.students ?? []).filter((x) => x.id !== s.id);
@@ -711,7 +715,7 @@ export function StudentDetail() {
                 <dl className="flex-1 text-sm">
                   {s.left_date && (
                     <Row label={t('student.date')}>
-                      <Num>{s.left_date}</Num> {s.left_reason && `· ${s.left_reason}`}
+                      <DateText iso={s.left_date} /> {s.left_reason && `· ${s.left_reason}`}
                     </Row>
                   )}
                   {s.father_name && (
@@ -724,7 +728,7 @@ export function StudentDetail() {
                   )}
                   {s.dob && (
                     <Row label={t('student.dob')}>
-                      <Num>{s.dob}</Num>
+                      <DateText iso={s.dob} />
                     </Row>
                   )}
                   {s.b_form_no && (
@@ -733,7 +737,7 @@ export function StudentDetail() {
                     </Row>
                   )}
                   <Row label={t('student.admissionDate')}>
-                    <Num>{s.admission_date}</Num>
+                    <DateText iso={s.admission_date} />
                   </Row>
                   <Row label={t('student.family')}>
                     <bdi>{s.family.name}</bdi>
@@ -782,10 +786,13 @@ export function StudentDetail() {
                             )}
                           </span>
                           <span className="text-muted-foreground">
-                            <Num>
-                              {e.start_date}
-                              {e.end_date ? ` → ${e.end_date}` : ''}
-                            </Num>
+                            <DateText iso={e.start_date} />
+                            {e.end_date && (
+                              <>
+                                {' – '}
+                                <DateText iso={e.end_date} />
+                              </>
+                            )}
                             {e.roll_no && (
                               <>
                                 {' · '}
@@ -901,7 +908,7 @@ export function StudentDetail() {
                         <span className="flex flex-wrap items-center gap-2 text-sm">
                           {g.phone && (
                             <a
-                              href={`tel:+${g.phone}`}
+                              href={telHref(g.phone)}
                               className="inline-flex min-h-11 items-center text-brand underline-offset-4 hover:underline"
                             >
                               <Num>{formatPkPhone(g.phone)}</Num>
