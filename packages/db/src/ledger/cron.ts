@@ -50,6 +50,8 @@ export async function generateChunkOrLog(
     proRata?: boolean;
     /** Clock for the backoff window (ms since epoch); default Date.now(). */
     now?: number;
+    /** Row budget for the chunk (default 200); the demo seed uses a smaller one for the CPU limit. */
+    maxRows?: number;
   },
 ): Promise<{ ok: true; result: GenerateResult } | { ok: false; code: string; message: string }> {
   try {
@@ -58,6 +60,7 @@ export async function generateChunkOrLog(
       scope: { grpId: input.grpId, afterStudentId: input.afterStudentId },
       by: input.by,
       proRata: input.proRata,
+      maxRows: input.maxRows,
     });
     return { ok: true, result };
   } catch (err) {

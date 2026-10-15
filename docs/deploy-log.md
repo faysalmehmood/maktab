@@ -223,6 +223,27 @@ installation, **starting empty** (no data copied from the old production databas
 - `BACKUP_REPORT_TOKEN`: set on env demo (random, unused there) and regenerated for env gsap and the
   GitHub secret together (one value, never printed).
 
+## 2026-10-15: read limit too; both instances redeployed from `main` (`1aa5d58`)
+
+- 2026-10-14 evening: the account's D1 daily **read** limit (5M rows) was also exhausted. Cause: the
+  first demo seed's wipe (`DROP TABLE charge` after its indexes were dropped) scanned the table once
+  per implicit row delete, n²/2 reads; the rest of the seed loop read whole views per receipt. The
+  demo DB showed 11M rows read / 25k queries in 24 h; the gsap DB 713 rows. Fixed on `main`
+  (docs/demo.md "The D1 budget": a full reseed ≈ 345k reads, an idle tick 23, the nightly undo
+  ≈ 6k; migration 0025 adds two indexes; the quota guard recognises the read-limit error).
+- 05:00 PKT reset. Steps run: migration 0025 applied to demo and gsap; `_demo_state.force = 1`
+  on demo; `wrangler deploy --env gsap` (version f988c5c2 then the merged main); `wrangler deploy
+  --env demo` (version 4831eb98, cron `* * * * *` restored; the first upload hung for 16 min on the
+  Mac and was retried). The demo's old 300-student half-seed (plan 191 steps) is wiped and reseeded
+  by the cron with today's anchor (158 steps). Expected D1 cost: ≈ 32k writes, ≈ 350k reads.
+- The reseed stalled at step 84 (`generate:2026-08`): `wrangler tail` showed every cron tick ending
+  in "Exceeded CPU Limit" (three 200-row generation chunks per invocation; the lease was left to
+  expire, no `last_error`). Fix: the demo's generate step runs one 60-row chunk per invocation
+  (`cost: 12`, `maxRows: 60`); redeployed, reseed resumed by the cron. Note for M7c: the pilot's fee
+  cron runs the same generator with 200-row chunks, 3 a tick; watch `billing_chunk` failures there.
+- Walkthrough fixes (A–K + review), anchored dataset (112 students, reseed Mondays and the 1st at
+  02:00 PKT) and the README product page are live on both instances.
+
 ## Pending (user)
 1. Google Cloud console → the OAuth client → add redirect URI
    `https://maktab-gsap.conceptlix.com/api/auth/google/callback`; then

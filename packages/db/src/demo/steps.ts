@@ -728,9 +728,10 @@ const concessionsStep: Step = {
 function generateStep(period: string): Step {
   return {
     name: `generate:${period}`,
-    // A generation chunk is heavy: 3 per invocation, like the fee cron (maxChunks); 12 of them ended
-    // in error 1102 (CPU exceeded) on generate:2026-05, 2026-10-14.
-    cost: 4,
+    // A generation chunk is heavy for the free plan's 10 ms CPU: 12 per invocation ended in error
+    // 1102 on generate:2026-05 (2026-10-14), and 3 of 200 rows still did on generate:2026-08
+    // (2026-10-15, every cron tick, so the reseed never finished). One small chunk per invocation.
+    cost: 12,
     run: async ({ db }) => {
       const cur = await generationCursor(db, period);
       if (!cur) return null;
@@ -739,6 +740,7 @@ function generateStep(period: string): Step {
         grpId: cur.grp_id,
         afterStudentId: cur.after_student_id,
         by: userId('admin'),
+        maxRows: 60,
       });
       if (!r.ok) throw new Error(`demo: generation failed for ${period}: ${r.code} ${r.message}`);
       return 0;
