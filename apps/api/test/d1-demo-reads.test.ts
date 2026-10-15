@@ -117,6 +117,8 @@ describe('the demo on D1: rows read', () => {
     expect(DEMO_SEED_READS).toBeLessThanOrEqual(1_000_000);
     expect(DEMO_SEED_READ_CAP).toBeLessThanOrEqual(1_500_000);
     // Not so far under that the constant stops meaning anything (other seed days read up to ~5% more).
+    // The floor depends on workerd's rows_read accounting and SQLite's query plans: a wrangler
+    // upgrade may move it; re-measure and adjust DEMO_SEED_READS rather than loosen the check.
     if (TODAY === '2026-10-14') expect(seed.read).toBeGreaterThan(DEMO_SEED_READS * 0.75);
     expect(seed.written).toBeLessThanOrEqual(DEMO_SEED_WRITES * 1.1);
   });
@@ -178,6 +180,11 @@ describe('the demo on D1: rows read', () => {
       businessDate: TODAY,
       cashSessionId: null,
     });
+    // A user a visitor added, signed in (sessions are not logged): the undo removes both on D1.
+    await db.run(sql`INSERT INTO "user" (id, email, name, status)
+      VALUES ('VISITOR-USER-1', 'visitor@example.com', 'Visitor', 'active')`);
+    await db.run(sql`INSERT INTO user_session (id, user_id, expires_at)
+      VALUES ('VISITOR-SESSION-1', 'VISITOR-USER-1', '2099-01-01T00:00:00Z')`);
     const entries = Number(await one('SELECT count(*) v FROM _demo_undo'));
     const at = Date.parse('2026-11-04T21:00:30Z'); // Thursday 02:00 Karachi
     const undo = await measure('undo', async () => {
@@ -190,6 +197,9 @@ describe('the demo on D1: rows read', () => {
       `nightly undo of ${entries} logged changes: ${undo.read} rows read, ${undo.written} written, ${undo.queries} q\n` +
         table(meter.top(meter.byShape, 8)),
     );
+    expect((await demoStatus(db)).last_error).toBeNull();
+    expect(await one(`SELECT count(*) v FROM "user" WHERE id = 'VISITOR-USER-1'`)).toBe('0');
+    expect(await one('SELECT count(*) v FROM user_session')).toBe('0');
     expect(await db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
     // Per chunk of ≤ 100 entries: three reads of sqlite_master (~1,500 rows) and ~470 per trigger
     // dropped and re-made (DROP TRIGGER scans sqlite_master); the restores themselves read little.

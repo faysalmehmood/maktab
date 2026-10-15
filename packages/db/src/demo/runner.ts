@@ -336,8 +336,6 @@ export async function startDemoReset(
   await ensureState(db);
   if (DEMO_SEED_WRITES > DEMO_SEED_WRITE_CAP)
     throw new Error(`demo reset refused: a reseed would write ~${DEMO_SEED_WRITES} rows`);
-  if (DEMO_SEED_READS > DEMO_SEED_READ_CAP)
-    throw new Error(`demo reset refused: a reseed would read ~${DEMO_SEED_READS} rows`);
   const nowMs = (o.now ?? new Date()).getTime();
   if (o.daily !== false && resetToday(await getState(db), nowMs))
     throw new Error('demo reset refused: one reset a UTC day (the D1 write budget)');
