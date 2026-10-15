@@ -209,11 +209,14 @@ export const inJson = (col: SQL, values: readonly string[]): SQL =>
  * `IN (SELECT … json_each)` term makes it aggregate every payer first (D1 bills each row read).
  */
 export const IN_LIST_MAX = 90;
-export const inList = (col: SQL, values: readonly string[]): SQL =>
-  sql`${col} IN (${sql.join(
+export function inList(col: SQL, values: readonly string[]): SQL {
+  if (values.length === 0 || values.length > IN_LIST_MAX)
+    throw new Error(`inList: 1 to ${IN_LIST_MAX} values, got ${values.length}`);
+  return sql`${col} IN (${sql.join(
     values.map((v) => sql`${v}`),
     sql`, `,
   )})`;
+}
 
 /** The innermost cause's message: SQLite's own text, without drizzle's echo of the query. */
 export function rootMessage(err: unknown): string {

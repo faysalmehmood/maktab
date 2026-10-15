@@ -657,12 +657,14 @@ export async function planCreditForFamilies(
 ): Promise<(AllocationInput & { receiptId: string })[]> {
   const out: (AllocationInput & { receiptId: string })[] = [];
   if (maxRows <= 0 || !familyIds.length) return out;
+  // Distinct and sorted, so the batches return payers in the order the single query did (by id).
+  const ids = [...new Set(familyIds)].sort();
   const withCredit: { payer_id: string }[] = [];
-  for (let i = 0; i < familyIds.length; i += IN_LIST_MAX)
+  for (let i = 0; i < ids.length; i += IN_LIST_MAX)
     withCredit.push(
       ...(await db.all<{ payer_id: string }>(sql`SELECT payer_id FROM payer_credit
         WHERE payer_type = 'family' AND credit > 0
-          AND ${inList(sql`payer_id`, familyIds.slice(i, i + IN_LIST_MAX))}`)),
+          AND ${inList(sql`payer_id`, ids.slice(i, i + IN_LIST_MAX))}`)),
     );
   for (const { payer_id } of withCredit) {
     const { credit, sources } = await creditSources(db, 'family', payer_id);
