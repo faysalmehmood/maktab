@@ -79,6 +79,11 @@ async function safeAll<T>(db: AppDb, q: ReturnType<typeof sql>): Promise<T[]> {
 const quotaError = () =>
   new ApiError(503, 'demo_not_ready', 'The demo is paused until 05:00 PKT (D1 daily limit)');
 
+/** Records the backoff unless advanceDemoSeed already did for this error (one alarm, one write). */
+const backOffOnce = async (db: AppDb, nowMs = Date.now()) => {
+  if (!demoBackedOff({ backoff_until: null }, nowMs)) await demoQuotaBackoff(db, nowMs);
+};
+
 const ip = (c: Context<AppEnv>) => clientIp((h) => c.req.header(h)) ?? '';
 
 /** The demo guard (runs before the routes; demo mode only). */
@@ -163,12 +168,14 @@ export function demoRoutes(app: Hono<AppEnv>, table: RouteTable): void {
 
   defineRoute(app, table, { method: 'GET', path: '/api/demo', access: publicRoute }, async (c) => {
     const db = c.get('db');
+    // This isolate already saw D1 refuse for the day: no query (it would only fail again).
+    if (demoBackedOff({ backoff_until: null })) throw quotaError();
     try {
       const s = await demoStatus(db);
       return c.json({ demo: true, ...s }, 200, { 'cache-control': 'no-store' });
     } catch (err) {
       if (!isQuotaError(err)) throw err;
-      await demoQuotaBackoff(db);
+      await backOffOnce(db);
       throw quotaError();
     }
   });
@@ -212,7 +219,7 @@ export function demoRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         return await step(c, db);
       } catch (err) {
         if (!isQuotaError(err)) throw err;
-        await demoQuotaBackoff(db);
+        await backOffOnce(db);
         throw quotaError();
       }
     },
@@ -305,7 +312,7 @@ export async function demoTick(db: AppDb, env: Bindings, nowMs = Date.now()): Pr
     await advanceOnce(db, env);
     return true;
   } catch (err) {
-    if (isQuotaError(err)) await demoQuotaBackoff(db, nowMs);
+    if (isQuotaError(err)) await backOffOnce(db, nowMs);
     throw err;
   }
 }

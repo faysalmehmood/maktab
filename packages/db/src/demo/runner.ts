@@ -278,18 +278,18 @@ const nextUtcMidnight = (ms: number) =>
 
 /**
  * D1's answer once the account's daily rows read or written are used up (or the DB is full), e.g.
- * "Exceeded maximum rows written per day" or, for reads, code 7500 "exceeded D1's free tier daily
- * row read limit". Every query fails then, reads included, until 00:00 UTC.
+ * "Exceeded maximum rows written per day" or "exceeded D1's free tier daily row read limit". Every
+ * query fails then, reads included, until 00:00 UTC. Only the limit wording counts: D1's code 7500
+ * is also its generic internal error, and "storage operation exceeded timeout" is transient (both
+ * retried elsewhere, lib/retry.ts); either would otherwise pause the demo for the rest of the day.
  */
 export function isQuotaError(err: unknown): boolean {
   const msgs: string[] = [];
   for (let e: unknown = err, i = 0; e && i < 5; i++) {
     msgs.push(e instanceof Error ? e.message : String(e));
-    const code = (e as { code?: unknown } | null)?.code;
-    if (code !== undefined) msgs.push(`code ${String(code)}`);
     e = e instanceof Error ? (e as Error & { cause?: unknown }).cause : undefined;
   }
-  return /exceeded|quota|daily limit|limit (?:has been )?reached|usage limit|row (?:read|write) limit|\bcode\W{0,3}7500\b/i.test(
+  return /daily (?:row )?(?:read|write) limit|rows? (?:read|written)[^.]*limit|exceeded maximum rows|quota|daily limit|database (?:is )?full|exceeded (?:the )?maximum (?:database )?size/i.test(
     msgs.join(' '),
   );
 }

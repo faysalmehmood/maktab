@@ -38,9 +38,19 @@ describe('the demo at the D1 read limit', () => {
   it('recognises the read-limit error (message or code 7500) as a quota error', () => {
     expect(isQuotaError(new Error(READ_LIMIT))).toBe(true);
     expect(isQuotaError(new Error('Failed query', { cause: new Error(READ_LIMIT) }))).toBe(true);
-    expect(isQuotaError(Object.assign(new Error('D1_ERROR'), { code: 7500 }))).toBe(true);
-    expect(isQuotaError(new Error('D1_ERROR: something failed (code: 7500)'))).toBe(true);
-    // Not every number 7500 is the limit, and other errors are not.
+    expect(isQuotaError(new Error('D1_ERROR: Exceeded maximum rows written per day'))).toBe(true);
+    // Transient errors (retried elsewhere) must not pause the demo for the day: code 7500 is also
+    // D1's generic internal error, and a storage timeout "exceeded" something else.
+    expect(isQuotaError(Object.assign(new Error('D1_ERROR: internal error'), { code: 7500 }))).toBe(
+      false,
+    );
+    expect(
+      isQuotaError(
+        new Error(
+          'D1_ERROR: D1 DB storage operation exceeded timeout which caused object to be reset.',
+        ),
+      ),
+    ).toBe(false);
     expect(isQuotaError(new Error('amount 7500 is over the due'))).toBe(false);
     expect(isQuotaError(new Error('UNIQUE constraint failed: receipt.id'))).toBe(false);
   });
@@ -68,6 +78,9 @@ describe('the demo at the D1 read limit', () => {
       body: '{}',
     });
     expect(res.status).toBe(503);
+    // So does the status route: the in-isolate backoff, no query.
+    const status = await request('/api/demo');
+    expect(status.status).toBe(503);
     expect(calls()).toBe(tried);
     // From 00:00 UTC it tries again.
     await expect(demoTick(db, denv, midnight + 60_000)).rejects.toThrow();
