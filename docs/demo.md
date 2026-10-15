@@ -66,7 +66,8 @@ the previous day's run used it up, and D1 refused writes for the rest of the UTC
   2026-10-14 (~28,800 on a fresh database), ~500 more than before migration 0025's two indexes
   (see Reads below). Before them, a sweep of every seed day from 2026-10-14 to 2028-04-30, each
   reseeded over the day before, ranged from ~27,500 (summer vacation) to ~31,400 at worst
-  (2027-02-28): **~31,900 at worst** now, 1,100 under the budget. D1's own count for the same
+  (2027-02-28): **~31,900 at worst** now (31,889 for 2026-10-14 over an existing demo), only
+  ~1,100 under the budget. The next addition to the dataset must trim something else first. D1's own count for the same
   reseed (`meta.rows_written`, apps/api/test/d1-demo-reads.test.ts) is lower: 29,193. Charges are the largest part
   (~10,000), then receipts and allocations, audit, registers and messages. That is why the school
   has 112 students: a reseed over the demo costs about 260 writes a student. `npm run seed:demo`
@@ -82,12 +83,14 @@ the previous day's run used it up, and D1 refused writes for the rest of the UTC
   reseed (~33,000 writes) instead of the undo, so the dates move forward. That is at most about six
   reseeds a month, one on any day, a third of the daily 100,000.
 - **At most one reset a UTC day** (full or undo), whoever asks.
-- **Quota guard:** if D1 refuses a query for a daily limit (`exceeded`, `quota`, `daily limit`, or
-  the read limit: code 7500, "exceeded D1's free tier daily row read limit"), the demo logs
+- **Quota guard:** if D1 refuses a query for a daily limit ("Exceeded maximum rows written per
+  day", "exceeded D1's free tier daily row read limit", `quota`, a full database), the demo logs
   `demo_alarm: d1_quota` and runs nothing until the next 00:00 UTC (`backoff_until` in
   `GET /api/demo`). At the read limit even `_demo_state` cannot be read, so the isolate also
   remembers the backoff: later ticks touch nothing, and `POST /api/demo/step` and `GET /api/demo`
-  answer 503 `demo_not_ready` (`apps/api/test/demo-quota.test.ts`).
+  answer 503 `demo_not_ready` (`apps/api/test/demo-quota.test.ts`). Only the limit wording counts:
+  code 7500 alone is also D1's generic internal error, and a storage timeout is transient; neither
+  pauses the demo.
 
 **Reads.** The same account allows **5,000,000 rows read a day**. D1 counts every row a query
 visits, not the rows it returns: a scan of a table, of a view's whole aggregate, or of
