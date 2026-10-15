@@ -13,7 +13,9 @@ import {
   FeeError,
   type FeeSettings,
   feeSettings,
+  IN_LIST_MAX,
   inJson,
+  inList,
   maxDate,
   minDate,
   periodEnd,
@@ -655,8 +657,15 @@ export async function planCreditForFamilies(
 ): Promise<(AllocationInput & { receiptId: string })[]> {
   const out: (AllocationInput & { receiptId: string })[] = [];
   if (maxRows <= 0 || !familyIds.length) return out;
-  const withCredit = await db.all<{ payer_id: string }>(sql`SELECT payer_id FROM payer_credit
-    WHERE payer_type = 'family' AND credit > 0 AND ${inJson(sql`payer_id`, familyIds)}`);
+  // Distinct and sorted, so the batches return payers in the order the single query did (by id).
+  const ids = [...new Set(familyIds)].sort();
+  const withCredit: { payer_id: string }[] = [];
+  for (let i = 0; i < ids.length; i += IN_LIST_MAX)
+    withCredit.push(
+      ...(await db.all<{ payer_id: string }>(sql`SELECT payer_id FROM payer_credit
+        WHERE payer_type = 'family' AND credit > 0
+          AND ${inList(sql`payer_id`, ids.slice(i, i + IN_LIST_MAX))}`)),
+    );
   for (const { payer_id } of withCredit) {
     const { credit, sources } = await creditSources(db, 'family', payer_id);
     if (credit <= 0) continue;
@@ -863,7 +872,7 @@ export const BACKOFF_CAP_MS = 24 * 3_600_000;
 export const ATTENTION_AFTER = 3;
 
 /**
- * Where a resumable run stands, in one read: a group with billable enrolments whose latest fees
+ * Where a resumable run stands (two small reads): a group with billable enrolments whose latest fees
  * chunk is missing or unfinished, and its cursor. null = the period is complete.
  *
  * Order (M3a closing pass): with `afterGrpId` (the button's "next"), strictly by group id after it;
@@ -876,24 +885,53 @@ export async function generationCursor(
   period: string,
   o: { exclude?: readonly string[]; afterGrpId?: string | null; now?: string | null } = {},
 ): Promise<{ grp_id: string; after_student_id: string | null } | null> {
-  const [row] = await db.all<{ grp_id: string; next_student_id: string | null }>(sql`
-    WITH g AS (SELECT DISTINCT e.grp_id FROM enrolment e WHERE ${eligible(period)}),
-    last AS (
+  // Two small reads joined here, not one SQL join: SQLite scanned the materialised "latest chunk"
+  // rows once per group (groups × chunks rows read, ~360 per call on the demo; D1 bills each one).
+  const groups = await db.all<{ grp_id: string }>(
+    sql`SELECT DISTINCT e.grp_id FROM enrolment e WHERE ${eligible(period)}`,
+  );
+  const latest = await db.all<{
+    grp_id: string;
+    done: number;
+    next_student_id: string | null;
+    status: string | null;
+    retry_after: string | null;
+  }>(sql`
+    SELECT grp_id, done, next_student_id, status, retry_after FROM (
       SELECT k.grp_id, k.done, k.next_student_id, k.status, k.retry_after,
              row_number() OVER (PARTITION BY k.grp_id ORDER BY k.created_at DESC, k.rowid DESC) AS rn
       FROM billing_chunk k JOIN billing_run r ON r.id = k.run_id
       WHERE r.period_key = ${period} AND k.kind = 'fees' AND k.grp_id IS NOT NULL)
-    SELECT g.grp_id, l.next_student_id, coalesce(l.status = 'failed', 0) AS failing
-    FROM g LEFT JOIN last l ON l.grp_id = g.grp_id AND l.rn = 1
-    WHERE (l.done IS NULL OR l.done = 0) AND g.grp_id > ${o.afterGrpId ?? ''}
-      AND g.grp_id NOT IN (SELECT value FROM json_each(${JSON.stringify(o.exclude ?? [])}))
-      ${
-        o.now
-          ? sql`AND (l.status IS NULL OR l.status <> 'failed' OR l.retry_after IS NULL OR l.retry_after <= ${o.now})`
-          : sql``
-      }
-    ORDER BY ${o.afterGrpId ? sql`` : sql`failing,`} g.grp_id LIMIT 1`);
-  return row ? { grp_id: row.grp_id, after_student_id: row.next_student_id ?? null } : null;
+    WHERE rn = 1`);
+  const last = new Map(latest.map((l) => [l.grp_id, l]));
+  const exclude = new Set(o.exclude ?? []);
+  const after = o.afterGrpId ?? '';
+  const open = groups
+    .map((g) => ({ grp_id: g.grp_id, l: last.get(g.grp_id) }))
+    .filter(
+      ({ grp_id, l }) =>
+        (!l || !Number(l.done)) &&
+        grp_id > after &&
+        !exclude.has(grp_id) &&
+        (!o.now || !l || l.status !== 'failed' || l.retry_after === null || l.retry_after <= o.now),
+    )
+    .map(({ grp_id, l }) => ({
+      grp_id,
+      next: l?.next_student_id ?? null,
+      failing: l?.status === 'failed' ? 1 : 0,
+    }))
+    // Group ids are ULIDs (ASCII): JS string order is SQLite's BINARY order.
+    .sort((a, b) =>
+      !o.afterGrpId && a.failing !== b.failing
+        ? a.failing - b.failing
+        : a.grp_id < b.grp_id
+          ? -1
+          : a.grp_id > b.grp_id
+            ? 1
+            : 0,
+    );
+  const row = open[0];
+  return row ? { grp_id: row.grp_id, after_student_id: row.next } : null;
 }
 
 export type BillingAlert = {

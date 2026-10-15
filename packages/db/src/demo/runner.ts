@@ -32,6 +32,13 @@ export const DEMO_SCHOOL_NAME = 'Al-Noor Community School';
  * demo-seed.test.ts recomputes it and fails if the dataset grows past it.
  */
 export const DEMO_SEED_WRITES = 33_000;
+/**
+ * The D1 read budget: rows read by a full reseed over the demo, measured on workerd's D1
+ * (apps/api/test/d1-demo-reads.test.ts fails past it). The account allows 5,000,000 a day.
+ */
+export const DEMO_SEED_READS = 400_000;
+/** No full reseed may be planned above this (the target is 1,000,000: a fifth of the daily reads). */
+export const DEMO_SEED_READ_CAP = 1_500_000;
 /** No full reseed may be planned above this. */
 export const DEMO_SEED_WRITE_CAP = 35_000;
 /** The nightly undo is skipped (and an alarm logged) when playing the log back would cost more. */
@@ -84,16 +91,34 @@ const q = (name: string) => `"${name.replace(/"/g, '""')}"`;
  * defer_foreign_keys) any table with outstanding references; D1 counts those deleted rows and
  * index entries as writes (~7,000 over a seeded demo). Dropping each table only once nothing else
  * refers to it avoids that, except for a table that references itself (charge, receipt,
- * enrolment, …): those rows are still deleted, so their indexes go first.
+ * enrolment, …): those rows are still deleted, so their indexes go first, all but one.
+ *
+ * The one kept is an index led by the self-referencing column (charge_parent,
+ * receipt_reverses_id_unique): each implicit delete looks for rows that still point at the deleted
+ * one, and without such an index that is a scan of the whole table per row. D1 counts every row a
+ * scan visits as read: dropping `charge` cost ~563,000 rows read for ~1,000 charges (measured
+ * 2026-10-15, apps/api/test/d1-demo-reads.test.ts), half of a reseed's reads; with the index ~3,000.
  */
 async function dropOrder(
   db: AppDb,
   tables: string[],
-): Promise<{ order: string[]; selfRef: Set<string> }> {
-  const fks = await db.all<{ child: string; parent: string }>(sql`
-    SELECT t.value AS child, f."table" AS parent
+): Promise<{ order: string[]; selfRef: Set<string>; keepIndex: Set<string> }> {
+  const fks = await db.all<{ child: string; parent: string; col: string }>(sql`
+    SELECT t.value AS child, f."table" AS parent, f."from" AS col
     FROM json_each(${JSON.stringify(tables)}) t, pragma_foreign_key_list(t.value) f`);
-  const selfRef = new Set(fks.filter((f) => f.child === f.parent).map((f) => f.child));
+  const self = fks.filter((f) => f.child === f.parent);
+  const selfRef = new Set(self.map((f) => f.child));
+  // A full (not partial) index whose first column is the self-referencing one.
+  const lead = await db.all<{ tbl: string; idx: string; col: string }>(sql`
+    SELECT t.value AS tbl, l.name AS idx, i.name AS col
+    FROM json_each(${JSON.stringify([...selfRef])}) t, pragma_index_list(t.value) l,
+      pragma_index_info(l.name) i
+    WHERE i.seqno = 0 AND l.partial = 0`);
+  const keepIndex = new Set<string>();
+  for (const f of self) {
+    const hit = lead.find((x) => x.tbl === f.child && x.col === f.col);
+    if (hit) keepIndex.add(hit.idx);
+  }
   const left = new Set(tables);
   const order: string[] = [];
   while (left.size) {
@@ -107,7 +132,7 @@ async function dropOrder(
       order.push(t);
     }
   }
-  return { order, selfRef };
+  return { order, selfRef, keepIndex };
 }
 
 const dropStep: Step = {
@@ -120,12 +145,15 @@ const dropStep: Step = {
     for (const r of [...rows].reverse().filter((x) => x.type === 'view'))
       stmts.push(sql.raw(`DROP VIEW IF EXISTS ${q(r.name)}`));
     const tables = rows.filter((x) => x.type === 'table').map((x) => x.name);
-    const { order, selfRef } = await dropOrder(db, tables);
+    const { order, selfRef, keepIndex } = await dropOrder(db, tables);
     for (const t of order) {
       // A table that references itself is deleted row by row before it is dropped (below); without
-      // its indexes each of those deletes is one write, not one per index.
+      // its other indexes each of those deletes is one write (plus the kept index's), not one per
+      // index.
       if (selfRef.has(t))
-        for (const i of rows.filter((x) => x.type === 'index' && x.tbl_name === t))
+        for (const i of rows.filter(
+          (x) => x.type === 'index' && x.tbl_name === t && !keepIndex.has(x.name),
+        ))
           stmts.push(sql.raw(`DROP INDEX IF EXISTS ${q(i.name)}`));
       stmts.push(sql.raw(`DROP TABLE IF EXISTS ${q(t)}`));
     }
@@ -248,17 +276,28 @@ const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const nextUtcMidnight = (ms: number) =>
   new Date(Date.parse(`${utcDay(ms)}T00:00:00Z`) + 86_400_000).toISOString();
 
-/** D1's answer once the account's daily rows read / written are used up (or the DB is full). */
+/**
+ * D1's answer once the account's daily rows read or written are used up (or the DB is full), e.g.
+ * "Exceeded maximum rows written per day" or "exceeded D1's free tier daily row read limit". Every
+ * query fails then, reads included, until 00:00 UTC. Only the limit wording counts: D1's code 7500
+ * is also its generic internal error, and "storage operation exceeded timeout" is transient (both
+ * retried elsewhere, lib/retry.ts); either would otherwise pause the demo for the rest of the day.
+ */
 export function isQuotaError(err: unknown): boolean {
   const msgs: string[] = [];
   for (let e: unknown = err, i = 0; e && i < 5; i++) {
     msgs.push(e instanceof Error ? e.message : String(e));
     e = e instanceof Error ? (e as Error & { cause?: unknown }).cause : undefined;
   }
-  return /exceeded|quota|daily limit|limit (?:has been )?reached|usage limit/i.test(msgs.join(' '));
+  return /daily (?:row )?(?:read|write) limit|rows? (?:read|written)[^.]*limit|exceeded maximum rows|quota|daily limit|database (?:is )?full|exceeded (?:the )?maximum (?:database )?size/i.test(
+    msgs.join(' '),
+  );
 }
 
-/** Per isolate: the state write below fails too while the quota is used up. */
+/**
+ * Per isolate: the state write below fails too while the quota is used up, and once the READ limit
+ * is reached even `_demo_state` cannot be read, so the tick checks this before touching D1.
+ */
 let memBackoff = 0;
 
 /** Stop every demo write until the next UTC midnight, when D1's daily counters reset. */

@@ -375,6 +375,9 @@ export const receipt = sqliteTable(
     integerMoney('receipt', 'amount'),
     index('receipt_payer').on(t.payerType, t.payerId),
     index('receipt_day_collector').on(t.businessDate, t.collectorId),
+    // A drawer's expected cash (expectedSql) sums its receipts: without this, every close and every
+    // cash check read the whole receipt table (D1 bills each row read; docs/demo.md).
+    index('receipt_session').on(t.cashSessionId),
   ],
 );
 
@@ -523,7 +526,10 @@ export const payslipLine = sqliteTable(
     note: text('note'),
     ...stamps(),
   },
-  () => [
+  (t) => [
+    // payslip_net, advance_balance and the payroll triggers read a slip's lines: without this each
+    // read was a scan of every line ever written (D1 bills each row read; docs/demo.md).
+    index('payslip_line_slip').on(t.payslipId),
     check('payslip_line_kind', oneOf('kind', PAYSLIP_LINE_KINDS)),
     // Positive; the kind gives the sign (deduction and advance_recovery subtract from the net).
     check('payslip_line_amount', sql`"amount" > 0`),

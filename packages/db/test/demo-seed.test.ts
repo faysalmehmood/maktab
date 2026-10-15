@@ -501,6 +501,32 @@ describe('demo dataset', () => {
     await db.run(sql`DELETE FROM _demo_undo WHERE id >= 1000000`);
   });
 
+  it('the nightly undo removes a user a visitor added, with their sign-in sessions', async () => {
+    const before = await fingerprint(db);
+    const users = async () =>
+      JSON.stringify(
+        await db.all(
+          sql`SELECT (SELECT count(*) FROM "user") u, (SELECT count(*) FROM user_session) s`,
+        ),
+      );
+    const before2 = await users();
+    await db.run(sql`INSERT INTO "user" (id, email, name, status)
+      VALUES ('VISITOR-USER-1', 'visitor@example.com', 'Visitor', 'active')`);
+    // Sessions are not logged, so the undo only knows about the user row.
+    await db.run(sql`INSERT INTO user_session (id, user_id, expires_at)
+      VALUES ('VISITOR-SESSION-1', 'VISITOR-USER-1', '2099-01-01T00:00:00Z')`);
+    const at = Date.parse('2027-03-10T21:00:30Z');
+    expect(await startDemoUndo(db, { now: at })).toMatchObject({ started: true });
+    for (let i = 0; i < 10 && (await demoStatus(db)).phase === 'undoing'; i++)
+      await advanceDemoSeed(db, { deadline: Number.POSITIVE_INFINITY });
+    const s = await demoStatus(db);
+    expect(s.last_error).toBeNull();
+    expect(s.phase).toBe('done');
+    expect(await users()).toBe(before2);
+    expect(await fingerprint(db)).toEqual(before);
+    expect(await db.all(sql`PRAGMA foreign_key_check`)).toEqual([]);
+  });
+
   it('recognises a D1 quota error (then backs off until the next UTC midnight)', () => {
     expect(isQuotaError(new Error('D1_ERROR: Exceeded maximum rows written per day'))).toBe(true);
     expect(

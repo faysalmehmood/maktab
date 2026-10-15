@@ -75,6 +75,15 @@ async function safeAll<T>(db: AppDb, q: ReturnType<typeof sql>): Promise<T[]> {
   }
 }
 
+/** D1 refused for the account's daily limit (reads or writes): nothing until 00:00 UTC. */
+const quotaError = () =>
+  new ApiError(503, 'demo_not_ready', 'The demo is paused until 05:00 PKT (D1 daily limit)');
+
+/** Records the backoff unless advanceDemoSeed already did for this error (one alarm, one write). */
+const backOffOnce = async (db: AppDb, nowMs = Date.now()) => {
+  if (!demoBackedOff({ backoff_until: null }, nowMs)) await demoQuotaBackoff(db, nowMs);
+};
+
 const ip = (c: Context<AppEnv>) => clientIp((h) => c.req.header(h)) ?? '';
 
 /** The demo guard (runs before the routes; demo mode only). */
@@ -158,8 +167,17 @@ export function demoRoutes(app: Hono<AppEnv>, table: RouteTable): void {
   );
 
   defineRoute(app, table, { method: 'GET', path: '/api/demo', access: publicRoute }, async (c) => {
-    const s = await demoStatus(c.get('db'));
-    return c.json({ demo: true, ...s }, 200, { 'cache-control': 'no-store' });
+    const db = c.get('db');
+    // This isolate already saw D1 refuse for the day: no query (it would only fail again).
+    if (demoBackedOff({ backoff_until: null })) throw quotaError();
+    try {
+      const s = await demoStatus(db);
+      return c.json({ demo: true, ...s }, 200, { 'cache-control': 'no-store' });
+    } catch (err) {
+      if (!isQuotaError(err)) throw err;
+      await backOffOnce(db);
+      throw quotaError();
+    }
   });
 
   defineRoute(
@@ -196,24 +214,36 @@ export function demoRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       if (!stepLimit.take(`step:${ip(c)}`))
         throw new ApiError(429, 'rate_limited', 'Too many requests; wait a minute');
       const db = c.get('db');
-      let s = await demoStatus(db);
-      // D1 said the account's daily quota is used up: nothing until the next UTC midnight.
-      if (demoBackedOff(s)) return c.json(s);
-      if (s.phase !== 'running' && s.phase !== 'undoing') {
-        const [school] = await safeAll<{ n: number }>(db, sql`SELECT count(*) AS n FROM school`);
-        // Nothing to do on a seeded demo; an empty database is seeded (one reset a UTC day).
-        const force = await demoForcePending(db);
-        if (!force && (s.phase === 'done' || Number(school?.n ?? 0) > 0)) return c.json(s);
-        try {
-          s = await startDemoReset(db, { reason: 'first seed' });
-        } catch (err) {
-          if (err instanceof Error && /one reset a UTC day/.test(err.message)) return c.json(s);
-          throw err;
-        }
+      if (demoBackedOff({ backoff_until: null })) throw quotaError();
+      try {
+        return await step(c, db);
+      } catch (err) {
+        if (!isQuotaError(err)) throw err;
+        await backOffOnce(db);
+        throw quotaError();
       }
-      return c.json(await advanceOnce(db, c.env));
     },
   );
+}
+
+/** POST /api/demo/step's work (the route wraps it in the quota guard). */
+async function step(c: Context<AppEnv>, db: AppDb): Promise<Response> {
+  let s = await demoStatus(db);
+  // D1 said the account's daily quota is used up: nothing until the next UTC midnight.
+  if (demoBackedOff(s)) return c.json(s);
+  if (s.phase !== 'running' && s.phase !== 'undoing') {
+    const [school] = await safeAll<{ n: number }>(db, sql`SELECT count(*) AS n FROM school`);
+    // Nothing to do on a seeded demo; an empty database is seeded (one reset a UTC day).
+    const force = await demoForcePending(db);
+    if (!force && (s.phase === 'done' || Number(school?.n ?? 0) > 0)) return c.json(s);
+    try {
+      s = await startDemoReset(db, { reason: 'first seed' });
+    } catch (err) {
+      if (err instanceof Error && /one reset a UTC day/.test(err.message)) return c.json(s);
+      throw err;
+    }
+  }
+  return c.json(await advanceOnce(db, c.env));
 }
 
 /** Karachi weekday of the weekly full reseed (0 = Sunday … 6 = Saturday): see demoReseedDue. */
@@ -239,6 +269,9 @@ export function demoReseedDue(nowMs: number): boolean {
  * is used up (backoff until the next UTC midnight).
  */
 export async function demoTick(db: AppDb, env: Bindings, nowMs = Date.now()): Promise<boolean> {
+  // This isolate already saw D1 refuse for the day: not even a read (the read limit refuses reads,
+  // so the saved backoff_until could not be read anyway).
+  if (demoBackedOff({ backoff_until: null }, nowMs)) return false;
   try {
     const s = await demoStatus(db);
     if (demoBackedOff(s, nowMs)) return false;
@@ -279,7 +312,7 @@ export async function demoTick(db: AppDb, env: Bindings, nowMs = Date.now()): Pr
     await advanceOnce(db, env);
     return true;
   } catch (err) {
-    if (isQuotaError(err)) await demoQuotaBackoff(db, nowMs);
+    if (isQuotaError(err)) await backOffOnce(db, nowMs);
     throw err;
   }
 }
