@@ -74,10 +74,14 @@ routes = [{ pattern = "maktab.conceptlix.com", custom_domain = true }]
 # couple of reads. No fee cron or daily pass in the demo (apps/api/src/index.ts). After D1 refuses a
 # write for the daily quota, nothing runs until 00:00 UTC. Two of the account's five free cron
 # triggers are in use (this and env gsap).
-# 2026-10-14: deployed with crons = [] after the account hit D1's daily write limit; this line is
-# what the next deploy (after 00:00 UTC / 05:00 PKT) puts back.
+# 2026-10-15 (owner's decision): NO cron on the demo. The account hit D1's daily write limit on
+# 10-14 and the read limit that evening, and the owner gets a Cloudflare alert each time; the
+# nightly undo, the Monday/1st reseed and the idle tick are all off until further notice. The demo
+# keeps whatever visitors change. To reseed by hand: set `_demo_state.force = 1` and drive
+# `POST /api/demo/step` (docs/demo.md "Re-deploy and re-seed"); ~27k writes and ~340k reads.
+# To turn the schedule back on: crons = ["* * * * *"].
 [env.demo.triggers]
-crons = ["* * * * *"]
+crons = []
 
 [env.demo.vars]
 APP_ORIGIN = "https://maktab.conceptlix.com"

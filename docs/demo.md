@@ -142,6 +142,13 @@ photos, bill photos) are capped at 200 KB and 10 an hour per IP. Everything else
 
 ## Reset schedule
 
+> **Paused since 2026-10-15.** The demo Worker is deployed with no cron (`[env.demo.triggers]
+> crons = []` in `apps/api/wrangler.toml`), at the owner's request: the account's D1 daily limits
+> were hit twice on 10-14 (writes, then reads) and each one raises a Cloudflare alert. Nothing
+> below runs until the cron is put back: no nightly undo, no Monday/1st reseed, no idle tick. The
+> demo keeps whatever visitors change. A reseed by hand costs about 27k row writes and 340k row
+> reads: set `_demo_state.force = 1` and drive `POST /api/demo/step` (see "Re-deploy and re-seed").
+
 - Any successful write by a visitor marks the demo **dirty**, and every change to school data is
   logged in `_demo_undo` (`packages/db/src/demo/undo.ts`): after the seed, each data table has
   three `_demo_undo_<table>_{i,u,d}` triggers that record the key of an inserted row or the old
