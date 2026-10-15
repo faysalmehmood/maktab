@@ -239,6 +239,16 @@ export async function undoChunk(db: AppDb, upTo: number): Promise<number> {
   const stmts: SQL[] = [sql`PRAGMA defer_foreign_keys = ON`];
   for (const g of guards) stmts.push(sql.raw(`DROP TRIGGER IF EXISTS ${q(g.name)}`));
   for (const n of names) stmts.push(...dropUndoTriggers(n, logged(ops.get(n) ?? [])));
+  // Sign-in sessions are not logged: a user the undo removes loses theirs first, so the delete never
+  // relies on deferred foreign keys (user_session.user_id is NO ACTION today, which defers; a
+  // RESTRICT would be checked at once, before the cleanup after the restores).
+  const goneUsers = entries
+    .filter((e) => e.tbl === 'user' && e.op === 'I')
+    .map((e) => String((JSON.parse(e.pk ?? '{}') as { id?: unknown }).id ?? ''));
+  if (goneUsers.length)
+    stmts.push(
+      sql`DELETE FROM user_session WHERE user_id IN (SELECT value FROM json_each(${JSON.stringify(goneUsers)}))`,
+    );
   for (const e of entries) {
     const t = tables.get(e.tbl);
     // A table dropped since (a migration): nothing to restore into.
