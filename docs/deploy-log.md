@@ -241,6 +241,19 @@ installation, **starting empty** (no data copied from the old production databas
   expire, no `last_error`). Fix: the demo's generate step runs one 60-row chunk per invocation
   (`cost: 12`, `maxRows: 60`); redeployed, reseed resumed by the cron. Note for M7c: the pilot's fee
   cron runs the same generator with 200-row chunks, 3 a tick; watch `billing_chunk` failures there.
+- Reseed finished at 05:29 UTC (version 7b08ec28; the last 70 steps driven through the public
+  step route): 112 students, 70 families, 14 staff, 1,058 charges, 345 receipts, 520 marks, 201
+  messages, 70 payslips, `ledger_consistency` empty, anchor 2026-10-15, 178 undo objects. D1 for
+  the day so far: 340,017 rows read, 27,193 written (the budget held). The three demo sign-ins and
+  `/api/me` work; the home screen shows 12 of 19 registers taken.
+- **Security incident, same morning (not Maktab code):** between 03:53 and 03:56 UTC a stolen
+  GitHub token pushed three unsigned commits to the default branch of all 35 of the owner's
+  repositories, including this one (`21721c5`, `b82963b`, `6e73018`, `3e43230`): a workflow that
+  posts repository secrets to an external server, a VS Code task that runs on folder open, and a
+  JavaScript credential stealer disguised as `public/fonts/fa-solid-400.woff2`. Reverted here in
+  `ed9b097`–`e2224f2`; the workflow never ran (every run needed approval); the files were removed
+  from every other repository the same morning. If you cloned between 03:53 and 05:45 UTC on
+  2026-10-15, delete the clone, do not open it in VS Code, and check `crontab -l` for `#ghc2`.
 - Walkthrough fixes (A–K + review), anchored dataset (112 students, reseed Mondays and the 1st at
   02:00 PKT) and the README product page are live on both instances.
 
