@@ -1,0 +1,51 @@
+# Self-hosted Maktab (docs/self-host.md). Installed as /srv/homelab/maktab/docker-compose.yml by
+# deploy/selfhost/install.sh; one folder per school next to it:
+#
+#   /srv/homelab/maktab/
+#     docker-compose.yml       this file
+#     .env                     optional, compose variables only (MAKTAB_SRC, MAKTAB_IMAGE)
+#     src/                     the repository checkout the image is built from (MAKTAB_SRC)
+#     gsap/.env                the school's settings and secrets (mode 0600)
+#     gsap/data/               maktab.sqlite, files/, backups/ (the only state)
+#
+# The pilot:          docker compose up -d                      (INSTANCE defaults to gsap)
+# Another school:     INSTANCE=<name> docker compose up -d      (project maktab-<name>)
+#
+# No `ports:`: the container is reached only on the external `homelab` network, where the
+# Cloudflare Tunnel (cloudflared) routes the public hostname to http://maktab-<instance>:8787.
+name: maktab-${INSTANCE:-gsap}
+
+services:
+  maktab:
+    # A local build from MAKTAB_SRC by default; set MAKTAB_IMAGE=ghcr.io/faysalmehmood/maktab:<tag>
+    # once CI publishes images, then `docker compose pull` instead of `build`.
+    image: ${MAKTAB_IMAGE:-maktab:local}
+    build:
+      context: ${MAKTAB_SRC:-./src}
+      args:
+        MAKTAB_VERSION: ${MAKTAB_VERSION:-dev}
+    container_name: maktab-${INSTANCE:-gsap}
+    restart: unless-stopped
+    env_file: ./${INSTANCE:-gsap}/.env
+    environment:
+      DATA_DIR: /data
+      PORT: "8787"
+    volumes:
+      - ./${INSTANCE:-gsap}/data:/data
+    networks: [homelab]
+    # The image's `node` user; the data folder is chowned to it by install.sh.
+    user: "1000:1000"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+networks:
+  homelab:
+    external: true
