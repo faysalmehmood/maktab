@@ -45,6 +45,7 @@ run() {
     -e PARENT_LINK_SECRET="smoke-parent-secret-0123456789abcdef0123456789" \
     -e APP_ORIGIN="https://maktab.example" \
     -e OWNER_EMAIL="owner@example.com" \
+    -e ALLOW_UNENCRYPTED_BACKUPS=1 \
     "$IMAGE" >/dev/null
 }
 
@@ -98,8 +99,22 @@ echo "== refuses DEMO_MODE"
 docker rm -f "$NAME" >/dev/null
 if docker run --rm ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} --network none -v "$DATA:/data" -e DEMO_MODE=1 \
   -e SESSION_SECRET="smoke-session-secret-0123456789abcdef0123456789" -e APP_ORIGIN="https://maktab.example" \
+  -e ALLOW_UNENCRYPTED_BACKUPS=1 \
   "$IMAGE" >/dev/null 2>&1; then
   fail "started with DEMO_MODE=1"
+fi
+
+echo "== refuses an empty AGE_RECIPIENT without ALLOW_UNENCRYPTED_BACKUPS"
+if docker run --rm ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} --network none -v "$DATA:/data" \
+  -e SESSION_SECRET="smoke-session-secret-0123456789abcdef0123456789" -e APP_ORIGIN="https://maktab.example" \
+  "$IMAGE" >/dev/null 2>&1; then
+  fail "started without AGE_RECIPIENT"
+fi
+
+echo "== no package manager in the image"
+if docker run --rm ${PLATFORM_ARGS[@]+"${PLATFORM_ARGS[@]}"} --network none --entrypoint sh "$IMAGE" \
+  -c 'command -v npm || command -v npx || command -v corepack || command -v yarn'; then
+  fail "a package manager is still in the image"
 fi
 
 echo "OK: self-hosted image smoke passed ($IMAGE ${PLATFORM:-native})"

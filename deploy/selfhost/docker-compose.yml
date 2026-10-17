@@ -19,7 +19,7 @@ services:
   maktab:
     # A local build from MAKTAB_SRC by default; set MAKTAB_IMAGE=ghcr.io/faysalmehmood/maktab:<tag>
     # once CI publishes images, then `docker compose pull` instead of `build`.
-    image: ${MAKTAB_IMAGE:-maktab:local}
+    image: ${MAKTAB_IMAGE:-maktab-${INSTANCE:-gsap}:local}
     build:
       context: ${MAKTAB_SRC:-./src}
       args:
@@ -40,6 +40,8 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     stop_grace_period: 30s
+    mem_limit: 1g
+    pids_limit: 256
     logging:
       driver: json-file
       options:

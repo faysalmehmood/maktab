@@ -3,10 +3,14 @@
 #
 #   docker build -t maktab:local --build-arg MAKTAB_VERSION=$(git describe --always --dirty) .
 #
+# Base images are pinned by the multi-platform manifest-list digest (linux/amd64 + linux/arm64) of
+# node:24-bookworm-slim as of 2026-10-17; bump it deliberately (docker buildx imagetools inspect
+# node:24-bookworm-slim) and re-run scripts/selfhost-smoke.sh.
+#
 # Build stage: install with the lockfile (no install scripts: better-sqlite3 ships prebuilt N-API
 # binaries, esbuild and workerd use platform packages; the same as CI), build the web app and bundle
 # the Node server (apps/api/scripts/build-node.mjs).
-FROM node:24-bookworm-slim AS build
+FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5 AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
@@ -25,10 +29,15 @@ RUN set -eu; \
     cp "node_modules/better-sqlite3/prebuilds/linux-${arch}.node" /out/node_modules/better-sqlite3/prebuilds/; \
     node -e "const D=require('/out/node_modules/better-sqlite3'); const d=new D(':memory:'); console.log('better-sqlite3 ok, sqlite', d.prepare('select sqlite_version() v').get().v)"
 
-FROM node:24-bookworm-slim
+FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+# tini as PID 1; no package managers at run time (npm, npx, corepack, yarn are removed: the
+# server needs only node itself).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tini \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn \
+      /usr/local/bin/yarnpkg /opt/yarn-*
 ARG MAKTAB_VERSION=dev
 ENV NODE_ENV=production \
     MAKTAB_VERSION=${MAKTAB_VERSION} \

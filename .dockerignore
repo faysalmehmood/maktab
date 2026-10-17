@@ -12,6 +12,11 @@
 **/.env.*
 !**/.env.example
 **/.dev.vars
+# Backups and keys never belong in an image.
+**/*.age
+**/*.sqlite.gz
+**/*key*.txt
+**/*.pem
 **/.DS_Store
 .git
 .github
