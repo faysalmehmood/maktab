@@ -564,6 +564,61 @@ export const TASKS_B: readonly GuideTask[] = [
   },
 
   {
+    id: 'who-teaches',
+    section: 'staff',
+    roles: TASK_ROLES['who-teaches'],
+    title: { en: 'See who teaches what', ur: 'دیکھیں کون کیا پڑھاتا ہے' },
+    summary: {
+      en: 'Every teacher with their class and subjects, and the classes still missing a teacher.',
+      ur: 'ہر استاد اپنی جماعت اور مضامین کے ساتھ، اور وہ جماعتیں جن کا استاد ابھی مقرر نہیں۔',
+    },
+    steps: [
+      {
+        to: '/teachers',
+        text: {
+          en: 'Open [[shell.nav.teachers]]. Each row shows [[screens.teachers.classTeacherOf]], [[screens.teachers.subjects]] and [[screens.teachers.load]].',
+          ur: '[[shell.nav.teachers]] کھولیں۔ ہر قطار میں [[screens.teachers.classTeacherOf]]، [[screens.teachers.subjects]] اور [[screens.teachers.load]] نظر آتا ہے۔',
+        },
+      },
+      {
+        text: {
+          en: 'The figures on top count [[screens.teachers.noClassTeacher]] and [[screens.teachers.noSubjectTeacher]]. Tap a figure to see which.',
+          ur: 'اوپر کے اعداد [[screens.teachers.noClassTeacher]] اور [[screens.teachers.noSubjectTeacher]] گنتے ہیں۔ کون سے ہیں، یہ دیکھنے کے لیے عدد دبائیں۔',
+        },
+      },
+      {
+        text: {
+          en: 'Tap a teacher to change their work: [[screens.teachers.setClass]] or [[screens.teachers.addSubject]]. To take something away, use the row menu and [[common.remove]].',
+          ur: 'کام بدلنے کے لیے استاد کا نام دبائیں: [[screens.teachers.setClass]] یا [[screens.teachers.addSubject]]۔ کچھ ہٹانا ہو تو قطار کا مینو کھول کر [[common.remove]] دبائیں۔',
+        },
+      },
+      {
+        text: {
+          en: '[[screens.teachers.print]] gives one A4 sheet for the notice board, with a line for the principal to sign.',
+          ur: '[[screens.teachers.print]] سے نوٹس بورڈ کے لیے ایک A4 صفحہ نکلتا ہے، جس پر پرنسپل کے دستخط کی جگہ ہوتی ہے۔',
+        },
+      },
+    ],
+    mistakes: [
+      {
+        en: 'A class that already has a class teacher gets a new one only after you agree to [[screens.teachers.replace]]: read the name before you do.',
+        ur: 'جس جماعت کا کلاس ٹیچر پہلے سے ہو، اس پر نیا استاد تبھی آتا ہے جب آپ [[screens.teachers.replace]] دبائیں: دبانے سے پہلے نام پڑھ لیں۔',
+      },
+      {
+        en: 'A teacher appears here only with a staff profile. Invite them first in [[settings.sections.staff]].',
+        ur: 'استاد یہاں تبھی نظر آتا ہے جب اس کا عملے میں پروفائل ہو۔ پہلے [[settings.sections.staff]] میں انہیں مدعو کریں۔',
+      },
+    ],
+    links: [
+      { to: '/teachers', label: { en: '[[shell.nav.teachers]]', ur: '[[shell.nav.teachers]]' } },
+      {
+        to: '/settings?section=staff',
+        label: { en: '[[settings.sections.staff]]', ur: '[[settings.sections.staff]]' },
+      },
+    ],
+  },
+
+  {
     id: 'payslips',
     section: 'staff',
     roles: TASK_ROLES.payslips,

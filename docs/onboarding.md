@@ -29,7 +29,7 @@ exactly as each language's screen shows them (English steps: English screen; Urd
 - At the office: Admit a student; Admit a brother or sister; Collect a fee and give the receipt; Reduce a fee; Close the cash drawer
 - Month-end: Generate the month's fees; Apply late fines; Defaulters and reminders; Income vs expense
 - Parents: Create, renew or revoke a parent link; What parents see
-- Staff: Invite staff; Roles: who can do what; Payslips; My payslips
+- Staff: Invite staff; Roles: who can do what; See who teaches what; Payslips; My payslips
 - Keeping data safe: Backups; Restore drill; Download everything
 - Phone tips: Install the app on the phone; Working without internet; Printing receipts (thermal and A5); Handing off to WhatsApp
 
@@ -600,6 +600,38 @@ In the app: `/guide/roles` · for owner, admin.
 
 - احتیاطاً **اکاؤنٹنٹ** کو **منتظم** بنانا: **منتظم** فیس بنا اور رعایت دے سکتا ہے۔
 - کوئی اپنی تنخواہ خود منظور نہیں کرتا۔ تنخواہ لینے والے مالک کو دوسرا **مالک** یا **منتظم** چاہیے۔
+
+</div>
+
+### See who teaches what / دیکھیں کون کیا پڑھاتا ہے
+
+*Every teacher with their class and subjects, and the classes still missing a teacher.*
+
+1. Open **Teachers**. Each row shows **Class teacher of**, **Subjects** and **Load**.
+2. The figures on top count **Groups without a class teacher** and **Subjects without a teacher**. Tap a figure to see which.
+3. Tap a teacher to change their work: **Set as class teacher of…** or **Add subject…**. To take something away, use the row menu and **Remove**.
+4. **Print** gives one A4 sheet for the notice board, with a line for the principal to sign.
+
+**Common mistakes**
+
+- A class that already has a class teacher gets a new one only after you agree to **Replace**: read the name before you do.
+- A teacher appears here only with a staff profile. Invite them first in **Staff**.
+
+In the app: `/guide/who-teaches` · for owner, admin.
+
+<div dir="rtl" lang="ur">
+
+*ہر استاد اپنی جماعت اور مضامین کے ساتھ، اور وہ جماعتیں جن کا استاد ابھی مقرر نہیں۔*
+
+1. **اساتذہ** کھولیں۔ ہر قطار میں **کلاس ٹیچر**، **مضامین** اور **کام کا بوجھ** نظر آتا ہے۔
+2. اوپر کے اعداد **بغیر کلاس ٹیچر کے گروپ** اور **بغیر استاد کے مضامین** گنتے ہیں۔ کون سے ہیں، یہ دیکھنے کے لیے عدد دبائیں۔
+3. کام بدلنے کے لیے استاد کا نام دبائیں: **کلاس ٹیچر مقرر کریں…** یا **مضمون شامل کریں…**۔ کچھ ہٹانا ہو تو قطار کا مینو کھول کر **ہٹائیں** دبائیں۔
+4. **پرنٹ** سے نوٹس بورڈ کے لیے ایک A4 صفحہ نکلتا ہے، جس پر پرنسپل کے دستخط کی جگہ ہوتی ہے۔
+
+**عام غلطیاں**
+
+- جس جماعت کا کلاس ٹیچر پہلے سے ہو، اس پر نیا استاد تبھی آتا ہے جب آپ **تبدیل کریں** دبائیں: دبانے سے پہلے نام پڑھ لیں۔
+- استاد یہاں تبھی نظر آتا ہے جب اس کا عملے میں پروفائل ہو۔ پہلے **عملہ** میں انہیں مدعو کریں۔
 
 </div>
 

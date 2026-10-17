@@ -147,6 +147,7 @@ export function TeachersPage() {
         <PageHeader
           title={t('screens.teachers.title')}
           subtitle={t('screens.teachers.subtitle')}
+          help="who-teaches"
           actions={
             <>
               {list.length > 1 && (
