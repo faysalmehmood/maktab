@@ -300,20 +300,48 @@ installation, **starting empty** (no data copied from the old production databas
 - Turnstile is still off on both hosts (the owner creates the widget; the secret must not pass
   through chat or an agent).
 
+## 2026-10-17: self-host build (M8a; built and smoke-tested, NOT deployed yet)
+
+Owner decision: the GSA pilot runs on the owner's homelab in Docker at **https://gsap.conceptlix.com**
+through the existing Cloudflare Tunnel; the demo stays on Cloudflare; the Worker env `gsap`
+(maktab-gsap.conceptlix.com) stays as a cold fallback only. Branch `selfhost` (docs/self-host.md):
+
+- `apps/api/src/node.ts`: the same `createApp` on `@hono/node-server`, better-sqlite3 (one connection,
+  WAL, busy_timeout, foreign keys), wrangler-compatible migrations on start (`d1_migrations`), the
+  `db:verify` trigger/view check (refuses to start on a difference), Workers-Static-Assets behaviour
+  for `apps/web/dist` (`_headers` parsed, every unmatched path answers index.html like the live
+  deploy, immutable hashed assets, content-hash ETags), `/healthz`, `/__scheduled` 404, client IP
+  from CF-Connecting-IP only when the peer is in `TRUST_PROXY_FROM`, a pre-migration backup on every
+  upgrade; refuses `DEMO_MODE`, a missing `SESSION_SECRET` or `AGE_RECIPIENT`.
+- Local file store standing in for R2 (`FILES` = `data/files`, `BACKUPS` = `data/backups`); in-process
+  cron (every 30 min, `runScheduled` + `runDailyOps`) and a nightly 02:30 PKT age-encrypted SQLite
+  backup recorded like `POST /api/backup/runs`.
+- `Dockerfile` (node:24-bookworm-slim, non-root, tini, HEALTHCHECK), `deploy/selfhost/`
+  (instance-parameterised compose for `/srv/homelab/maktab/`, `install.sh`, `.env.example`),
+  `scripts/selfhost-smoke.sh` (passed on the Mac, native arm64 build).
+- Not done yet (owner, on the homelab): clone to `/srv/homelab/maktab/src`, `install.sh gsap`, fill
+  `gsap/.env`, add the tunnel public hostname `gsap.conceptlix.com -> http://maktab-gsap:8787`, the
+  Google redirect URI, `gsap.conceptlix.com` in the WAF rule (deployed already as
+  `http.host in {…}`), and the host's off-site rclone copy (docs/self-host.md §7.2, required).
+
 ## Pending (user)
-1. Google Cloud console → the OAuth client → add redirect URI
-   `https://maktab-gsap.conceptlix.com/api/auth/google/callback`; then
-   `pbpaste | npx wrangler secret put GOOGLE_CLIENT_ID --env gsap` and `GOOGLE_CLIENT_SECRET`
-   (same client; `pbpaste |` because a value typed into the prompt is stored empty). Verify:
-   `/api/auth/google/start` redirects to Google.
-2. Tell Shahid Iqbal to sign in at maktab-gsap.conceptlix.com with shahid.ics.pu@gmail.com (he
+1. Self-hosted pilot (docs/self-host.md): on the homelab, as uid 1000, clone the repo to
+   `/srv/homelab/maktab/src`, run `src/deploy/selfhost/install.sh gsap` twice (it creates
+   `gsap/.env` first), fill `gsap/.env` (`APP_ORIGIN=https://gsap.conceptlix.com`,
+   Google client, `AGE_RECIPIENT`, `BACKUP_RCLONE_REMOTE`), the off-site rclone cron (§7.2), tunnel public hostname `gsap.conceptlix.com -> http://maktab-gsap:8787`,
+   Google Cloud console redirect URI `https://gsap.conceptlix.com/api/auth/google/callback`, and add
+   `gsap.conceptlix.com` to the WAF rule "maktab public surfaces". Verify: `/api/auth/google/start`
+   redirects to Google. (The Worker env `gsap` at maktab-gsap.conceptlix.com is a fallback only; it
+   needs its own Google secrets only if it is ever used again.)
+2. Tell Shahid Iqbal to sign in at gsap.conceptlix.com with shahid.ics.pu@gmail.com (he
    becomes owner and runs the setup wizard); then invite thefaysalmehmood@gmail.com if you need
    access to the pilot.
-3. Turnstile widget (docs/deploy.md §8), optional: hostnames both Maktab hosts; site key into
-   wrangler.toml, secret via `pbpaste | npx wrangler secret put TURNSTILE_SECRET --env gsap`. (The
+3. Turnstile widget (docs/deploy.md §8), optional: hostnames include `gsap.conceptlix.com`; for the
+   self-hosted pilot both keys go in `gsap/.env` (docs/self-host.md §5). (The
    WAF rule and the R2 lifecycle rule are done, see above.)
-4. M7c pilot gate items now apply to gsap (API token → first nightly run → restore drill);
-   docs/pilot-checklist.md is the tick list.
+4. M7c pilot gate items now apply to the self-hosted gsap (first nightly backup in Settings →
+   Backup, restore drill per docs/self-host.md §7, an off-site copy); docs/pilot-checklist.md is
+   the tick list.
 5. GitHub account follow-up (not Maktab): the 91 disabled malicious workflow files in the other
    repositories are still present; deleting them needs a token with the `workflow` scope
    (`gh auth refresh -h github.com -s workflow`).

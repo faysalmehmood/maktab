@@ -2,29 +2,35 @@
 
 Production deploys are a human decision (PLAN §15: ask first). This is the order, every time.
 
-## Two installations (since 2026-10-13)
+## Two installations (since 2026-10-13; the pilot self-hosted since 2026-10-17)
 
 | | GSA pilot (the real school) | Public demo |
 |---|---|---|
-| URL | https://maktab-gsap.conceptlix.com | https://maktab.conceptlix.com |
-| wrangler env | `--env gsap` | `--env demo` |
-| Worker | `maktab-gsap` | `maktab` |
-| D1 | `maktab-gsap` (`3e0f42ab-…`) | `maktab` (`440d652e-…`) |
-| R2 files | `maktab-gsap-files` | `maktab-files` |
-| Backups | nightly to `maktab-backups` (GitHub Actions, `--env gsap`) | never |
+| URL | https://gsap.conceptlix.com | https://maktab.conceptlix.com |
+| Runs on | the owner's homelab in Docker, via the Cloudflare Tunnel (**docs/self-host.md**) | Cloudflare Workers, `--env demo` |
+| Database | SQLite file `/srv/homelab/maktab/gsap/data/maktab.sqlite` | D1 `maktab` (`440d652e-…`) |
+| Files | `/srv/homelab/maktab/gsap/data/files/` | R2 `maktab-files` |
+| Backups | built-in nightly job on the homelab (docs/self-host.md §7) | never |
 | `OWNER_EMAIL` | shahid.ics.pu@gmail.com (GSA's owner) | thefaysalmehmood@gmail.com |
-| `DEMO_MODE` | never (a test enforces it) | `1` (docs/demo.md) |
-| Cron | `*/30 * * * *` | `* * * * *` (drives the nightly reset) |
+| `DEMO_MODE` | never (the server refuses to start with it) | `1` (docs/demo.md) |
+| Cron | in-process, every 30 min | none since 2026-10-15 (docs/demo.md) |
 
-Each has its own `SESSION_SECRET`, `PARENT_LINK_SECRET`, Google client secrets, and (gsap only)
-`BACKUP_REPORT_TOKEN`. Everything below is written for the pilot (`--env gsap`). For the demo,
-see docs/demo.md. Later (M8), GSA moves to its own Cloudflare account behind a front-door Worker.
+**Fallback only:** the Cloudflare Worker env `gsap` (Worker `maktab-gsap`, D1 `maktab-gsap`
+`3e0f42ab-…`, R2 `maktab-gsap-files`, https://maktab-gsap.conceptlix.com) stays deployed as a cold
+fallback. It is not the pilot's system of record, and once the homelab is live it is no longer what
+the GitHub backup workflows protect (they still export that D1; the workflows are unchanged). The
+sections below describe a Workers deploy and apply to the demo and to that fallback; the pilot is
+upgraded with docs/self-host.md §6.
+
+Each installation has its own `SESSION_SECRET`, `PARENT_LINK_SECRET` and Google client secrets.
+Later (M8), GSA may move to its own free Cloudflare account if that stays zero-cost.
 
 **Google OAuth (user, by hand).** Add the authorised redirect URI
-`https://maktab-gsap.conceptlix.com/api/auth/google/callback` to the OAuth client, then
-`npx wrangler secret put GOOGLE_CLIENT_ID --env gsap` and `GOOGLE_CLIENT_SECRET` (the same client's
-values). Until then gsap's Google sign-in answers 500 `misconfigured`. The demo keeps the
-`maktab.conceptlix.com` redirect URI it already has, and its demo buttons need no Google.
+`https://gsap.conceptlix.com/api/auth/google/callback` to the OAuth client and put the client's
+values in `/srv/homelab/maktab/gsap/.env` (docs/self-host.md §4). The fallback Worker would need
+`https://maktab-gsap.conceptlix.com/api/auth/google/callback` and
+`npx wrangler secret put GOOGLE_CLIENT_ID --env gsap` (and `GOOGLE_CLIENT_SECRET`). The demo keeps
+the `maktab.conceptlix.com` redirect URI it already has, and its demo buttons need no Google.
 
 ## 1. Before
 
@@ -130,9 +136,13 @@ Match paths precisely, never with a bare `starts_with(path, "/p")` (that would a
 
 | # | Rule name | If incoming requests match (expression) | Characteristics | Rate | Action | Duration |
 |---|---|---|---|---|---|---|
-| 1 | maktab parent page | `(http.host eq "maktab-gsap.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
-| 2 | maktab sign-in | `(http.host eq "maktab-gsap.conceptlix.com" and ((http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 20 requests / 1 minute | Block (429) | 1 minute |
-| 3 | maktab API writes | `(http.host eq "maktab-gsap.conceptlix.com" and http.request.method eq "POST" and starts_with(http.request.uri.path, "/api/"))` | IP | 300 requests / 1 minute | Block (429) | 1 minute |
+| 1 | maktab parent page | `(http.host in {"maktab.conceptlix.com" "maktab-gsap.conceptlix.com" "gsap.conceptlix.com"} and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
+| 2 | maktab sign-in | `(http.host in {"maktab.conceptlix.com" "maktab-gsap.conceptlix.com" "gsap.conceptlix.com"} and ((http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 20 requests / 1 minute | Block (429) | 1 minute |
+| 3 | maktab API writes | `(http.host in {"maktab.conceptlix.com" "maktab-gsap.conceptlix.com" "gsap.conceptlix.com"} and http.request.method eq "POST" and starts_with(http.request.uri.path, "/api/"))` | IP | 300 requests / 1 minute | Block (429) | 1 minute |
+
+**Hosts:** every expression covers all three Maktab hosts (the demo, the Cloudflare fallback and,
+since 2026-10-17, the self-hosted pilot `gsap.conceptlix.com`, whose tunnel traffic passes the
+zone's WAF like any other). That is the set deployed in the merged rule below.
 
 **Free plan: one rule only** (and a 10 s period, so "60 / 1 minute" becomes "10 / 10 seconds", and
 "20 / 1 minute" becomes "4 / 10 seconds" — Cloudflare counts per period). Rules 1 and 2 cannot keep
@@ -141,7 +151,7 @@ sign-in rate and record it in docs/deploy-log.md:
 
 | Rule name | Expression | Characteristics | Rate | Action | Duration |
 |---|---|---|---|---|---|
-| maktab public surfaces | `(http.host eq "maktab-gsap.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/") or (http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 10 requests / 10 seconds | Block (429) | 10 seconds |
+| maktab public surfaces | `(http.host in {"maktab.conceptlix.com" "maktab-gsap.conceptlix.com" "gsap.conceptlix.com"} and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/") or (http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 10 requests / 10 seconds | Block (429) | 10 seconds |
 
 A parent page load is about 3–4 requests (shell, `/api/p`, the logo, a gate attempt) and a sign-in
 is 2–3, so 10 per 10 s per IP leaves room for a whole office on one NAT IP; the Worker's own per-IP

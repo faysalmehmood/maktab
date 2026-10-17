@@ -80,6 +80,9 @@ export async function evaluateAlarms(db: AppDb, nowMs = Date.now()): Promise<Ala
   // 6. Nightly backup stale or failing.
   alarms.push(await backupStale(db, nowMs));
 
+  // 7. Backups that never leave the machine (self-hosted without the off-site copy).
+  alarms.push(await backupOffsite(db, nowMs));
+
   return { at: iso(nowMs), total: alarms.filter((a) => a.count > 0).length, alarms };
 }
 
@@ -120,6 +123,56 @@ export async function backupStale(db: AppDb, nowMs = Date.now()): Promise<AlarmD
         ? { id: latest.id, label: `failed ${latest.finished_at.slice(0, 16)}` }
         : { id: good.id, label: `last ok ${good.finished_at.slice(0, 16)}` },
     ],
+  };
+}
+
+/**
+ * A run "has an off-site copy" when it says so (`details.offsite = true`, the self-hosted backup once
+ * the host's rclone copy is confirmed) or a target off this machine succeeded (`r2`, `b2`,
+ * `offsite`: the GitHub workflow's uploads).
+ */
+const HAS_OFFSITE = sql`(
+  (json_valid(details) AND json_extract(details, '$.offsite') = 1)
+  OR (json_valid(targets) AND EXISTS (SELECT 1 FROM json_each(targets) t
+    WHERE json_extract(t.value, '$.ok') = 1 AND json_extract(t.value, '$.name') IN ('r2', 'b2', 'offsite'))))`;
+
+/**
+ * backup_offsite (three reads): the same grace as backup_stale (silent until the latest nightly
+ * report says `backup_enabled`), then fires when the last nightly backup with an off-site copy is
+ * older than ALARM_RULES.offsiteDays, or when none ever had one and the installation (its first
+ * school row, else its first backup) is at least that old. `since` = the last off-site run or null.
+ */
+export async function backupOffsite(db: AppDb, nowMs = Date.now()): Promise<AlarmDto> {
+  const quiet: AlarmDto = { kind: 'backup_offsite', count: 0, sample: [], since: null };
+  const [latest] = await db.all<{ id: string; enabled: number | null }>(sql`
+    SELECT id, CASE WHEN json_valid(details) THEN json_extract(details, '$.backup_enabled') END AS enabled
+    FROM backup_run WHERE kind = 'nightly' ORDER BY finished_at DESC, rowid DESC LIMIT 1`);
+  if (!latest || Number(latest.enabled) !== 1) return quiet;
+  const limitMs = ALARM_RULES.offsiteDays * 86_400_000;
+  const [off] = await db.all<{ id: string; finished_at: string }>(sql`
+    SELECT id, finished_at FROM backup_run WHERE kind = 'nightly' AND status IN ('ok', 'partial')
+      AND ${HAS_OFFSITE}
+    ORDER BY finished_at DESC, rowid DESC LIMIT 1`);
+  if (off) {
+    const at = Date.parse(off.finished_at);
+    if (Number.isFinite(at) && at >= nowMs - limitMs) return { ...quiet, since: off.finished_at };
+    return {
+      kind: 'backup_offsite',
+      count: 1,
+      since: off.finished_at,
+      sample: [{ id: off.id, label: `last off-site ${off.finished_at.slice(0, 16)}` }],
+    };
+  }
+  const [born] = await db.all<{ at: string | null }>(sql`
+    SELECT coalesce((SELECT min(created_at) FROM school),
+      (SELECT min(finished_at) FROM backup_run)) AS at`);
+  const bornAt = born?.at ? Date.parse(born.at) : Number.NaN;
+  if (!Number.isFinite(bornAt) || bornAt > nowMs - limitMs) return quiet;
+  return {
+    kind: 'backup_offsite',
+    count: 1,
+    since: null,
+    sample: [{ id: latest.id, label: 'never off-site' }],
   };
 }
 

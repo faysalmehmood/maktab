@@ -382,7 +382,7 @@ describe('alarms endpoints', () => {
     const live = await ownerApi<AlarmsDto>('GET', '/api/alarms');
     expect(live.status).toBe(200);
     expect(live.body.total).toBe(0);
-    expect(live.body.alarms).toHaveLength(6);
+    expect(live.body.alarms).toHaveLength(7);
     expect((await ownerApi<{ event: null }>('GET', '/api/alarms/latest')).body.event).toBeNull();
     await exec(
       base,

@@ -161,6 +161,7 @@ export const ALARM_KINDS = [
   'gate_lockouts',
   'billing_attention',
   'backup_stale',
+  'backup_offsite',
 ] as const;
 export type AlarmKind = (typeof ALARM_KINDS)[number];
 
@@ -174,6 +175,8 @@ export const ALARM_RULES = {
   lockoutHours: 24,
   /** No nightly backup finished ok/partial within this many hours (or the latest one failed). */
   backupStaleHours: 36,
+  /** No nightly backup with an off-site copy within this many days (self-hosted installations). */
+  offsiteDays: 7,
 } as const;
 
 export type AlarmDto = {
@@ -181,7 +184,8 @@ export type AlarmDto = {
   count: number;
   /** A few examples (ids and a short label) to start looking from; never personal data. */
   sample: { id: string | null; label: string }[];
-  /** backup_stale: when the last good (ok/partial) nightly backup finished. */
+  /** backup_stale: when the last good (ok/partial) nightly backup finished; backup_offsite: when the
+   * last nightly backup with an off-site copy finished (null = never). */
   since?: string | null;
 };
 

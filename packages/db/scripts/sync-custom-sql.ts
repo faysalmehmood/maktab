@@ -17,6 +17,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createdObjects } from '../src/schema-check';
+
+export { createdObjects };
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const SQL_DIR = join(root, 'sql');
@@ -66,15 +69,6 @@ export function pendingChanges(manifest = readManifest(), files = currentSqlFile
 
 /** drizzle's migrator runs every chunk; a trailing breakpoint would leave an empty one. */
 const stripTrailingBreak = (s: string) => s.replace(/\s*--> statement-breakpoint\s*$/, '');
-
-const OBJECT_RE = /CREATE\s+(?:UNIQUE\s+)?(INDEX|TRIGGER|VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/gi;
-
-export function createdObjects(sqlText: string): { kind: string; name: string }[] {
-  return [...sqlText.matchAll(OBJECT_RE)].map((m) => ({
-    kind: (m[1] ?? '').toUpperCase(),
-    name: m[2] ?? '',
-  }));
-}
 
 /** The text a migration carried for one source file (between its `-- source:` markers). */
 function sectionOf(migration: string, file: string): string {

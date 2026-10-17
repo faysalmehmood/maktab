@@ -35,10 +35,12 @@ export type AppDeps = {
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
   /** DEMO_MODE=1 (docs/demo.md): mounts the demo routes and the demo guard; off = they do not exist. */
   demo?: boolean;
+  /** Where unexpected errors are logged (lib/errors.ts onError); the Worker keeps the default. */
+  logError?: (err: unknown) => void;
 };
 
 /** Same as apps/web/public/_headers (an asset fetched by the Worker does not get those rules). */
-const SPA_HEADERS: Record<string, string> = {
+export const SPA_HEADERS: Record<string, string> = {
   'Content-Security-Policy':
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
   'X-Content-Type-Options': 'nosniff',
@@ -62,7 +64,7 @@ export function createApp(deps: AppDeps) {
   const app = new Hono<AppEnv>();
   const routes = new RouteTable();
 
-  app.onError(onError);
+  app.onError((err, c) => onError(err, c, deps.logError));
   app.notFound(notFound);
   app.use('/api/*', secureHeaders(), async (c, next) => {
     c.set('db', deps.getDb(c.env));

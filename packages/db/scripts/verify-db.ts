@@ -13,32 +13,20 @@
  */
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { checkCustomSql, createdObjects, currentSqlFiles } from './sync-custom-sql';
+import {
+  compareObjects,
+  expectedObjectsFrom,
+  MASTER_QUERY,
+  type SchemaObject,
+} from '../src/schema-check';
+import { checkCustomSql, currentSqlFiles } from './sync-custom-sql';
 
-export type SchemaObject = { type: string; name: string };
+export { compareObjects, MASTER_QUERY, type SchemaObject };
 
 /** What sql/ creates: TRIGGER/VIEW must match exactly; INDEX must be present. */
 export function expectedObjects(files = currentSqlFiles()): SchemaObject[] {
-  return Object.values(files)
-    .flatMap((t) => createdObjects(t))
-    .map((o) => ({ type: o.kind.toLowerCase(), name: o.name }))
-    .sort((a, b) => (a.name < b.name ? -1 : 1));
+  return expectedObjectsFrom(files);
 }
-
-/** Differences between the expected set and what sqlite_master holds (empty = healthy). */
-export function compareObjects(actual: readonly SchemaObject[], expected = expectedObjects()) {
-  const has = new Set(actual.map((o) => `${o.type}:${o.name}`));
-  const want = new Set(expected.map((o) => `${o.type}:${o.name}`));
-  const missing = [...want].filter((k) => !has.has(k));
-  const extra = [...has].filter(
-    (k) => (k.startsWith('trigger:') || k.startsWith('view:')) && !want.has(k),
-  );
-  return { missing, extra };
-}
-
-// `_demo_*`: the public demo's own undo-log triggers (packages/db/src/demo/undo.ts), not the schema's.
-export const MASTER_QUERY =
-  "SELECT type, name FROM sqlite_master WHERE type IN ('trigger', 'view', 'index') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '!_demo!_%' ESCAPE '!' ORDER BY type, name";
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const problems = checkCustomSql();

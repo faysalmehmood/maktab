@@ -8,6 +8,11 @@ Below, `$DB` is the D1 database name — the `database_name` in `apps/api/wrangl
 `D1_DATABASE_NAME` repository variable used by `.github/workflows/nightly-backup.yml` (default
 `maktab`). Set it first: `export DB=maktab`.
 
+**Self-hosted (the GSA pilot at gsap.conceptlix.com since 2026-10-17):** the backups are SQLite files
+on the homelab, restored by stopping the container and replacing the database file:
+docs/self-host.md §7. Sections A and B below are for a Cloudflare D1 installation (the demo, or the
+Worker env `gsap` at maktab-gsap.conceptlix.com, which is a fallback only).
+
 Decide first: **what went wrong, and when?**
 - Bad edit, accidental delete or bad deploy, noticed within **7 days** → Time Travel (section A).
   Fast, no files needed.

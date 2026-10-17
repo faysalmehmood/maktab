@@ -76,6 +76,7 @@ export const backupEn = {
       gate_lockouts: 'Parent-page lockouts (last 24 hours)',
       billing_attention: 'Monthly fees failing for a group',
       backup_stale: 'Nightly backup not running',
+      backup_offsite: 'No off-site copy of the backups',
     },
     hints: {
       ledger_consistency:
@@ -87,6 +88,8 @@ export const backupEn = {
       billing_attention: 'Open fee generation and press Generate for that group to see the error.',
       backup_stale:
         'Backups have not run since {{date}}; check GitHub Actions (the nightly-backup workflow) and the Cloudflare API token.',
+      backup_offsite:
+        'The backups exist only on this server (last off-site copy: {{date}}). A fire or a dead disk would lose them: set up the off-site copy (docs/self-host.md).',
     },
     banner: '{{count}} alarm(s) need attention',
     open: 'Open alarms',

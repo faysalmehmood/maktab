@@ -59,6 +59,7 @@ describe('alarms', () => {
       'gate_lockouts',
       'billing_attention',
       'backup_stale',
+      'backup_offsite',
     ]);
   });
 
@@ -158,7 +159,7 @@ describe('daily pass', () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.total).toBe(1);
-    expect(JSON.parse(rows[0]?.alarms ?? '[]')).toHaveLength(6);
+    expect(JSON.parse(rows[0]?.alarms ?? '[]')).toHaveLength(7);
     // The next Karachi day gets its own row; a quiet day is recorded with total 0.
     await run(
       db,

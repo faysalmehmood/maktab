@@ -1,0 +1,28 @@
+# Build context for the self-hosted image (Dockerfile). Never send state or secrets.
+**/node_modules
+**/dist
+**/dist-node
+**/dev-dist
+**/.wrangler
+**/coverage
+**/*.sqlite
+**/*.sqlite-*
+**/*.db
+**/.env
+**/.env.*
+!**/.env.example
+**/.dev.vars
+# Backups and keys never belong in an image.
+**/*.age
+**/*.sqlite.gz
+**/*key*.txt
+**/*.pem
+**/.DS_Store
+.git
+.github
+.claude
+.vscode
+.idea
+docs
+# Instance folders if the stack lives next to the checkout (deploy/selfhost/<instance>/data, .env).
+deploy/selfhost/*/
