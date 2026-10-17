@@ -155,7 +155,32 @@ export function groupRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         ? eq(grp.status, q.status)
         : undefined,
     );
-    return c.json({ items: await loadGroups(db, where) });
+    const items = await loadGroups(db, where);
+    // "Your role" (owner feedback 2026-10-17): only for a teacher with a staff row; computed from
+    // the rows just loaded (their class teacher and subject teachers), so it reveals nothing new.
+    const p = c.get('principal');
+    const mineIds = p?.roles.includes('teacher')
+      ? new Set(
+          (
+            await db
+              .select({ id: staff.id })
+              .from(staff)
+              .where(eq(staff.userId, userId(c)))
+          ).map((r) => r.id),
+        )
+      : new Set<string>();
+    const isMe = (id: string | null) => id != null && mineIds.has(id);
+    return c.json({
+      items: items.map((g) => ({
+        ...g,
+        my_role: mineIds.size
+          ? {
+              class_teacher: isMe(g.class_teacher_id),
+              subjects: g.subjects.filter((s) => isMe(s.teacher_id)).map((s) => s.subject_name),
+            }
+          : null,
+      })),
+    });
   });
 
   defineRoute(app, table, { method: 'GET', path: '/api/groups/:id', access: read }, async (c) => {

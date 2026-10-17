@@ -1496,6 +1496,7 @@ export const screensUr: Shape<typeof screensEn> = {
     noSubjectTeacher: 'ابھی کوئی استاد نہیں',
     more: 'مزید اقدامات: {{name}}',
     archiveTitle: '{{name}} کو ری سائیکل بن میں بھیجیں؟',
+    yourRole: 'آپ کا کردار',
   },
   msg: {
     start: 'بھیجنا شروع کریں',

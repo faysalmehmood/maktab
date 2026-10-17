@@ -101,6 +101,14 @@ export function GroupsPage() {
   const sized = items.filter((g) => g.seats_left != null);
   const seats = sized.reduce((n, g) => n + Math.max(0, g.seats_left ?? 0), 0);
   const noTeacher = items.filter((g) => !g.class_teacher_name).length;
+  // "Your role" (owner feedback 2026-10-17): for anyone holding the teacher role.
+  const showRole = roles.includes('teacher');
+  const roleOf = (g: GroupDto) => {
+    const r = g.my_role;
+    if (r?.class_teacher) return t('group.classTeacher');
+    if (r?.subjects.length) return r.subjects.join(', ');
+    return null;
+  };
 
   const columns: Column<GroupDto>[] = [
     {
@@ -117,6 +125,18 @@ export function GroupsPage() {
         </span>
       ),
     },
+    ...(showRole
+      ? [
+          {
+            id: 'role',
+            header: t('screens.groups.yourRole'),
+            cell: (g: GroupDto) => {
+              const r = roleOf(g);
+              return r ? <bdi>{r}</bdi> : <span className="text-muted-foreground">–</span>;
+            },
+          },
+        ]
+      : []),
     {
       id: 'teacher',
       header: t('group.classTeacher'),
