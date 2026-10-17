@@ -146,7 +146,7 @@ export function groupRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     if (mine && !mine.length) return c.json({ items: [] });
     const where = and(
       groupFilter(grp.id, scope),
-      mine ? inArray(grp.id, mine) : undefined,
+      mine ? inJson(grp.id, mine) : undefined,
       // Archived groups (recycle bin, M6) are out of every list unless asked for.
       q.archived === '1' ? undefined : isNull(grp.archivedAt),
       q.session_id ? eq(grp.sessionId, q.session_id) : undefined,

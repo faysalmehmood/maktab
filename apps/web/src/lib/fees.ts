@@ -216,14 +216,18 @@ export function rememberRegisterGroup(schoolId: string, grpId: string): void {
 
 /**
  * The class the register opens on: the one remembered on this device if it still exists, else the
- * teacher's first own group, else the first group in the list ('' only when there are none).
+ * teacher's first own group, else the first group, both taken from the current session's groups
+ * (all groups only when the current session has none); '' only when there are no groups.
  */
 export function defaultRegisterGroup(
-  groups: readonly { id: string }[],
+  groups: readonly { id: string; session_id: string | null }[],
   remembered: string | null,
   mine: readonly { id: string }[] = [],
+  currentSessionId: string | null = null,
 ): string {
   if (remembered && groups.some((g) => g.id === remembered)) return remembered;
-  const own = groups.find((g) => mine.some((m) => m.id === g.id));
-  return own?.id ?? groups[0]?.id ?? '';
+  const current = groups.filter((g) => currentSessionId && g.session_id === currentSessionId);
+  const pool = current.length ? current : groups;
+  const own = pool.find((g) => mine.some((m) => m.id === g.id));
+  return own?.id ?? pool[0]?.id ?? '';
 }

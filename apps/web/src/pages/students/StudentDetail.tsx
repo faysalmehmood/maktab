@@ -535,7 +535,7 @@ export function StudentDetail() {
             id: 'student-message',
             label: t('screens.profile.messageFamily'),
             icon: MessageSquareText,
-            onSelect: () => navigate(`/messages/compose?family=${s.family_id}`),
+            onSelect: () => navigate(`/messages/compose?family=${encodeURIComponent(s.family_id)}`),
           },
         ]
       : []),

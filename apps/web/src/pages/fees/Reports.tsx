@@ -50,7 +50,7 @@ import {
   rememberedRegisterGroup,
   rememberRegisterGroup,
 } from '@/lib/fees';
-import { useGroups, useMyGroups, useSchool } from '@/lib/queries';
+import { useGroups, useMyGroups, useSchool, useSessions } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
 import '@/i18n/screens';
 
@@ -70,10 +70,13 @@ export function FeeRegisterPage() {
   const teacher = roles.includes('teacher');
   const mine = useMyGroups(teacher);
   const school = useSchool();
+  const sessions = useSessions();
+  const currentSessionId = sessions.data?.items.find((x) => x.is_current)?.id ?? null;
   const schoolId = school.data?.school?.id ?? null;
   // The user's pick on this visit; until then the default class (decided once the reads answer).
   const [picked, setPicked] = useState<string | null>(null);
-  const deciding = groupsQ.isPending || school.isPending || (teacher && mine.isPending);
+  const deciding =
+    groupsQ.isPending || school.isPending || sessions.isPending || (teacher && mine.isPending);
   const grp =
     picked ??
     (deciding
@@ -82,6 +85,7 @@ export function FeeRegisterPage() {
           groups,
           schoolId ? rememberedRegisterGroup(schoolId) : null,
           mine.data?.items,
+          currentSessionId,
         ));
   const pick = (id: string) => {
     setPicked(id);
@@ -195,19 +199,23 @@ export function FeeRegisterPage() {
           <bdi>{groupName}</bdi> · <DateText iso={period} kind="month" />
         </p>
       )}
+      <ErrorNote error={groupsQ.error} />
       <ErrorNote error={q.error} />
       {deciding ? (
         <Panel>
           <ListSkeleton rows={4} />
         </Panel>
       ) : !grp ? (
-        <Panel>
-          <EmptyState
-            icon={TableProperties}
-            title={t('screens.fees.registerPick')}
-            body={t('screens.fees.registerPickBody')}
-          />
-        </Panel>
+        groupsQ.isSuccess &&
+        groups.length === 0 && (
+          <Panel>
+            <EmptyState
+              icon={TableProperties}
+              title={t('screens.fees.registerPick')}
+              body={t('screens.fees.registerPickBody')}
+            />
+          </Panel>
+        )
       ) : (
         <>
           {q.data && rows.length > 0 && (

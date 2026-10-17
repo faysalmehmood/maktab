@@ -9,7 +9,7 @@ import { karachiToday, registerGroupKey } from '@/lib/fees';
 import { FeeRegisterPage } from '@/pages/fees/Reports';
 import { ComposePage } from '@/pages/messages/Compose';
 import { StudentDetail } from '@/pages/students/StudentDetail';
-import { group, ids, meAs, mockApi, renderAt } from './api-mock';
+import { group, ids, meAs, mockApi, renderAt, session } from './api-mock';
 
 vi.mock('@/lib/image', async (orig) => ({
   ...(await orig<typeof import('@/lib/image')>()),
@@ -149,15 +149,62 @@ describe('Compose: ?family= preselects that family', () => {
     expect((document.getElementById('compose-send') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('ignores an unknown id silently (audience stays "All families", no error)', async () => {
+  it('an unknown id picks nothing, shows no error, and never falls through to "All families"', async () => {
     const api = mockApi({ 'GET /api/sessions': { items: [] }, 'GET /api/groups': { items: [] } });
     renderAt('/messages/compose?family=NOPE', '/messages/compose', <ComposePage />);
     await waitFor(() => expect(api.calls.some((c) => c.path === '/api/families/NOPE')).toBe(true));
     const send = (await byId('compose-send')) as HTMLButtonElement;
     await waitFor(() => expect(send.disabled).toBe(false));
-    expect(document.getElementById('compose-kind-all')?.getAttribute('aria-pressed')).toBe('true');
+    expect(document.getElementById('compose-kind-families')?.getAttribute('aria-pressed')).toBe(
+      'true',
+    );
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByText(/selected/)).toBeNull();
+  });
+
+  it('a failed lookup (500) shows the error and Send cannot target "All families"', async () => {
+    const api = mockApi({
+      'GET /api/sessions': { items: [] },
+      'GET /api/groups': { items: [] },
+      [`GET /api/families/${ids.family}`]: () =>
+        new Response(JSON.stringify({ error: { code: 'internal', message: 'boom' } }), {
+          status: 500,
+        }),
+    });
+    renderAt(`/messages/compose?family=${ids.family}`, '/messages/compose', <ComposePage />);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(document.getElementById('compose-kind-families')?.getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    fireEvent.change(screen.getByLabelText('Notice in English'), {
+      target: { value: 'School is closed on Monday.' },
+    });
+    const send = (await byId('compose-send')) as HTMLButtonElement;
+    await waitFor(() => expect(send.disabled).toBe(false));
+    fireEvent.click(send);
+    expect(await screen.findByText('Choose at least one family.')).toBeTruthy();
+    expect(api.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it("the user's audience choice made before the lookup answers is kept", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    mockApi({
+      'GET /api/sessions': { items: [] },
+      'GET /api/groups': { items: [] },
+      [`GET /api/families/${ids.family}`]: () =>
+        new Promise((r) => {
+          answer = r;
+        }),
+    });
+    renderAt(`/messages/compose?family=${ids.family}`, '/messages/compose', <ComposePage />);
+    fireEvent.click(await byId('compose-kind-group'));
+    await act(async () => answer(familyDetail));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(document.getElementById('compose-kind-group')?.getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    fireEvent.click(await byId('compose-kind-families'));
+    expect(screen.queryByText('Raza family')).toBeNull();
   });
 
   it('without the parameter asks for no family', async () => {
@@ -170,7 +217,13 @@ describe('Compose: ?family= preselects that family', () => {
 
 describe('profile header avatar: "Change photo"', () => {
   it('opens the Overview photo picker, from any tab, and uploads through the same mutation', async () => {
-    Object.assign(URL, { createObjectURL: () => 'blob:p', revokeObjectURL: () => undefined });
+    vi.stubGlobal(
+      'URL',
+      Object.assign(class extends URL {}, {
+        createObjectURL: () => 'blob:p',
+        revokeObjectURL: () => undefined,
+      }),
+    );
     const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
     const api = profileApi();
     renderProfile(['owner']);
@@ -195,6 +248,26 @@ describe('profile header avatar: "Change photo"', () => {
     );
   });
 
+  it('is a native, focusable button, so Enter and Space activate it', async () => {
+    // jsdom does not synthesise a button's keyboard activation; browsers turn Enter/Space on a
+    // native <button> into the same click, which is what this asserts the avatar is.
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    profileApi();
+    renderProfile(['owner']);
+    const avatar = await screen.findByRole('button', { name: 'Change photo' });
+    expect(avatar.tagName).toBe('BUTTON');
+    expect(avatar.getAttribute('type')).toBe('button');
+    expect(avatar.hasAttribute('tabindex')).toBe(false);
+    avatar.focus();
+    expect(document.activeElement).toBe(avatar);
+    for (const key of ['Enter', ' ']) {
+      fireEvent.keyDown(avatar, { key });
+      fireEvent.click(avatar, { detail: 0 });
+    }
+    expect(click).toHaveBeenCalledTimes(2);
+    expect((click.mock.contexts[1] as HTMLInputElement).id).toBe('student-photo');
+  });
+
   it('is a plain avatar without the edit grant', async () => {
     profileApi();
     renderProfile(['teacher']);
@@ -213,6 +286,7 @@ describe('Fee register opens on a class', () => {
     api.calls.filter((c) => c.path.startsWith('/api/fees/register?')).map((c) => c.path);
 
   it('defaults to the first group, this month, and remembers a pick per installation', async () => {
+    const month = karachiToday().slice(0, 7);
     const api = mockApi({
       'GET /api/groups': groups,
       'GET /api/school': schoolApi,
@@ -223,7 +297,6 @@ describe('Fee register opens on a class', () => {
     await waitFor(() => expect(select.value).toBe(ids.group));
     // No "Choose a class" option once a class is chosen.
     expect(select.options.length).toBe(2);
-    const month = karachiToday().slice(0, 7);
     await waitFor(() =>
       expect(registerCalls(api)).toContain(
         `/api/fees/register?grp_id=${ids.group}&period=${month}`,
@@ -282,6 +355,50 @@ describe('Fee register opens on a class', () => {
     const select = (await byId('register-group')) as HTMLSelectElement;
     await waitFor(() => expect(select.value).toBe(ids.group));
     expect(api.calls.some((c) => c.path.includes('mine=1'))).toBe(false);
+  });
+
+  it("opens on the current session's classes, not an earlier session's", async () => {
+    const OLD = '01JAAAAAAAAAAAAAAAAAAAAAS0';
+    const OLDG = '01JAAAAAAAAAAAAAAAAAAAAAO3';
+    const OLDMINE = '01JAAAAAAAAAAAAAAAAAAAAAO4';
+    const current = { ...session };
+    const past = { ...session, id: OLD, name: '2025-26', is_current: false };
+    // The API orders by programme/name: last year's classes can come first.
+    const all = {
+      items: [
+        { ...group, id: OLDG, session_id: OLD, name: '0-old', status: 'closed' },
+        { ...group, id: OLDMINE, session_id: OLD, name: '0-mine-old', status: 'closed' },
+        group,
+        { ...group, id: G2, name: 'B' },
+      ],
+    };
+    mockApi({
+      'GET /api/sessions': { items: [past, current] },
+      'GET /api/groups': (url: URL) =>
+        url.searchParams.get('mine') === '1' ? { items: [all.items[1], all.items[3]] } : all,
+      'GET /api/school': schoolApi,
+      'GET /api/fees/register': register,
+    });
+    const { unmount } = renderAt('/fees/register', '/fees/register', <FeeRegisterPage />);
+    const select = (await byId('register-group')) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe(ids.group));
+    unmount();
+    renderAt('/fees/register', '/fees/register', <FeeRegisterPage />, ['teacher', 'accountant']);
+    const teacher = (await byId('register-group')) as HTMLSelectElement;
+    await waitFor(() => expect(teacher.value).toBe(G2));
+  });
+
+  it('a failed class list shows its error, not "Choose a class"', async () => {
+    mockApi({
+      'GET /api/groups': () =>
+        new Response(JSON.stringify({ error: { code: 'internal', message: 'boom' } }), {
+          status: 500,
+        }),
+      'GET /api/school': schoolApi,
+    });
+    renderAt('/fees/register', '/fees/register', <FeeRegisterPage />);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.queryByText('Choose a class to see its register')).toBeNull();
   });
 
   it('keeps "Choose a class" only when there are no groups at all', async () => {

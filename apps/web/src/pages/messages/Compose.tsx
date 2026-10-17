@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
 import { ErrorNote } from '@/components/form';
 import { TemplateEditor } from '@/components/messages/TemplateEditor';
+import { isNotFound } from '@/components/not-found';
 import { Page, PageHeader } from '@/components/page';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -118,13 +119,14 @@ export function ComposePage() {
   const qc = useQueryClient();
   const session = useCurrentSession();
   const groups = useGroups({ session_id: session?.id ?? null });
-  const [kind, setKind] = useState<Kind>('all');
-  const [grpId, setGrpId] = useState('');
-  const [picked, setPicked] = useState<Picked[]>([]);
-  // `?family=<id>` (the student profile's "Message family"): that family starts picked. An id this
-  // user cannot see (or that does not exist) is ignored.
+  // `?family=<id>` (the student profile's "Message family"): the audience starts on chosen
+  // families and that family is added once found. A failed lookup leaves nothing picked (never
+  // "All families"); an id this user cannot see (or that does not exist) is ignored.
   const [params] = useSearchParams();
   const presetId = params.get('family') ?? '';
+  const [kind, setKind] = useState<Kind>(presetId ? 'families' : 'all');
+  const [grpId, setGrpId] = useState('');
+  const [picked, setPicked] = useState<Picked[]>([]);
   const preset = useQuery({
     queryKey: ['family', presetId],
     queryFn: () => getJson<FamilyDetailDto>(`/api/families/${encodeURIComponent(presetId)}`),
@@ -136,11 +138,19 @@ export function ComposePage() {
     const f = preset.data;
     if (presetDone || !f) return;
     setPresetDone(true);
-    setKind('families');
     setPicked((p) => (p.some((x) => x.id === f.id) ? p : [...p, { id: f.id, name: f.name }]));
   }, [preset.data, presetDone]);
-  // Never send to "All families" while the family from the link is still being looked up.
-  const presetPending = !!presetId && preset.isPending;
+  // Never send while the family from the link is still being looked up.
+  const presetPending = !!presetId && preset.isPending && !presetDone;
+  // The user's own audience choice wins over a lookup that answers later.
+  const chooseKind = (k: Kind) => {
+    setPresetDone(true);
+    setKind(k);
+  };
+  const choosePicked = (p: Picked[]) => {
+    setPresetDone(true);
+    setPicked(p);
+  };
   const [bodyEn, setBodyEn] = useState('');
   const [bodyUr, setBodyUr] = useState('');
   const [noticeId, setNoticeId] = useState(newId);
@@ -231,7 +241,7 @@ export function ComposePage() {
               type="button"
               id={`compose-kind-${k}`}
               aria-pressed={kind === k}
-              onClick={() => setKind(k)}
+              onClick={() => chooseKind(k)}
               className={cn(
                 'min-h-11 rounded-md border px-3 text-sm font-medium',
                 kind === k ? 'border-brand bg-brand-soft text-brand' : 'bg-card hover:bg-accent',
@@ -254,7 +264,8 @@ export function ComposePage() {
             </Select>
           </div>
         )}
-        {kind === 'families' && <FamilyPicker picked={picked} onChange={setPicked} />}
+        {kind === 'families' && <FamilyPicker picked={picked} onChange={choosePicked} />}
+        {preset.error && !isNotFound(preset.error) && <ErrorNote error={preset.error} />}
       </fieldset>
 
       <TemplateEditor
