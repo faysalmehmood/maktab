@@ -4,6 +4,7 @@ import {
   type AttendanceSyncResult,
   type attendanceSubmissionSchema,
   type DayOff,
+  groupLabel,
   MAX_CLOCK_SKEW_MS,
   MAX_MARKS_PER_SYNC,
   type MarkCounts,
@@ -553,6 +554,5 @@ function describe(err: unknown): string {
   return dbConflict(err)?.message ?? 'Could not save this register';
 }
 
-/** Students' display label for a group: "Class 5 A". */
-export const groupLabel = (programmeName: string, name: string) =>
-  `${programmeName} ${name}`.trim();
+// A group's display label ("Class 5 A") lives in @maktab/shared, shared with the printed register.
+export { groupLabel };

@@ -1,8 +1,10 @@
+import { groupLabel, MARK_STATUSES, type MarkStatus } from '@maktab/shared';
 import { Download, Printer } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { todayPk } from '@/components/attendance/common';
+import { SchoolMark } from '@/components/brand/SchoolBadge';
 import { DateText } from '@/components/date-text';
 import { ErrorNote, Num } from '@/components/form';
 import { MonthInput } from '@/components/month-input';
@@ -10,16 +12,40 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { reportUrl, STATUS_CLASS, useReport } from '@/lib/attendance';
+import { monthLabel } from '@/lib/dates';
 import { printWhenReady } from '@/lib/print';
 import { useGroups, useSchool } from '@/lib/queries';
+import { useDocumentTitle } from '@/lib/title';
 import { cn } from '@/lib/utils';
 
 /**
  * The paper attendance register: one group × one month, students down, days across, totals and %.
- * Prints on A4 landscape (styles.css @page) and downloads as CSV (formula-safe, server side).
+ * Prints on one A4 landscape sheet like a school register (logo, school, class, month, class
+ * teacher, present per day, working days, signatures) and downloads as CSV (formula-safe, server
+ * side). Marks print as P, A, Lt, Lv.
  */
+const isMark = (c: string): c is MarkStatus => (MARK_STATUSES as readonly string[]).includes(c);
+
+/**
+ * While the register is on screen the whole document prints on A4 landscape with no page margin
+ * (owner feedback 2026-10-17): a named page on the report alone left the hidden app frame on default
+ * pages before and after it (a blank page 1 and 3), and margin 0 makes Chrome drop its header and
+ * footer line (title + URL). The report pads itself in print instead (styles.css).
+ */
+function useRegisterPage() {
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.dataset.registerPage = '';
+    // The page has no margin, so the app's tinted <html> background would show under the sheet.
+    style.textContent =
+      '@page { size: A4 landscape; margin: 0; } @media print { html, body { background: white; } }';
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, []);
+}
+
 export function ReportPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [params, setParams] = useSearchParams();
   const groups = useGroups().data?.items ?? [];
   const school = useSchool().data?.school;
@@ -36,6 +62,29 @@ export function ReportPage() {
     setParams(next);
   };
   const r = report.data;
+  // Non-school days (holidays and the weekly day off) are shaded; a day with no register is "–".
+  const off = new Set(r?.non_school_days ?? []);
+  const presentOn = useMemo(
+    () =>
+      r?.days.map((_, i) =>
+        r.rows.reduce((n, row) => n + (row.cells[i] === 'P' || row.cells[i] === 'L' ? 1 : 0), 0),
+      ) ?? [],
+    [r],
+  );
+  const schoolName = (i18n.language === 'ur' && school?.name_ur) || school?.name || '';
+  const label = r ? groupLabel(r.programme_name, r.grp_name) : '';
+  const subjectName = perSubject
+    ? group?.subjects.find((s) => s.id === subject)?.subject_name
+    : undefined;
+  useDocumentTitle(
+    r
+      ? t('attendance.docTitle', {
+          group: label,
+          month: monthLabel(r.month, i18n.language),
+        })
+      : null,
+  );
+  useRegisterPage();
 
   return (
     <section className="flex flex-col gap-4">
@@ -90,12 +139,44 @@ export function ReportPage() {
       {report.isError && <ErrorNote error={report.error} />}
       {r && (
         <div className="attendance-report flex flex-col gap-2">
-          <h2 className="font-medium">
-            <bdi>{school?.name}</bdi> — <bdi>{r.programme_name}</bdi> · <bdi>{r.grp_name}</bdi> —{' '}
-            <DateText iso={r.month} kind="month" />
-          </h2>
+          <header className="flex items-center gap-3 border-b-2 border-foreground pb-2 print:border-black">
+            {/* The school's mark as everywhere else: its logo, else the generated badge. */}
+            {school && (
+              <SchoolMark
+                school={school}
+                logoSrc={school.has_logo ? '/api/school/logo' : null}
+                size={52}
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-lg font-bold">
+                <bdi>{schoolName}</bdi>
+              </p>
+              <h2 className="font-semibold">{t('attendance.registerTitle')}</h2>
+            </div>
+            <dl className="grid grid-cols-[auto_auto] gap-x-2 text-sm">
+              <dt className="text-muted-foreground">{t('attendance.group')}</dt>
+              <dd>
+                <bdi>{label}</bdi>
+                {subjectName && (
+                  <>
+                    {' · '}
+                    <bdi>{subjectName}</bdi>
+                  </>
+                )}
+              </dd>
+              <dt className="text-muted-foreground">{t('attendance.month')}</dt>
+              <dd>
+                <DateText iso={r.month} kind="month" />
+              </dd>
+              <dt className="text-muted-foreground">{t('group.classTeacher')}</dt>
+              <dd>{r.class_teacher_name ? <bdi>{r.class_teacher_name}</bdi> : '–'}</dd>
+            </dl>
+          </header>
           <div className="overflow-x-auto rounded-md border print:overflow-visible print:border-0">
-            <table className="w-full border-collapse text-xs">
+            {/* Days run 01 → 31 left to right in both languages, like a printed calendar (and the
+                student profile's month); names and labels keep their own direction. */}
+            <table dir="ltr" className="w-full border-collapse text-xs">
               <thead>
                 <tr className="bg-muted">
                   <th className="sticky start-0 bg-muted p-1 text-start">{t('attendance.roll')}</th>
@@ -105,70 +186,115 @@ export function ReportPage() {
                   {r.days.map((d) => (
                     <th
                       key={d.date}
+                      lang="en"
                       className={cn(
                         'w-6 p-0.5 text-center font-sans',
-                        d.day_off && 'bg-muted-foreground/20',
+                        off.has(d.date) && 'day-off',
                       )}
                     >
                       <Num>{d.date.slice(8)}</Num>
                     </th>
                   ))}
-                  {(['P', 'A', 'L', 'E'] as const).map((s) => (
-                    <th key={s} className="p-1 text-center font-sans">
+                  {MARK_STATUSES.map((s) => (
+                    <th key={s} lang="en" className="p-1 text-center font-sans">
                       {t(`attendance.letter.${s}`)}
                     </th>
                   ))}
-                  <th className="p-1 text-center font-sans">%</th>
+                  <th lang="en" className="p-1 text-center font-sans">
+                    %
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {r.rows.map((row) => (
                   <tr key={row.student_id} className="border-t">
-                    <td className="sticky start-0 bg-background p-1">
+                    <td lang="en" className="sticky start-0 bg-background p-1 font-sans">
                       <Num>{row.roll_no ?? ''}</Num>
                     </td>
                     <td className="sticky start-8 bg-background p-1 whitespace-nowrap">
                       <bdi>{row.name}</bdi>
                     </td>
-                    {row.cells.map((c, i) => (
-                      <td
-                        key={r.days[i]?.date ?? i}
-                        className={cn(
-                          'p-0.5 text-center font-sans',
-                          r.days[i]?.day_off && 'bg-muted-foreground/10',
-                          // Printed register (A4): fixed ink colours on paper, not theme tokens.
-                          c === 'A' && 'font-bold text-red-700',
-                          c === 'L' && 'text-amber-700',
-                          c === 'E' && 'text-sky-700',
-                          c === '–' && 'text-muted-foreground',
-                        )}
-                      >
-                        {c}
-                      </td>
-                    ))}
-                    {(['P', 'A', 'L', 'E'] as const).map((s) => (
-                      <td key={s} className="p-1 text-center">
+                    {row.cells.map((c, i) => {
+                      const date = r.days[i]?.date ?? '';
+                      return (
+                        <td
+                          key={date || i}
+                          lang="en"
+                          className={cn(
+                            'p-0.5 text-center font-sans',
+                            off.has(date) && 'day-off',
+                            // Printed register (A4): fixed ink colours on paper, not theme tokens.
+                            c === 'A' && 'font-bold text-red-700',
+                            c === 'L' && 'text-amber-700',
+                            c === 'E' && 'text-sky-700',
+                            !isMark(c) && 'text-muted-foreground',
+                          )}
+                        >
+                          {isMark(c) ? t(`attendance.letter.${c}`) : '–'}
+                        </td>
+                      );
+                    })}
+                    {MARK_STATUSES.map((s) => (
+                      <td key={s} lang="en" className="p-1 text-center font-sans">
                         <Num>{row.counts[s]}</Num>
                       </td>
                     ))}
-                    <td className="p-1 text-center">
+                    <td lang="en" className="p-1 text-center font-sans">
                       <Num>{row.pct ?? '–'}</Num>
                     </td>
                   </tr>
                 ))}
               </tbody>
+              {r.rows.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 font-semibold" data-totals>
+                    <th scope="row" colSpan={2} className="p-1 text-start">
+                      {t('attendance.presentPerDay')}
+                    </th>
+                    {r.days.map((d, i) => (
+                      <td
+                        key={d.date}
+                        lang="en"
+                        className={cn('p-0.5 text-center font-sans', off.has(d.date) && 'day-off')}
+                      >
+                        {d.taken ? <Num>{presentOn[i] ?? 0}</Num> : ''}
+                      </td>
+                    ))}
+                    {MARK_STATUSES.map((s) => (
+                      <td key={s} lang="en" className="p-1 text-center font-sans">
+                        <Num>{r.rows.reduce((n, row) => n + row.counts[s], 0)}</Num>
+                      </td>
+                    ))}
+                    <td className="p-1" />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
-          <p className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            {(['P', 'A', 'L', 'E'] as const).map((s) => (
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <span title={t('attendance.workingDaysHint')}>
+              {t('attendance.workingDays', { n: r.working_days })}
+            </span>
+            <span>
+              {t('attendance.registersTaken', { n: r.days.filter((d) => d.taken).length })}
+            </span>
+          </p>
+          <p className="register-legend flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {MARK_STATUSES.map((s) => (
               <span key={s} className={cn('rounded px-1.5 font-sans', STATUS_CLASS[s])}>
                 {t(`attendance.letter.${s}`)} = {t(`attendance.status.${s}`)}
               </span>
             ))}
+            <span className="px-1.5">{t('attendance.legendNone')}</span>
+            <span className="day-off rounded px-1.5">{t('attendance.legendOff')}</span>
           </p>
           {r.rows.length === 0 && (
             <p className="text-muted-foreground">{t('attendance.noMarks')}</p>
           )}
+          <div className="register-signs hidden print:flex">
+            <span>{t('attendance.signTeacher')}</span>
+            <span>{t('attendance.signPrincipal')}</span>
+          </div>
         </div>
       )}
     </section>

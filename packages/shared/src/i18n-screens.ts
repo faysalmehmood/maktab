@@ -61,6 +61,7 @@ export const screensEn = {
     noSubjectTeacher: 'No teacher yet',
     more: 'More actions: {{name}}',
     archiveTitle: 'Move {{name}} to the recycle bin?',
+    yourRole: 'Your role',
   },
   msg: {
     start: 'Start sending',

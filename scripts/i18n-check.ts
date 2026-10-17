@@ -27,7 +27,8 @@ type Tree = { readonly [k: string]: unknown };
  * placeholders (e.g. "{{n}}", "%", "{{group}} · {{date}}") are allowed by rule and need no entry.
  */
 const ALLOW = new Set<string>([
-  // Register letters stay Latin: the paper register and the printed monthly sheet use P/A/L/E.
+  // Register codes stay Latin: the paper register, the printed monthly sheet and the CSV use
+  // P/A/Lt/Lv (owner feedback 2026-10-17).
   'ui.attendance.letter.P',
   'ui.attendance.letter.A',
   'ui.attendance.letter.L',

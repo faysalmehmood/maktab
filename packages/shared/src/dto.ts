@@ -112,6 +112,12 @@ export type GroupDto = {
   /** capacity − active_count; null when the group has no capacity. */
   seats_left: number | null;
   subjects: GroupSubjectDto[];
+  /**
+   * The caller's own part in this group (GET /api/groups list only): class teacher, and/or the
+   * subjects they teach here. Null for a caller who is not a teacher with a staff row. Derived from
+   * the row's own class teacher and subject teachers, so it never shows more than the row does.
+   */
+  my_role?: { class_teacher: boolean; subjects: string[] } | null;
 };
 
 export type RosterRow = {

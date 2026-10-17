@@ -12,6 +12,8 @@ import {
   type HolidayDto,
   holidayInputSchema,
   isoDateSchema,
+  MARK_CODE,
+  MARK_STATUSES,
   MAX_MARKS_PER_SYNC,
   type MarkCounts,
   type MarkStatus,
@@ -465,13 +467,18 @@ export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
             : null,
         taken: taken.has(d),
       }));
+      const nonSchool = days.filter((d) => d.day_off).map((d) => d.date);
+      const now = todayPk();
       const report: AttendanceReport = {
         grp_id: g.id,
         grp_name: g.name,
         programme_name: g.programme_name,
         month: q.month,
         grp_subject_id: subj,
+        class_teacher_name: g.class_teacher_name,
         days,
+        non_school_days: nonSchool,
+        working_days: days.filter((d) => !d.day_off && d.date <= now).length,
         rows: students.map((s) => {
           const counts = emptyCounts();
           const cells = dates.map((d) => {
@@ -486,12 +493,19 @@ export function attendanceRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const label = groupLabel(g.programme_name, g.name);
       const lines = [
         toCsvLine([label, q.month]),
-        toCsvLine(['Roll', 'Name', ...dates.map((d) => d.slice(8)), 'P', 'A', 'L', 'E', '%']),
+        toCsvLine([
+          'Roll',
+          'Name',
+          ...dates.map((d) => d.slice(8)),
+          ...MARK_STATUSES.map((st) => MARK_CODE[st]),
+          '%',
+        ]),
+        // A day with no mark is a blank cell (not '–'), so the sheet sums and filters cleanly.
         ...report.rows.map((r) =>
           toCsvLine([
             r.roll_no,
             r.name,
-            ...r.cells,
+            ...r.cells.map((x) => MARK_CODE[x as MarkStatus] ?? ''),
             r.counts.P,
             r.counts.A,
             r.counts.L,
