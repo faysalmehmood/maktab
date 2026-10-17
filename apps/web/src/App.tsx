@@ -116,6 +116,16 @@ export const MONEY_ROUTES: [string, ComponentType, GrantRef][] = [
   ['audit', AuditPage, ['audit', 'read']],
 ];
 
+const TeachersPage = lazyFees(() => import('@/pages/Teachers'), 'TeachersPage');
+
+/**
+ * People routes with a grant (2026-10-17): Teachers is owner/admin work (settings.manage, the
+ * grant of GET /api/teachers and of the group writes it uses).
+ */
+export const PEOPLE_ROUTES: [string, ComponentType, GrantRef][] = [
+  ['teachers', TeachersPage, ['settings', 'manage']],
+];
+
 /** Messaging routes (M5): the send queue for message readers, compose for message.compose. */
 export const MESSAGE_ROUTES: [string, ComponentType, GrantRef][] = [
   ['messages', MessagesPage, ['message', 'read']],
@@ -269,19 +279,21 @@ export function App() {
             </Loading>
           }
         />
-        {[...FEE_ROUTES, ...MONEY_ROUTES, ...MESSAGE_ROUTES].map(([path, Page, grant]) => (
-          <Route
-            key={path}
-            path={path}
-            element={
-              <RequireGrant grant={grant}>
-                <Loading>
-                  <Page />
-                </Loading>
-              </RequireGrant>
-            }
-          />
-        ))}
+        {[...PEOPLE_ROUTES, ...FEE_ROUTES, ...MONEY_ROUTES, ...MESSAGE_ROUTES].map(
+          ([path, Page, grant]) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <RequireGrant grant={grant}>
+                  <Loading>
+                    <Page />
+                  </Loading>
+                </RequireGrant>
+              }
+            />
+          ),
+        )}
         {/* Hidden device-check page (docs/android-checks.md): owner only, not in the nav. */}
         <Route
           path="diag"

@@ -138,6 +138,7 @@ GET    /api/staff                                D A A D D D
 POST   /api/staff                                D A A D D D
 PATCH  /api/staff/:id                            D A A D D D
 POST   /api/staff/invite                         D A D D D D
+GET    /api/teachers                             D A A D D D
 POST   /api/users/:id/disable                    D A D D D D
 POST   /api/users/:id/enable                     D A D D D D
 PUT    /api/users/:id/roles                      D A D D D D

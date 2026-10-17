@@ -1,0 +1,331 @@
+import type { TeacherRowDto, TeachersDto } from '@maktab/shared';
+import { GraduationCap, Printer } from 'lucide-react';
+import { type ReactNode, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { type Column, DataTable } from '@/components/data-table';
+import { ErrorNote, Num } from '@/components/form';
+import {
+  EmptyState,
+  GoLink,
+  ListRow,
+  Page,
+  PageHeader,
+  Panel,
+  RowList,
+  StatStrip,
+  StatusBadge,
+} from '@/components/page';
+import { AllocationPrint, SubjectLines } from '@/components/teachers/AllocationPrint';
+import { AllocationSheet } from '@/components/teachers/AllocationSheet';
+import { classTeacherText, loadText, subjectLabel, subjectLines } from '@/components/teachers/text';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
+import '@/i18n/screens';
+import { karachiToday } from '@/lib/fees';
+import { printWhenReady } from '@/lib/print';
+import { useGroups, useSchool, useSessions } from '@/lib/queries';
+import { useTeachers } from '@/lib/teachers';
+import { useDocumentTitle } from '@/lib/title';
+import { isolate } from '@/lib/utils';
+
+type Warn = 'class' | 'subject' | 'double';
+const SHEET_STATE = { sheet: true };
+const WARNS: readonly Warn[] = ['class', 'subject', 'double'];
+
+/** The A4 page of the printout, injected only while printing (as the receipts inject theirs). */
+const PRINT_PAGE =
+  '@page teacher-a4 { size: A4 portrait; margin: 12mm; } @media print { html, body { page: teacher-a4; } }';
+
+/**
+ * Teachers (owner/admin, 2026-10-17): the teacher side of the class/subject assignments. One row
+ * per teacher with their class-teacher groups, subjects and load in a session; the gaps on top;
+ * a row opens the teacher's allocation card. Writes go through the group endpoints.
+ * URL: ?session=<id> (another session), ?teacher=<staff id> (the open card), ?warn=class|subject|double.
+ */
+export function TeachersPage() {
+  const { t } = useTranslation();
+  const [params, setParams] = useSearchParams();
+  const sessions = useSessions();
+  const list = sessions.data?.items ?? [];
+  const picked = params.get('session');
+  const session =
+    list.find((s) => s.id === picked) ?? list.find((s) => s.is_current) ?? list[0] ?? null;
+  const sessionId = session?.id ?? null;
+  const ready = !sessions.isPending;
+  const teachers = useTeachers(sessionId, ready);
+  const groups = useGroups({ session_id: sessionId, enabled: ready });
+  const navigate = useNavigate();
+  const location = useLocation();
+  const school = useSchool().data?.school;
+  const data = teachers.data;
+  const items = data?.items ?? [];
+  const warn = WARNS.find((w) => w === params.get('warn')) ?? null;
+  const w = data?.warnings;
+  const sessionName = session?.name ?? '';
+
+  const withParam = (key: string, value: string | null) => {
+    const n = new URLSearchParams(params);
+    if (value === null) n.delete(key);
+    else n.set(key, value);
+    return n;
+  };
+  const href = (key: string, value: string | null) => {
+    const s = withParam(key, value).toString();
+    return s ? `/teachers?${s}` : '/teachers';
+  };
+
+  const doubles = new Set(w?.double_class_teachers.map((d) => d.staff_id) ?? []);
+  const rows =
+    warn === 'double' && doubles.size ? items.filter((r) => doubles.has(r.staff_id)) : items;
+  const open = items.find((r) => r.staff_id === params.get('teacher')) ?? null;
+
+  // While printing: the tab title through the shared title helper (Chrome prints it in the header
+  // and offers it as the PDF's name) and the A4 page; both go when printing ends or the page does.
+  // Each press is a new run, so a browser that never sends `afterprint` cannot wedge the button;
+  // focus coming back (or the tab becoming visible) also ends the run.
+  const [printRun, setPrintRun] = useState(0);
+  const [printedRun, setPrintedRun] = useState(0);
+  const printing = printRun > printedRun;
+  useDocumentTitle(printing ? t('screens.teachers.printTitle', { session: sessionName }) : null);
+  useEffect(() => {
+    if (!printing) return;
+    const style = document.createElement('style');
+    style.dataset.printPage = 'teacher-a4';
+    style.textContent = PRINT_PAGE;
+    document.head.appendChild(style);
+    const done = () => setPrintedRun(printRun);
+    const visible = () => document.visibilityState === 'visible' && done();
+    window.addEventListener('afterprint', done);
+    window.addEventListener('focus', done);
+    document.addEventListener('visibilitychange', visible);
+    void printWhenReady();
+    return () => {
+      window.removeEventListener('afterprint', done);
+      window.removeEventListener('focus', done);
+      document.removeEventListener('visibilitychange', visible);
+      style.remove();
+    };
+  }, [printing, printRun]);
+  const print = () => setPrintRun((n) => n + 1);
+
+  const columns: Column<TeacherRowDto>[] = [
+    {
+      id: 'teacher',
+      header: t('screens.teachers.teacher'),
+      primary: true,
+      cell: (r) => (
+        <span className="flex flex-wrap items-center gap-2">
+          <bdi>{r.name}</bdi>
+          {r.staff_status === 'left' && (
+            <StatusBadge tone="warn">{t('screens.teachers.left')}</StatusBadge>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: 'class',
+      header: t('screens.teachers.classTeacherOf'),
+      cell: (r) => classTeacherText(t, r),
+    },
+    {
+      id: 'subjects',
+      header: t('screens.teachers.subjects'),
+      cell: (r) => <SubjectLines lines={subjectLines(t, r, 6)} />,
+    },
+    {
+      id: 'load',
+      header: t('screens.teachers.load'),
+      className: 'whitespace-nowrap',
+      cell: (r) => loadText(t, r),
+    },
+  ];
+
+  const counts: Record<Warn, number> = {
+    class: w?.groups_without_class_teacher.length ?? 0,
+    subject: w?.subjects_without_teacher.length ?? 0,
+    double: w?.double_class_teachers.length ?? 0,
+  };
+  const warnLabel: Record<Warn, string> = {
+    class: t('screens.teachers.noClassTeacher'),
+    subject: t('screens.teachers.noSubjectTeacher'),
+    double: t('screens.teachers.doubleClass'),
+  };
+  const clear = counts.class + counts.subject + counts.double === 0;
+
+  return (
+    <>
+      <Page width="full" className="max-w-[1200px] print:hidden">
+        <PageHeader
+          title={t('screens.teachers.title')}
+          subtitle={t('screens.teachers.subtitle')}
+          help="who-teaches"
+          actions={
+            <>
+              {list.length > 1 && (
+                <Select
+                  id="teachers-session"
+                  aria-label={t('group.session')}
+                  value={sessionId ?? ''}
+                  onChange={(e) => setParams(withParam('session', e.target.value))}
+                >
+                  {list.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              <Button
+                id="teachers-print"
+                variant="outline"
+                disabled={items.length === 0}
+                onClick={print}
+              >
+                <Printer aria-hidden />
+                {t('screens.teachers.print')}
+              </Button>
+            </>
+          }
+        />
+        {data && items.length > 0 && (
+          <StatStrip
+            items={[
+              {
+                id: 'teachers-count',
+                label: t('screens.teachers.count'),
+                value: <Num>{items.length}</Num>,
+              },
+              ...WARNS.map((k) => ({
+                id: `teachers-warn-${k}`,
+                label: warnLabel[k],
+                value: <Num>{counts[k]}</Num>,
+                to: counts[k] > 0 ? href('warn', k) : undefined,
+              })),
+            ]}
+          />
+        )}
+        {data && items.length > 0 && clear && (
+          <p className="text-sm text-ok" id="teachers-all-clear">
+            {t('screens.teachers.allClear')}
+          </p>
+        )}
+        {data && warn && counts[warn] > 0 && (
+          <WarnPanel
+            kind={warn}
+            title={warnLabel[warn]}
+            warnings={data.warnings}
+            teacherHref={(id) => href('teacher', id)}
+            showAll={<GoLink to={href('warn', null)}>{t('screens.teachers.showAll')}</GoLink>}
+          />
+        )}
+        <Panel>
+          <DataTable
+            id="teachers-table"
+            caption={t('screens.teachers.title')}
+            columns={columns}
+            rows={rows}
+            rowKey={(r) => r.staff_id}
+            rowHref={(r) => href('teacher', r.staff_id)}
+            rowState={SHEET_STATE}
+            loading={!ready || teachers.isPending}
+            error={teachers.error ? <ErrorNote error={teachers.error} /> : undefined}
+            empty={
+              <EmptyState
+                icon={GraduationCap}
+                title={t('screens.teachers.emptyTitle')}
+                body={t('screens.teachers.emptyBody')}
+                action={
+                  <Button asChild>
+                    <Link id="teachers-invite" to="/settings?section=staff">
+                      {t('staff.invite')}
+                    </Link>
+                  </Button>
+                }
+              />
+            }
+          />
+        </Panel>
+      </Page>
+      {items.length > 0 && (
+        <AllocationPrint
+          className="hidden print:block"
+          items={items}
+          sessionName={sessionName}
+          school={school}
+          today={karachiToday()}
+        />
+      )}
+      {open && (
+        <AllocationSheet
+          key={open.staff_id}
+          teacher={open}
+          groups={groups.data?.items ?? []}
+          groupsError={groups.error}
+          sessionName={sessionName}
+          onClose={() =>
+            // Opened from this page: one Back closes it (no extra /teachers entry); opened from
+            // a link or a reload: replace the entry instead.
+            (location.state as { sheet?: boolean } | null)?.sheet
+              ? navigate(-1)
+              : setParams(withParam('teacher', null), { replace: true })
+          }
+        />
+      )}
+    </>
+  );
+}
+
+function WarnPanel({
+  kind,
+  title,
+  warnings,
+  teacherHref,
+  showAll,
+}: {
+  kind: Warn;
+  title: string;
+  warnings: TeachersDto['warnings'];
+  teacherHref: (staffId: string) => string;
+  showAll: ReactNode;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Panel id="teachers-attention" title={title} action={showAll}>
+      {kind === 'double' && (
+        <p className="border-b px-4 py-2 text-sm text-muted-foreground">
+          {t('screens.teachers.batchesNote')}
+        </p>
+      )}
+      <RowList>
+        {kind === 'class' &&
+          warnings.groups_without_class_teacher.map((g) => (
+            <ListRow
+              key={g.grp_id}
+              to={`/groups/${g.grp_id}`}
+              title={<bdi>{g.name}</bdi>}
+              meta={t('screens.teachers.noClassTeacherShort')}
+            />
+          ))}
+        {kind === 'subject' &&
+          warnings.subjects_without_teacher.map((s) => (
+            <ListRow
+              key={s.grp_subject_id}
+              to={`/groups/${s.grp_id}`}
+              title={subjectLabel(t, s)}
+              meta={t('screens.teachers.noSubjectTeacherShort')}
+            />
+          ))}
+        {kind === 'double' &&
+          warnings.double_class_teachers.map((d) => (
+            <ListRow
+              key={d.staff_id}
+              to={teacherHref(d.staff_id)}
+              title={<bdi>{d.name}</bdi>}
+              meta={d.groups.map((g) => isolate(g.name)).join(t('screens.teachers.sep'))}
+            />
+          ))}
+      </RowList>
+    </Panel>
+  );
+}

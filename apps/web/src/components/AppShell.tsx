@@ -5,6 +5,7 @@ import {
   ChartColumn,
   ChevronsUpDown,
   CloudOff,
+  GraduationCap,
   HandCoins,
   House,
   Layers,
@@ -94,6 +95,14 @@ export const NAV: NavItem[] = [
     icon: Layers,
     group: 'people',
     grants: [['attendance', 'read']],
+  },
+  // Who teaches what (owner/admin): the grant of GET /api/teachers.
+  {
+    to: '/teachers',
+    label: 'shell.nav.teachers',
+    icon: GraduationCap,
+    group: 'people',
+    grants: [['settings', 'manage']],
   },
   {
     to: '/attendance',

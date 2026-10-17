@@ -26,6 +26,7 @@ import { peopleRoutes } from './routes/people';
 import { receiptRoutes } from './routes/receipts';
 import { settingsRoutes } from './routes/settings';
 import { staffRoutes } from './routes/staff';
+import { teacherRoutes } from './routes/teachers';
 
 export type AppDeps = {
   getDb: (env: Bindings) => AppDb;
@@ -81,6 +82,7 @@ export function createApp(deps: AppDeps) {
   catalogRoutes(app, routes);
   groupRoutes(app, routes);
   staffRoutes(app, routes);
+  teacherRoutes(app, routes);
   peopleRoutes(app, routes);
   admissionRoutes(app, routes);
   importRoutes(app, routes);

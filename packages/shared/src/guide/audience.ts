@@ -21,6 +21,7 @@ export const TASK_ROLES = {
   'parent-view': ['owner', 'admin', 'accountant', 'teacher'],
   'invite-staff': ['owner'],
   roles: ['owner', 'admin'],
+  'who-teaches': ['owner', 'admin'],
   payslips: ['owner', 'admin', 'accountant'],
   'my-payslips': ['teacher'],
   backups: ['owner'],

@@ -20,7 +20,7 @@ import { defineRoute, type RouteTable, requires } from '../perm/routes';
  * Staff list = staff profiles (teachers may have no login) ∪ users without a profile (e.g. the
  * bootstrap owner). Small by nature (5–30 people), so it is assembled in memory.
  */
-async function staffRows(db: AppDb): Promise<StaffRowDto[]> {
+export async function staffRows(db: AppDb): Promise<StaffRowDto[]> {
   const [profiles, users, roles] = await Promise.all([
     db.select().from(staff).orderBy(asc(staff.name)),
     db.select().from(user).orderBy(asc(user.email)),

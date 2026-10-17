@@ -148,6 +148,7 @@ describe('navigation per role', () => {
     expect(hrefs).toEqual([
       '/students',
       '/groups',
+      '/teachers',
       '/expenses',
       '/salary',
       '/reports',
