@@ -197,7 +197,11 @@ How a full reseed works (`packages/db/src/demo/runner.ts`):
 3. The dataset is rebuilt in about 140 resumable, idempotent steps
    (`packages/db/src/demo/steps.ts`). Ids are deterministic, receipts use idempotency keys, and
    every step checks whether its work is already done, so a call cut short by the CPU limit or a
-   lost response is simply run again. A day's ops that decide from live balances ("nothing due",
+   lost response is simply run again. Every sub-step is idempotent on its own rows (it looks for
+   the ids it is about to write and writes only the missing ones, never "the table has rows, so
+   the step is done"): the cursor is saved only when a step ends or an invocation does, so a cut
+   re-runs a step from an earlier sub-step, and a re-run from sub 0 must still finish the rest
+   (production, 2026-10-15: `messages` stopped after the absences and notices). A day's ops that decide from live balances ("nothing due",
    "the first fine left") never run again once anything is dated after that day, or (cash ops)
    once that day's drawer is closed; a test re-runs every step over a finished seed and finds
    nothing changed. A lease stops the cron and the step route from running the

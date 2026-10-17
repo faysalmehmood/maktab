@@ -3,11 +3,14 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AppDb } from '../src/client';
 import {
   advanceDemoSeed,
+  concessionPicks,
   DEMO_SEED_WRITE_CAP,
   DEMO_SEED_WRITES,
   DEMO_UNDO_WRITE_CAP,
   DEMO_USERS,
+  dayId,
   demoCalendar,
+  demoIds,
   demoPlan,
   demoStatus,
   estimateUndo,
@@ -19,7 +22,7 @@ import {
   startDemoUndo,
   world,
 } from '../src/demo';
-import { collect, incomeExpense, reverseReceipt } from '../src/ledger';
+import { addConcession, collect, incomeExpense, reverseReceipt } from '../src/ledger';
 import { createTestDb } from '../src/node';
 
 const SECRET = 'test-parent-link-secret-at-least-32-characters';
@@ -72,7 +75,42 @@ async function fingerprint(db: AppDb) {
     messages: await one(
       `SELECT template_key, status, count(*) FROM message GROUP BY 1, 2 ORDER BY 1, 2`,
     ),
+    messageIds: await one(`SELECT id, template_key, family_id FROM message ORDER BY id`),
+    reminders: await one(`SELECT * FROM reminder_state ORDER BY family_id, template_key`),
+    links: await one(`SELECT id, guardian_id, token_hash FROM parent_link ORDER BY id`),
+    concessions: await one(`SELECT id, student_id, value FROM concession ORDER BY id`),
   };
+}
+
+const messagesByTemplate = (db: AppDb) =>
+  db.all(sql`SELECT template_key, count(*) AS n FROM message GROUP BY 1 ORDER BY 1`);
+
+/**
+ * A reset driven by hand up to (not including) the step named `stop`, the way the runner would
+ * have left it: wipe and every earlier step finished.
+ */
+async function seedUpTo(stop: string) {
+  const db2 = createTestDb();
+  await startDemoReset(db2, { reason: 'test', today: TODAY });
+  const plan = demoPlan(TODAY);
+  const at = plan.findIndex((s) => s.name === stop);
+  expect(at).toBeGreaterThan(0);
+  const ctx = { db: db2, w: world(CAL), cal: CAL, parentSecret: SECRET };
+  for (const step of plan.slice(0, at))
+    for (let sub: number | null = 0, i = 0; sub !== null && i < 5000; i++)
+      sub = await step.run(ctx, sub);
+  return { db2, plan, at, ctx };
+}
+
+/** What the runner does after a cut: carry on from `step` with the cursor it last saved (0). */
+async function resumeFrom(db2: AppDb, step: number) {
+  await db2.run(sql`UPDATE _demo_state SET value = ${String(step)} WHERE key = 'step'`);
+  await db2.run(sql`UPDATE _demo_state SET value = '0' WHERE key = 'sub'`);
+  const r = await advanceDemoSeed(db2, {
+    deadline: Number.POSITIVE_INFINITY,
+    parentSecret: SECRET,
+  });
+  expect(r.phase).toBe('done');
 }
 
 describe('demo dataset', () => {
@@ -370,6 +408,95 @@ describe('demo dataset', () => {
     expect(await fingerprint(db)).toEqual(before);
     expect(await db.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
   }, 120_000);
+
+  it('messages: a cut after any sub-step, resumed from sub 0, still ends with every message', async () => {
+    const full = await messagesByTemplate(db);
+    // The 2026-10-15 production run: absences and notices only (fee reminders, payments missing).
+    expect(full.map((r) => (r as { template_key: string }).template_key)).toEqual([
+      'absence',
+      'fee_due',
+      'fee_overdue',
+      'notice',
+      'payment_received',
+    ]);
+    const { db2, plan, at, ctx } = await seedUpTo('messages');
+    const step = plan[at] as (typeof plan)[number];
+    // Cut after sub 0, re-run from 0 and cut after sub 1, again after sub 2, then let it finish.
+    for (const cutAfter of [0, 1, 2])
+      for (let sub = 0; sub <= cutAfter; sub++) expect(await step.run(ctx, sub)).toBe(sub + 1);
+    await resumeFrom(db2, at);
+    expect(await messagesByTemplate(db2)).toEqual(full);
+    expect(await fingerprint(db2)).toEqual(await fingerprint(db));
+  }, 120_000);
+
+  it('parent links: a cut after the step wrote, resumed from sub 0, makes no link twice', async () => {
+    const { db2, plan, at, ctx } = await seedUpTo('parent-links');
+    const links = plan[at] as (typeof plan)[number];
+    expect(await links.run(ctx, 0)).toBeNull();
+    const made = await n(db2, 'SELECT count(*) n FROM parent_link');
+    expect(made).toBe(await n(db, 'SELECT count(*) n FROM parent_link'));
+    await resumeFrom(db2, at);
+    expect(await n(db2, 'SELECT count(*) n FROM parent_link')).toBe(made);
+    expect(await fingerprint(db2)).toEqual(await fingerprint(db));
+  }, 120_000);
+
+  it('concessions: an invocation killed after a few of the twelve adds the rest on the re-run', async () => {
+    const { db2, at, ctx } = await seedUpTo('concessions-sponsors-openings');
+    // Sub 0 writes one batch per concession; the CPU limit can end it after any of them.
+    for (const [i, p] of concessionPicks(ctx.w).slice(0, 3).entries())
+      await addConcession(db2, {
+        id: dayId('2026-03-30', `concession:${i}`),
+        studentId: p.s.id,
+        feeHeadId: p.type === 'fixed' ? demoIds('head:tuition') : null,
+        type: p.type,
+        value: p.value,
+        reason: p.reason,
+        note: p.note,
+        approvedBy: demoIds('user:principal'),
+        validFrom: CAL.start,
+      });
+    await resumeFrom(db2, at);
+    expect(await n(db2, 'SELECT count(*) n FROM concession')).toBe(12);
+    expect(await fingerprint(db2)).toEqual(await fingerprint(db));
+  }, 120_000);
+
+  it('every step resumes from sub 0 after a cut at any point (the cursor not saved)', async () => {
+    // The runner saves `sub` only when a step ends or an invocation does: an invocation cut by the
+    // CPU limit re-runs the step from the last saved cursor, here always 0. Each invocation runs
+    // one more sub-step of the step than the last before it is "cut".
+    const db3 = createTestDb();
+    await startDemoReset(db3, { reason: 'test', today: TODAY });
+    const state = async () =>
+      Object.fromEntries(
+        (
+          await db3.all<{ key: string; value: string }>(sql`SELECT key, value FROM _demo_state
+            WHERE key IN ('step', 'sub', 'phase')`)
+        ).map((r) => [r.key, r.value]),
+      );
+    let last = '';
+    let t = 1;
+    let cuts = 0;
+    for (let i = 0; i < 100_000; i++) {
+      await advanceDemoSeed(db3, {
+        deadline: Number.POSITIVE_INFINITY,
+        maxCalls: t,
+        parentSecret: SECRET,
+      });
+      const st = await state();
+      if (st.phase === 'done') break;
+      t = st.step === last ? t + 1 : 1;
+      last = st.step as string;
+      if (st.sub !== '0') {
+        await db3.run(sql`UPDATE _demo_state SET value = '0' WHERE key = 'sub'`);
+        cuts++;
+      }
+    }
+    expect((await demoStatus(db3)).phase).toBe('done');
+    expect(cuts).toBeGreaterThan(100);
+    expect(await messagesByTemplate(db3)).toEqual(await messagesByTemplate(db));
+    expect(await fingerprint(db3)).toEqual(await fingerprint(db));
+    expect(await db3.all(sql`SELECT * FROM ledger_consistency`)).toEqual([]);
+  }, 300_000);
 
   it('ids do not depend on the order a process asks for them (each Worker isolate is fresh)', async () => {
     const keys = ['user:accountant', 'account:drawer', 'head:tuition', 'user:principal', 'rate:x'];

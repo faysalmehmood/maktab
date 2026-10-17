@@ -155,6 +155,18 @@ function bulk(table: string, rows: Record<string, unknown>[]): SQL[] {
 
 const exists = async (db: AppDb, q: SQL) => (await db.all(q)).length > 0;
 
+/**
+ * The rows of `rows` whose key is not yet among `present` (a query returning one `k` per row). A
+ * step's sub-steps run again from sub 0 after a cut (the runner saves the cursor only when a step
+ * ends or an invocation does), so each one checks for its own rows, never "is the table empty":
+ * that check made a re-run of `messages` stop after the absences (production, 2026-10-15).
+ */
+async function notYet<T>(db: AppDb, rows: T[], key: (r: T) => string, present: SQL): Promise<T[]> {
+  if (!rows.length) return rows;
+  const have = new Set((await db.all<{ k: string }>(present)).map((r) => r.k));
+  return rows.filter((r) => !have.has(key(r)));
+}
+
 /** A step made of a fixed list of ops: one op per call. */
 function opsStep(name: string, ops: ((ctx: StepCtx) => Promise<void>)[]): Step {
   return {
@@ -652,23 +664,31 @@ const concessionsStep: Step = {
     const by = userId('principal');
     const picks = concessionPicks(w);
     if (sub === 0) {
-      if (!(await exists(db, sql`SELECT 1 FROM concession LIMIT 1`)))
-        for (const [i, p] of picks.entries())
-          await addConcession(db, {
-            id: dayId('2026-03-30', `concession:${i}`),
-            studentId: p.s.id,
-            feeHeadId: p.type === 'fixed' ? HEADS.tuition() : null,
-            type: p.type,
-            value: p.value,
-            reason: p.reason,
-            note: p.note,
-            approvedBy: by,
-            validFrom: cal.start,
-          });
+      // One batch per concession: a cut after a few must still add the rest on the re-run.
+      const todo = await notYet(
+        db,
+        [...picks.entries()],
+        ([i]) => dayId('2026-03-30', `concession:${i}`),
+        sql`SELECT id AS k FROM concession`,
+      );
+      for (const [i, p] of todo)
+        await addConcession(db, {
+          id: dayId('2026-03-30', `concession:${i}`),
+          studentId: p.s.id,
+          feeHeadId: p.type === 'fixed' ? HEADS.tuition() : null,
+          type: p.type,
+          value: p.value,
+          reason: p.reason,
+          note: p.note,
+          approvedBy: by,
+          validFrom: cal.start,
+        });
       return 1;
     }
     if (sub === 1) {
-      if (await exists(db, sql`SELECT 1 FROM sponsor LIMIT 1`)) return 2;
+      // Sponsors and sponsorships are one atomic batch: the first sponsor there means all of it is.
+      const first = sponsorId(SPONSORS[0]?.key ?? '');
+      if (await exists(db, sql`SELECT 1 FROM sponsor WHERE id = ${first}`)) return 2;
       await runBatch(db, [
         ...bulk(
           'sponsor',
@@ -923,7 +943,11 @@ function reverseOp(
         sql`SELECT amount, method, payer_id FROM receipt WHERE id = ${target}`,
       );
       if (!orig) return;
-      if (await exists(db, sql`SELECT 1 FROM receipt WHERE reverses_id = ${target}`)) return;
+      if (await exists(db, sql`SELECT 1 FROM receipt WHERE reverses_id = ${target}`)) {
+        // Cut between the reversal and the credit: apply it now (a no-op when it was applied).
+        if (reenter) await applyCredit(db, { payerType: 'family', payerId: orig.payer_id });
+        return;
+      }
       await reverseReceipt(db, {
         receiptId: target,
         byUserId: userId('accountant'),
@@ -1680,8 +1704,29 @@ const messagesStep: Step = {
       return u < pSent ? 'sent' : u < pSent + pSkip ? 'skipped' : 'queued';
     };
     const famById = new Map(w.families.map((f) => [f.id, f]));
+    type State = { family_id: string; template_key: string; last_sent_on: string };
+    /** Each sub-step writes only its own rows that are not there yet (see notYet). */
+    const write = async (templates: string[], rows: MsgRow[], state: State[] = []) => {
+      const keys = sql.join(
+        templates.map((t) => sql`${t}`),
+        sql`, `,
+      );
+      const msgs = await notYet(
+        db,
+        rows,
+        (r) => r.id,
+        sql`SELECT id AS k FROM message WHERE template_key IN (${keys})`,
+      );
+      const st = await notYet(
+        db,
+        state,
+        (r) => `${r.family_id}|${r.template_key}`,
+        sql`SELECT family_id || '|' || template_key AS k FROM reminder_state
+            WHERE template_key IN (${keys})`,
+      );
+      await runBatch(db, [...bulk('message', msgs), ...bulk('reminder_state', st)]);
+    };
     if (sub === 0) {
-      if (await exists(db, sql`SELECT 1 FROM message LIMIT 1`)) return null;
       // Absence: the registers' days (the last one today's when it is a school day), one row per
       // family per day; the last day's rows are still queued.
       const days = cal.attendanceDays;
@@ -1721,17 +1766,15 @@ const messagesStep: Step = {
           lastSent.set(fid, day);
         }
       }
-      await runBatch(db, [
-        ...bulk('message', rows),
-        ...bulk(
-          'reminder_state',
-          [...lastSent].map(([family_id, last_sent_on]) => ({
-            family_id,
-            template_key: 'absence',
-            last_sent_on,
-          })),
-        ),
-      ]);
+      await write(
+        ['absence'],
+        rows,
+        [...lastSent].map(([family_id, last_sent_on]) => ({
+          family_id,
+          template_key: 'absence',
+          last_sent_on,
+        })),
+      );
       return 1;
     }
     if (sub === 1) {
@@ -1758,7 +1801,7 @@ const messagesStep: Step = {
             },
           }),
         );
-      await runBatch(db, bulk('message', rows));
+      await write(['notice'], rows);
       return 2;
     }
     if (sub === 2) {
@@ -1810,24 +1853,21 @@ const messagesStep: Step = {
           }),
         );
       }
-      await runBatch(db, [
-        ...bulk('message', rows),
-        ...bulk('reminder_state', [
-          ...due
-            .filter((d) => famById.has(d.family_id))
-            .map((d) => ({
-              family_id: d.family_id,
-              template_key: 'fee_due',
-              last_sent_on: dueDay,
-            })),
-          ...overdue
-            .filter((d) => famById.has(d.family_id))
-            .map((d) => ({
-              family_id: d.family_id,
-              template_key: 'fee_overdue',
-              last_sent_on: overdueDay,
-            })),
-        ]),
+      await write(['fee_due', 'fee_overdue'], rows, [
+        ...due
+          .filter((d) => famById.has(d.family_id))
+          .map((d) => ({
+            family_id: d.family_id,
+            template_key: 'fee_due',
+            last_sent_on: dueDay,
+          })),
+        ...overdue
+          .filter((d) => famById.has(d.family_id))
+          .map((d) => ({
+            family_id: d.family_id,
+            template_key: 'fee_overdue',
+            last_sent_on: overdueDay,
+          })),
       ]);
       return 3;
     }
@@ -1865,7 +1905,7 @@ const messagesStep: Step = {
           ]
         : [];
     });
-    await runBatch(db, bulk('message', rows));
+    await write(['payment_received'], rows);
     return null;
   },
 };
@@ -1894,21 +1934,28 @@ const parentLinksStep: Step = {
   name: 'parent-links',
   run: async ({ db, w, cal, parentSecret }) => {
     if (!parentSecret || parentSecret.trim().length < 32) return null;
-    if (await exists(db, sql`SELECT 1 FROM parent_link LIMIT 1`)) return null;
     const guardians = w.families
       .filter((f) => f.students.some((s) => !s.leftOn))
       .map((f) => f.guardians.find((g) => g.consent && MOBILE.test(g.phone)))
       .filter((g): g is NonNullable<typeof g> => !!g)
       .slice(0, 40);
+    const linkDay = (i: number) => addDay(cal.today, -30 + (i % 25));
+    // Only the links not made yet (see notYet); checked before the hashing, which costs CPU.
+    const todo = await notYet(
+      db,
+      [...guardians.entries()],
+      ([i, g]) => dayId(linkDay(i), `link:${g.id}`),
+      sql`SELECT id AS k FROM parent_link`,
+    );
     const rows = [];
-    for (const [i, g] of guardians.entries()) {
+    for (const [i, g] of todo) {
       const r = rng(hashSeed(`salt:${g.id}`));
       const salt = b64url(Uint8Array.from({ length: 16 }, () => r.int(0, 255)));
       const token = await demoLinkToken(parentSecret.trim(), salt);
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
       const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
       // Made over the last month; two in three opened in the last fortnight.
-      const day = addDay(cal.today, -30 + (i % 25));
+      const day = linkDay(i);
       rows.push({
         id: dayId(day, `link:${g.id}`),
         guardian_id: g.id,
