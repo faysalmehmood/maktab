@@ -55,13 +55,13 @@ recomputed for new messages: after the restore, run Settings → Messages → "R
 6. Verify against the last nightly log or yesterday's Sheet:
    `npx wrangler d1 execute "$DB-restored" --remote --command "select count(*), sum(amount) from receipt"`
    and counts for `student` and `charge`. Confirm the triggers and views survived:
-   `npm run db:verify -- --remote --env production` (after pointing the binding at the restored
+   `npm run db:verify -- --remote --env gsap` (after pointing the binding at the restored
    database, step 7) compares `sqlite_master` with `packages/db/sql/` and exits 1 on any difference;
    by hand, compare `select count(*) from sqlite_master where type='trigger'` / `'view'` with the
    numbers in the last entry of docs/deploy-log.md.
-7. Re-point the Worker: in `apps/api/wrangler.toml`, under `[[env.production.d1_databases]]` for binding
+7. Re-point the Worker: in `apps/api/wrangler.toml`, under `[[env.gsap.d1_databases]]` for binding
    `DB`, set `database_id` (and optionally `database_name`) to the new database, then
-   `npx wrangler deploy --env production`. Never rename the binding.
+   `npx wrangler deploy --env gsap`. Never rename the binding.
 8. If the Worker is new or its secrets were lost, set them first (docs/deploy.md §4):
    `SESSION_SECRET` (staff sign in again), the saved `PARENT_LINK_SECRET` (else revoke all links,
    above) and a new `BACKUP_REPORT_TOKEN` (docs/backup.md §3; update the GitHub secret too).
