@@ -192,3 +192,42 @@ export const karachiToday = (now = Date.now()): string =>
 /** The fine on a root: one still to waive first, else a fully waived one (shown as waived). */
 export const fineOf = (fines: readonly FineDto[], rootId: string): FineDto | undefined =>
   fines.find((f) => f.root_id === rootId && f.left > 0) ?? fines.find((f) => f.root_id === rootId);
+
+// ---- fee register: the class picked last time on this device -----------------------------------
+
+/** localStorage `maktab.feeRegister.<school id>`: one group id per installation. Best effort. */
+export const registerGroupKey = (schoolId: string) => `maktab.feeRegister.${schoolId}`;
+
+export function rememberedRegisterGroup(schoolId: string): string | null {
+  try {
+    return localStorage.getItem(registerGroupKey(schoolId));
+  } catch {
+    return null;
+  }
+}
+
+export function rememberRegisterGroup(schoolId: string, grpId: string): void {
+  try {
+    localStorage.setItem(registerGroupKey(schoolId), grpId);
+  } catch {
+    // Private mode / blocked storage: the page falls back to the default class next time.
+  }
+}
+
+/**
+ * The class the register opens on: the one remembered on this device if it still exists, else the
+ * teacher's first own group, else the first group, both taken from the current session's groups
+ * (all groups only when the current session has none); '' only when there are no groups.
+ */
+export function defaultRegisterGroup(
+  groups: readonly { id: string; session_id: string | null }[],
+  remembered: string | null,
+  mine: readonly { id: string }[] = [],
+  currentSessionId: string | null = null,
+): string {
+  if (remembered && groups.some((g) => g.id === remembered)) return remembered;
+  const current = groups.filter((g) => currentSessionId && g.session_id === currentSessionId);
+  const pool = current.length ? current : groups;
+  const own = pool.find((g) => mine.some((m) => m.id === g.id));
+  return own?.id ?? pool[0]?.id ?? '';
+}

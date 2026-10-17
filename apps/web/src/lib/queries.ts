@@ -51,3 +51,12 @@ export function useGroups(params: { session_id?: string | null } = {}) {
     queryFn: () => getJson<Items<GroupDto>>(`/api/groups${qs}`),
   });
 }
+
+/** Groups the caller is class or subject teacher of (`mine=1`), whatever else their roles see. */
+export function useMyGroups(enabled = true) {
+  return useQuery({
+    queryKey: ['groups', 'mine'],
+    queryFn: () => getJson<Items<GroupDto>>('/api/groups?mine=1'),
+    enabled,
+  });
+}

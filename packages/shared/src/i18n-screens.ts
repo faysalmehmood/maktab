@@ -87,6 +87,8 @@ export const screensEn = {
     noGuardians: 'No guardian added yet.',
     noMessages: 'No messages for this family yet.',
     openQueue: 'Open messages',
+    messageFamily: 'Message family',
+    changePhoto: 'Change photo',
   },
   fees: {
     payment: 'Payment',

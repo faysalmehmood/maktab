@@ -59,17 +59,16 @@ describe('fee register (rebuilt)', () => {
       roll_no: null,
     },
   ];
-  it('asks for a class first (no request), then shows totals, rows, CSV and Print', async () => {
-    const api = mockApi({
+  it('opens on the first class (no "Choose a class"), then shows totals, rows, CSV and Print', async () => {
+    mockApi({
       'GET /api/groups': { items: [group, { ...group, id: G2, name: 'B' }] },
       'GET /api/fees/register': { rows, totals: { net: RS(6000), paid: RS(3000), due: RS(3000) } },
     });
     renderAt('/fees/register', '/fees/register', <FeeRegisterPage />, ['owner']);
-    expect(await screen.findByText('Choose a class to see its register')).toBeTruthy();
-    expect(api.calls.some((c) => c.path.startsWith('/api/fees/register'))).toBe(false);
-    expect(document.getElementById('register-csv')).toBeNull();
     const select = (await byId('register-group')) as HTMLSelectElement;
-    await waitFor(() => expect(select.options.length).toBe(3));
+    await waitFor(() => expect(select.value).toBe(ids.group));
+    expect(select.options.length).toBe(2);
+    expect(screen.queryByText('Choose a class to see its register')).toBeNull();
     fireEvent.change(select, { target: { value: G2 } });
     const table = await byId('register-table');
     expect(within(table).getByText('Sara')).toBeTruthy();
@@ -89,8 +88,7 @@ describe('fee register (rebuilt)', () => {
     });
     renderAt('/fees/register', '/fees/register', <FeeRegisterPage />, ['owner']);
     const select = (await byId('register-group')) as HTMLSelectElement;
-    await waitFor(() => expect(select.options.length).toBe(2));
-    fireEvent.change(select, { target: { value: ids.group } });
+    await waitFor(() => expect(select.value).toBe(ids.group));
     expect(await screen.findByText('No fees billed for this class this month')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open billing' }).getAttribute('href')).toBe(
       '/fees/billing',

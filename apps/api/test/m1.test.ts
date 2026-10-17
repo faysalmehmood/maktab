@@ -524,6 +524,18 @@ describe('teacher row scope', () => {
     expect(fam.body.items).toEqual([]);
     const groups = await teacherA<{ items: GroupDto[] }>('GET', '/api/groups');
     expect(groups.body.items.map((g) => g.name).sort()).toEqual(['5-A', 'Morning batch']);
+    // mine=1: own groups even for a role that sees every group; none for a non-teacher.
+    const accTeacher = await signedInAs(db, ['teacher', 'accountant']);
+    const sc = newId();
+    await db.insert(staff).values({ id: sc, userId: accTeacher.userId, name: 'C' });
+    await api('PATCH', `/api/groups/${g5b.id}`, { class_teacher_id: sc });
+    const acc = client(request, accTeacher.cookie);
+    expect((await acc<{ items: GroupDto[] }>('GET', '/api/groups')).body.items.length).toBe(3);
+    const accMine = await acc<{ items: GroupDto[] }>('GET', '/api/groups?mine=1');
+    expect(accMine.body.items.map((g) => g.name)).toEqual(['5-B']);
+    const mineA = await teacherA<{ items: GroupDto[] }>('GET', '/api/groups?mine=1');
+    expect(mineA.body.items.map((g) => g.name).sort()).toEqual(['5-A', 'Morning batch']);
+    expect((await api<{ items: GroupDto[] }>('GET', '/api/groups?mine=1')).body.items).toEqual([]);
     const roster = await teacherA<GroupDetailDto>('GET', `/api/groups/${g5a.id}`);
     expect(roster.body.roster.map((r) => r.name)).toEqual(['Ali']);
     // Teachers read, never write, and see identity numbers masked.
