@@ -1595,7 +1595,7 @@ export const screensUr: Shape<typeof screensEn> = {
     print: 'پرنٹ',
     printTitle: 'اساتذہ کی تقسیمِ کار {{session}}',
     printedOn: 'پرنٹ کی تاریخ {{date}}',
-    principalSign: 'دستخط پرنسپل',
+    principalSign: 'پرنسپل کے دستخط',
     sheetHint: '{{session}} میں کلاس ٹیچر اور مضامین۔',
     left: 'اسکول چھوڑ چکے',
     leftHint: 'یہ اسکول چھوڑ چکے ہیں۔ ان کے گروپ اور مضامین کسی اور استاد کو دیں۔',

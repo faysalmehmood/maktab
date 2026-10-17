@@ -41,12 +41,15 @@ type Pending = {
 export function AllocationSheet({
   teacher,
   groups,
+  groupsError,
   sessionName,
   onClose,
 }: {
   teacher: TeacherRowDto;
   /** The session's live groups (GET /api/groups), with their subjects and teachers. */
   groups: readonly GroupDto[];
+  /** The group list failed: the pickers say so instead of "no other group". */
+  groupsError?: unknown;
   sessionName: string;
   onClose: () => void;
 }) {
@@ -150,7 +153,8 @@ export function AllocationSheet({
             )
           }
         >
-          {adding === 'class' && (
+          {adding === 'class' && !!groupsError && <PickerError error={groupsError} />}
+          {adding === 'class' && !groupsError && (
             <ClassPicker
               groups={open.filter((g) => g.class_teacher_id !== me)}
               pending={assign.isPending}
@@ -219,7 +223,8 @@ export function AllocationSheet({
             )
           }
         >
-          {adding === 'subject' && (
+          {adding === 'subject' && !!groupsError && <PickerError error={groupsError} />}
+          {adding === 'subject' && !groupsError && (
             <SubjectPicker
               groups={open.filter((g) => g.subjects.some((s) => s.teacher_id !== me))}
               me={me}
@@ -452,6 +457,14 @@ function PickerButtons({ disabled, onCancel }: { disabled: boolean; onCancel: ()
       <Button type="submit" disabled={disabled}>
         {t('common.save')}
       </Button>
+    </div>
+  );
+}
+
+function PickerError({ error }: { error: unknown }) {
+  return (
+    <div className="px-4 py-3">
+      <ErrorNote error={error} />
     </div>
   );
 }

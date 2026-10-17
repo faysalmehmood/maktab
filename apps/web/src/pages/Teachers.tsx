@@ -248,8 +248,9 @@ export function TeachersPage() {
           key={open.staff_id}
           teacher={open}
           groups={groups.data?.items ?? []}
+          groupsError={groups.error}
           sessionName={sessionName}
-          onClose={() => setParams(withParam('teacher', null))}
+          onClose={() => setParams(withParam('teacher', null), { replace: true })}
         />
       )}
     </>
