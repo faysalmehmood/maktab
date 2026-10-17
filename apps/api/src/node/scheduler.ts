@@ -30,8 +30,10 @@ export type SchedulerDeps = {
 export type Scheduler = {
   /** Runs one cron tick now (queued behind a running job). Resolves when it is done. */
   tick: () => Promise<void>;
-  /** Runs the nightly backup now (queued). */
+  /** Runs the nightly backup now (queued), even if today's was attempted. */
   backupNow: () => Promise<void>;
+  /** What the 02:30 timer runs: the backup, unless today's was already attempted. */
+  timedBackup: () => Promise<void>;
   stop: () => Promise<void>;
   /** For tests: is a job running. */
   busy: () => boolean;
@@ -71,12 +73,12 @@ export function startScheduler(deps: SchedulerDeps, { autostart = true } = {}): 
 
   const cronTick = async () => {
     try {
-      log(JSON.stringify({ cron: await runScheduled(deps.db) }));
+      log(JSON.stringify({ cron: await runScheduled(deps.db, { now: now() }) }));
     } catch (err) {
       console.error('cron failed', err);
     }
     try {
-      const daily = await runDailyOps(deps.db);
+      const daily = await runDailyOps(deps.db, { now: now() });
       if (!('skipped' in daily)) log(JSON.stringify({ daily }));
     } catch (err) {
       console.error('daily pass failed', err);
@@ -102,6 +104,16 @@ export function startScheduler(deps: SchedulerDeps, { autostart = true } = {}): 
       await backup();
     });
 
+  /**
+   * The 02:30 timer: skipped when today's backup was already attempted (the catch-up on a tick
+   * just before 02:30 cannot have run it, but a restart around 02:30 or a manual run can).
+   */
+  const timedBackup = () =>
+    enqueue('nightly backup', async () => {
+      if (attemptedDay === karachiDay(now())) return;
+      await backup();
+    });
+
   const later = (ms: number, fn: () => void) => {
     const t = setTimeout(() => {
       timers.delete(t);
@@ -114,7 +126,7 @@ export function startScheduler(deps: SchedulerDeps, { autostart = true } = {}): 
   const scheduleBackup = () => {
     if (stopped) return;
     later(Math.max(1_000, nextBackupAt(now()) - now()), () => {
-      void backupNow().finally(scheduleBackup);
+      void timedBackup().finally(scheduleBackup);
     });
   };
 
@@ -129,6 +141,7 @@ export function startScheduler(deps: SchedulerDeps, { autostart = true } = {}): 
   return {
     tick,
     backupNow,
+    timedBackup,
     busy: () => running > 0,
     stop: async () => {
       stopped = true;

@@ -5,21 +5,24 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import type { AppDb } from '@maktab/db';
+import { type AppDb, atomic, rawStatement } from '@maktab/db';
 import { applyD1Migrations, drizzleOver, openSqlite } from '@maktab/db/node';
 import { Decrypter, generateX25519Identity, identityToRecipient } from 'age-encryption';
-import type Database from 'better-sqlite3';
+import Database from 'better-sqlite3';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   backupDueToday,
+  encryptedSnapshot,
   karachiDay,
   nextBackupAt,
+  OFFSITE_MARKER,
   pruneDaily,
   resetBackupWarning,
   runLocalBackup,
@@ -125,6 +128,27 @@ describe('DirBucket (the R2 subset on a directory)', () => {
     expect(keySegments('school/logo-01J')).toEqual(['school', 'logo-01J']);
   });
 
+  it('never follows a symlink inside the root (file or directory) to read or write outside it', async () => {
+    const b = new DirBucket(join(root, 'files'));
+    mkdirSync(join(root, 'outside-dir'));
+    writeFileSync(join(root, 'outside-dir/secret'), 'secret');
+    writeFileSync(join(root, 'outside-file'), 'secret');
+    symlinkSync(join(root, 'outside-file'), join(root, 'files/link'));
+    symlinkSync(join(root, 'outside-dir'), join(root, 'files/dirlink'));
+    expect(await b.get('link')).toBeNull();
+    expect(await b.head('link')).toBeNull();
+    expect(await b.get('dirlink/secret')).toBeNull();
+    expect((await b.list()).objects.map((o) => o.key)).toEqual([]);
+    await expect(b.put('dirlink/new', 'x')).rejects.toThrow(InvalidKeyError);
+    expect(existsSync(join(root, 'outside-dir/new'))).toBe(false);
+    await b.delete('dirlink/secret');
+    expect(readFileSync(join(root, 'outside-dir/secret'), 'utf8')).toBe('secret');
+    // Putting over the file symlink replaces the link itself, never its target.
+    await b.put('link', 'mine');
+    expect(readFileSync(join(root, 'outside-file'), 'utf8')).toBe('secret');
+    expect(await (await b.get('link'))?.text()).toBe('mine');
+  });
+
   it('writes atomically: a failed write leaves the old object and no temp file', async () => {
     const b = new DirBucket(join(root, 'files'));
     await b.put('a/b', 'old');
@@ -187,8 +211,11 @@ describe('nightly local backup', () => {
       expect(plain.subarray(0, 15).toString()).toBe('SQLite format 3');
       // The plain snapshot never stays behind.
       expect(readdirSync(join(root, 'tmp'))).toEqual([]);
-      // Not the 1st: no monthly copy.
-      expect(existsSync(join(root, 'backups/monthly'))).toBe(false);
+      // The month's first backup: also kept in monthly/ (not only on the 1st).
+      expect(res.monthly).toBe('monthly/2026-10-18.sqlite.gz.age');
+      expect(readFileSync(join(root, 'backups/monthly/2026-10-18.sqlite.gz.age'))).toEqual(file);
+      // No OFFSITE_OK from the host: partial, and it says why.
+      expect(res.offsite).toBe(false);
       const [run] = await db.all<RunRow>(sql`SELECT * FROM backup_run`);
       expect(run).toMatchObject({
         kind: 'nightly',
@@ -200,7 +227,29 @@ describe('nightly local backup', () => {
       expect(JSON.parse(run?.details ?? '{}')).toMatchObject({
         backup_enabled: true,
         encrypted: true,
+        offsite: false,
       });
+      expect(JSON.parse(run?.targets ?? '[]')[1]).toMatchObject({
+        name: 'offsite',
+        ok: false,
+        detail: expect.stringMatching(/no off-site copy/),
+      });
+      const [note] = await db.all<{ note: string }>(sql`SELECT note FROM backup_run`);
+      expect(note?.note).toMatch(/no off-site copy/);
+      // A second backup the same month: no second monthly copy.
+      const again = await runLocalBackup({
+        sqlite,
+        db,
+        backups,
+        tmpDir: join(root, 'tmp'),
+        ageRecipient: await identityToRecipient(identity),
+        now: () => now + 86_400_000,
+        log: () => {},
+      });
+      expect(again.monthly).toBeNull();
+      expect(readdirSync(join(root, 'backups/monthly')).filter((f) => f.endsWith('.age'))).toEqual([
+        '2026-10-18.sqlite.gz.age',
+      ]);
       const [audit] = await db.all<{ action: string; user_id: string | null }>(
         sql`SELECT action, user_id FROM audit WHERE entity = 'backup_run'`,
       );
@@ -210,7 +259,7 @@ describe('nightly local backup', () => {
     }
   });
 
-  it('on the 1st also writes monthly/; prunes daily/ older than 95 days, keeps monthly/', async () => {
+  it('a new month gets its monthly/ copy; prunes daily/ older than 95 days, keeps monthly/', async () => {
     const { sqlite, db } = migratedDb();
     try {
       const backups = new DirBucket(join(root, 'backups'));
@@ -263,6 +312,88 @@ describe('nightly local backup', () => {
         detail: expect.stringMatching(/not encrypted/),
       });
       expect(await pruneDaily(backups, '2026-11-01')).toEqual([]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it('status ok once the host confirmed an off-site copy in the last 48 h (OFFSITE_OK)', async () => {
+    const { sqlite, db } = migratedDb();
+    try {
+      const backups = new DirBucket(join(root, 'backups'));
+      const now = Date.parse('2026-10-18T02:30:00+05:00');
+      await backups.put(
+        OFFSITE_MARKER,
+        `${new Date(now - 23 * 3_600_000).toISOString()} r2:maktab\n`,
+      );
+      const deps = {
+        sqlite,
+        db,
+        backups,
+        tmpDir: join(root, 'tmp'),
+        rcloneRemote: 'r2:maktab-gsap-backups',
+        now: () => now,
+        log: () => {},
+      };
+      const ok = await runLocalBackup(deps);
+      expect(ok).toMatchObject({ status: 'ok', offsite: true });
+      const [run] = await db.all<RunRow>(sql`SELECT * FROM backup_run`);
+      expect(JSON.parse(run?.details ?? '{}')).toMatchObject({ offsite: true });
+      // Stale marker (3 days): partial again, naming the remote.
+      await backups.put(OFFSITE_MARKER, new Date(now - 72 * 3_600_000).toISOString());
+      const stale = await runLocalBackup(deps);
+      expect(stale).toMatchObject({ status: 'partial', offsite: false });
+      const rows = await db.all<RunRow>(sql`SELECT * FROM backup_run ORDER BY rowid`);
+      expect(JSON.parse(rows[1]?.targets ?? '[]')[1].detail).toMatch(/r2:maktab-gsap-backups/);
+      // Junk in the marker is no confirmation.
+      await backups.put(OFFSITE_MARKER, 'yesterday');
+      expect((await runLocalBackup(deps)).offsite).toBe(false);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it('a backup runs while atomic() writes keep coming, and the copy is consistent', async () => {
+    const { sqlite, db } = migratedDb();
+    try {
+      sqlite.exec('CREATE TABLE _pairs (a INTEGER NOT NULL, b INTEGER NOT NULL)');
+      // Enough pages that the online backup takes several steps.
+      sqlite.exec(
+        'CREATE TABLE _pad (x TEXT); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 4000) INSERT INTO _pad SELECT hex(randomblob(256)) FROM n;',
+      );
+      const backups = new DirBucket(join(root, 'backups'));
+      let stop = false;
+      let writes = 0;
+      const writer = (async () => {
+        while (!stop) {
+          // Two rows that must always appear together.
+          await atomic(db, () => [
+            rawStatement(db, sql`INSERT INTO _pairs (a, b) VALUES (${writes}, 1)`),
+            rawStatement(db, sql`INSERT INTO _pairs (a, b) VALUES (${writes}, 2)`),
+          ]);
+          writes++;
+          await new Promise((r) => setImmediate(r));
+        }
+      })();
+      const snap = await encryptedSnapshot(
+        { sqlite, backups, tmpDir: join(root, 'tmp') },
+        'daily/x',
+      );
+      stop = true;
+      await writer;
+      expect(writes).toBeGreaterThan(0);
+      const copyPath = join(root, 'copy.sqlite');
+      writeFileSync(copyPath, gunzipSync(snap.bytes));
+      const copy = new Database(copyPath, { readonly: true });
+      try {
+        expect(copy.pragma('integrity_check', { simple: true })).toBe('ok');
+        const odd = copy.prepare('SELECT a FROM _pairs GROUP BY a HAVING count(*) <> 2').all() as {
+          a: number;
+        }[];
+        expect(odd).toEqual([]);
+      } finally {
+        copy.close();
+      }
     } finally {
       sqlite.close();
     }
@@ -339,9 +470,41 @@ describe('scheduler', () => {
       // Already attempted today: later ticks do not retry it.
       await s.tick();
       expect(backups).toBe(2);
-      // The daily pass ran on the tick (after 03:00 Karachi): one alarm_event row for the day.
+      // The daily pass ran on the first tick (03:10 Karachi) and only then: one row, today's.
       const events = await db.all<{ day: string }>(sql`SELECT day FROM alarm_event`);
-      expect(events.length).toBeLessThanOrEqual(1);
+      expect(events).toEqual([{ day: '2026-10-18' }]);
+      await s.stop();
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it('the 02:30 timer skips a backup already attempted today; backupNow does not', async () => {
+    const { sqlite, db } = migratedDb();
+    try {
+      let backups = 0;
+      let at = Date.parse('2026-10-18T02:30:00+05:00');
+      const s = startScheduler(
+        {
+          db,
+          backup: async () => {
+            backups++;
+          },
+          hasBackupFor: async () => true,
+          now: () => at,
+          log: () => {},
+        },
+        { autostart: false },
+      );
+      await s.timedBackup();
+      expect(backups).toBe(1);
+      await s.timedBackup();
+      expect(backups).toBe(1);
+      await s.backupNow();
+      expect(backups).toBe(2);
+      at += 86_400_000;
+      await s.timedBackup();
+      expect(backups).toBe(3);
       await s.stop();
     } finally {
       sqlite.close();

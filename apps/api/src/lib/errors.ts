@@ -142,7 +142,16 @@ export function dbConflict(err: unknown): ApiError | null {
   return null;
 }
 
-export function onError(err: Error, c: Context): Response {
+/**
+ * `logError`: where an unexpected error's details go. Default: the whole error to the Workers log
+ * (Workers only; never seen by clients). The self-hosted server passes a one-line logger instead
+ * (docker logs are kept on disk; a drizzle error's message carries the query's parameters).
+ */
+export function onError(
+  err: Error,
+  c: Context,
+  logError: (err: unknown) => void = (e) => console.error(e),
+): Response {
   if (err instanceof ApiError) return c.json(errorBody(err.code, err.message), err.status);
   // Domain refusals from the ledger helpers (@maktab/db): code + status chosen there.
   if (err instanceof FeeError) return c.json(errorBody(err.code, err.message), err.status);
@@ -155,8 +164,8 @@ export function onError(err: Error, c: Context): Response {
   if (err instanceof HTTPException) {
     return c.json(errorBody('http_error', err.message || 'Request rejected'), err.status);
   }
-  // Details go to the Workers log only; clients never see internals.
-  console.error(err);
+  // Details go to the log only; clients never see internals.
+  logError(err);
   return c.json(errorBody('internal', 'Internal error'), 500);
 }
 

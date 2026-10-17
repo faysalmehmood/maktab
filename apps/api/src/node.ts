@@ -8,19 +8,26 @@
  * image). Layout under DATA_DIR: maktab.sqlite (+ -wal/-shm), files/, backups/{daily,monthly}/, tmp/.
  */
 import { mkdirSync } from 'node:fs';
-import { isIP } from 'node:net';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type HttpBindings, type ServerType, serve } from '@hono/node-server';
 import type { AppDb } from '@maktab/db';
-import { applyD1Migrations, drizzleOver, openSqlite, verifySchema } from '@maktab/db/node';
+import {
+  applyD1Migrations,
+  d1MigrationState,
+  drizzleOver,
+  openSqlite,
+  verifySchema,
+} from '@maktab/db/node';
 import type Database from 'better-sqlite3';
 import { createApp } from './app';
 import type { Bindings } from './env';
 import { configWarning } from './lib/config';
 import { errorBody } from './lib/errors';
-import { runLocalBackup } from './node/backup';
+import { checkAgeRecipient, encryptedSnapshot, runLocalBackup } from './node/backup';
 import { DirBucket } from './node/dir-bucket';
+import { logErrorLine } from './node/log';
+import { chooseClientIp, isLoopback, parseTrustedProxies, type TrustedProxies } from './node/proxy';
 import { type Scheduler, startScheduler } from './node/scheduler';
 import { createStaticHandler, type StaticHandler } from './node/static';
 
@@ -51,10 +58,12 @@ export type NodeConfig = {
   migrationsDir: string;
   sqlDir: string;
   version: string;
-  /** Behind the Cloudflare Tunnel: take the client IP from CF-Connecting-IP / X-Forwarded-For. */
-  trustProxy: boolean;
+  /** Peers whose CF-Connecting-IP is believed (TRUST_PROXY_FROM); empty = the socket peer only. */
+  trustedProxies: TrustedProxies;
   scheduler: boolean;
+  /** Required unless allowUnencrypted (checked again at start by encrypting one byte). */
   ageRecipient?: string;
+  allowUnencrypted: boolean;
   rcloneRemote?: string;
   /** The Worker's string bindings, from the environment. */
   vars: Pick<
@@ -103,6 +112,25 @@ export function loadConfig(env: Env = process.env): NodeConfig {
   if (!Number.isInteger(port) || port < 0 || port > 65535)
     throw new ConfigError('PORT is not a port');
   const dataDir = resolve(opt(env, 'DATA_DIR') ?? '/data');
+  const parent = opt(env, 'PARENT_LINK_SECRET');
+  if (parent && parent.length < 32)
+    throw new ConfigError('PARENT_LINK_SECRET is shorter than 32 characters');
+  const ageRecipient = opt(env, 'AGE_RECIPIENT');
+  const allowUnencrypted = env.ALLOW_UNENCRYPTED_BACKUPS === '1';
+  if (!ageRecipient && !allowUnencrypted)
+    throw new ConfigError(
+      'AGE_RECIPIENT is missing: set the backup public key (age1…), or ALLOW_UNENCRYPTED_BACKUPS=1 to store backups unencrypted',
+    );
+  if (ageRecipient && !/^age1[0-9a-z]{20,200}$/.test(ageRecipient))
+    throw new ConfigError('AGE_RECIPIENT is not an age public key (age1…)');
+  if (env.TRUST_PROXY !== undefined)
+    throw new ConfigError('TRUST_PROXY was replaced by TRUST_PROXY_FROM (docs/self-host.md §5)');
+  let trustedProxies: TrustedProxies;
+  try {
+    trustedProxies = parseTrustedProxies(env.TRUST_PROXY_FROM);
+  } catch (err) {
+    throw new ConfigError(err instanceof Error ? err.message : String(err));
+  }
   return {
     port,
     host: opt(env, 'HOST') ?? '0.0.0.0',
@@ -111,13 +139,14 @@ export function loadConfig(env: Env = process.env): NodeConfig {
     migrationsDir: resolve(opt(env, 'MIGRATIONS_DIR') ?? join(REPO_ROOT, 'packages/db/migrations')),
     sqlDir: resolve(opt(env, 'SQL_DIR') ?? join(REPO_ROOT, 'packages/db/sql')),
     version: opt(env, 'MAKTAB_VERSION') ?? 'dev',
-    trustProxy: env.TRUST_PROXY !== '0',
+    trustedProxies,
     scheduler: env.MAKTAB_SCHEDULER !== '0',
-    ageRecipient: opt(env, 'AGE_RECIPIENT'),
+    ageRecipient,
+    allowUnencrypted,
     rcloneRemote: opt(env, 'BACKUP_RCLONE_REMOTE'),
     vars: {
       SESSION_SECRET: session,
-      PARENT_LINK_SECRET: opt(env, 'PARENT_LINK_SECRET'),
+      PARENT_LINK_SECRET: parent,
       GOOGLE_CLIENT_ID: opt(env, 'GOOGLE_CLIENT_ID') ?? '',
       GOOGLE_CLIENT_SECRET: opt(env, 'GOOGLE_CLIENT_SECRET') ?? '',
       APP_ORIGIN: parsed.origin,
@@ -129,32 +158,13 @@ export function loadConfig(env: Env = process.env): NodeConfig {
   };
 }
 
-const normIp = (ip: string | undefined) => {
-  const v = ip?.trim().replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, '');
-  return v && isIP(v) ? v : undefined;
-};
+export { chooseClientIp };
 
 /**
- * The client IP the app sees (rate limits, audit, the parent access log, Turnstile's remoteip): the
- * only thing the proxy headers are trusted for. Behind the tunnel (trustProxy) CF-Connecting-IP,
- * then the first X-Forwarded-For entry, then the socket; otherwise the socket only. The request
- * then carries exactly one `cf-connecting-ip` (the value chosen here) and no X-Forwarded-For, so
- * `clientIp()` in the app cannot be fed a different header than the one chosen.
+ * The request the app sees: exactly one `cf-connecting-ip` (the value chosen by `chooseClientIp`)
+ * and no X-Forwarded-For / X-Real-IP / True-Client-IP, so `clientIp()` in the app cannot be fed a
+ * header a client set.
  */
-export function chooseClientIp(
-  headers: Headers,
-  socketAddr: string | undefined,
-  trustProxy: boolean,
-): string | undefined {
-  if (trustProxy) {
-    const cf = normIp(headers.get('cf-connecting-ip') ?? undefined);
-    if (cf) return cf;
-    const xff = normIp(headers.get('x-forwarded-for')?.split(',')[0]);
-    if (xff) return xff;
-  }
-  return normIp(socketAddr);
-}
-
 function withClientIp(req: Request, ip: string | undefined): Request {
   const headers = new Headers(req.headers);
   headers.delete('x-forwarded-for');
@@ -182,16 +192,59 @@ export type RunningServer = {
   scheduler: Scheduler | null;
   statics: StaticHandler;
   migrationsApplied: string[];
+  /** The pre-migration backup's key in BACKUPS (null when nothing was migrated on an old db). */
+  preMigrate: string | null;
   close: () => Promise<void>;
 };
 
-/** Opens (and migrates, and verifies) the database, then listens. Throws on any start-up problem. */
+/**
+ * Opens (backs up, migrates, verifies) the database, then listens. Throws on any start-up problem.
+ * Before applying migrations to a database that already has some (an upgrade), a full encrypted
+ * copy goes to `backups/pre-migrate/`; if that copy fails nothing is migrated.
+ */
 export async function startServer(config: NodeConfig): Promise<RunningServer> {
+  if (config.ageRecipient) {
+    try {
+      await checkAgeRecipient(config.ageRecipient);
+    } catch (err) {
+      throw new ConfigError(err instanceof Error ? err.message : String(err));
+    }
+  }
+  if (!config.vars.PARENT_LINK_SECRET)
+    console.warn(
+      '[maktab] WARNING: PARENT_LINK_SECRET is not set. Parent links cannot be made or opened until it is (docs/self-host.md §5).',
+    );
+  if (!config.trustedProxies.entries.length)
+    console.warn(
+      '[maktab] TRUST_PROXY_FROM is empty: every request counts as coming from the tunnel container, so the per-IP limits apply to the whole school at once (docs/self-host.md §5).',
+    );
   for (const d of ['files', 'backups', 'tmp'])
     mkdirSync(join(config.dataDir, d), { recursive: true, mode: 0o700 });
+  const backups = new DirBucket(join(config.dataDir, 'backups'));
+  const tmpDir = join(config.dataDir, 'tmp');
   const sqlite = openSqlite(join(config.dataDir, 'maktab.sqlite'));
   let migrationsApplied: string[];
+  let preMigrate: string | null = null;
   try {
+    const state = d1MigrationState(sqlite, config.migrationsDir);
+    if (state.pending.length && state.applied.length) {
+      const last = (state.applied.at(-1) ?? 'none').replace(/\.sql$/, '');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      try {
+        const snap = await encryptedSnapshot(
+          { sqlite, backups, tmpDir, ageRecipient: config.ageRecipient },
+          `pre-migrate/${stamp}-${last}`,
+        );
+        preMigrate = snap.key;
+      } catch (err) {
+        throw new Error(
+          `the backup before migrating failed, so nothing was migrated: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      console.log(
+        `[maktab] ${state.pending.length} migration(s) to apply; database saved first to backups/${preMigrate}`,
+      );
+    }
     migrationsApplied = applyD1Migrations(sqlite, config.migrationsDir);
     const check = verifySchema(sqlite, config.sqlDir);
     if (check.missing.length || check.extra.length) {
@@ -208,7 +261,6 @@ export async function startServer(config: NodeConfig): Promise<RunningServer> {
   }
   const db = drizzleOver(sqlite);
   const files = new DirBucket(join(config.dataDir, 'files'));
-  const backups = new DirBucket(join(config.dataDir, 'backups'));
   const statics = createStaticHandler(config.webDir);
 
   const bindings = {
@@ -222,9 +274,10 @@ export async function startServer(config: NodeConfig): Promise<RunningServer> {
   const warning = configWarning(bindings);
   if (warning) console.warn(warning);
 
-  const { app } = createApp({ getDb: () => db });
+  const { app } = createApp({ getDb: () => db, logError: logErrorLine });
 
-  const health = () => {
+  /** Status and database only; the version only for a peer inside the container. */
+  const health = (peer: string | undefined) => {
     let dbOk = false;
     try {
       dbOk = (sqlite.prepare('SELECT 1 AS ok').get() as { ok: number } | undefined)?.ok === 1;
@@ -232,22 +285,24 @@ export async function startServer(config: NodeConfig): Promise<RunningServer> {
       dbOk = false;
     }
     return Response.json(
-      { status: dbOk ? 'ok' : 'error', version: config.version, db: dbOk ? 'ok' : 'error' },
+      {
+        status: dbOk ? 'ok' : 'error',
+        db: dbOk ? 'ok' : 'error',
+        ...(isLoopback(peer) ? { version: config.version } : {}),
+      },
       { status: dbOk ? 200 : 503, headers: { 'cache-control': 'no-store' } },
     );
   };
 
   const fetchHandler = async (raw: Request, env: HttpBindings): Promise<Response> => {
     const path = new URL(raw.url).pathname;
-    if (path === '/healthz') return health();
+    const peer = env.incoming.socket.remoteAddress;
+    if (path === '/healthz') return health(peer);
     if (path === '/__scheduled')
       return Response.json(errorBody('not_found', `No route for ${raw.method} ${path}`), {
         status: 404,
       });
-    const req = withClientIp(
-      raw,
-      chooseClientIp(raw.headers, env.incoming.socket.remoteAddress, config.trustProxy),
-    );
+    const req = withClientIp(raw, chooseClientIp(raw.headers, peer, config.trustedProxies));
     if (runsWorkerFirst(path)) return app.fetch(req, bindings);
     const asset = await statics.serve(req);
     return asset ?? app.fetch(req, bindings);
@@ -275,7 +330,7 @@ export async function startServer(config: NodeConfig): Promise<RunningServer> {
             sqlite,
             db,
             backups,
-            tmpDir: join(config.dataDir, 'tmp'),
+            tmpDir,
             ageRecipient: config.ageRecipient,
             rcloneRemote: config.rcloneRemote,
           }),
@@ -309,6 +364,7 @@ export async function startServer(config: NodeConfig): Promise<RunningServer> {
     scheduler,
     statics,
     migrationsApplied,
+    preMigrate,
     close,
   };
 }

@@ -591,7 +591,7 @@ describe('student photo (≤ 200 KB, server-side)', () => {
     expect((await got.arrayBuffer()).byteLength).toBe(90 * 1024);
   });
 
-  it('requires a declared image type matching the bytes, and a content-length', async () => {
+  it('requires a declared image type matching the bytes; a chunked body is capped too', async () => {
     const t = await setup();
     const a = await admit(t.api, t.g5a.id);
     const path = `/api/students/${a.body.student_id}/photo`;
@@ -602,7 +602,11 @@ describe('student photo (≤ 200 KB, server-side)', () => {
     expect((await upload(t, path, jpeg(1024), 'image/png')).status).toBe(415);
     expect((await upload(t, path, png(), 'image/jpeg')).status).toBe(415);
     const chunked = await upload(t, path, jpeg(1024), 'image/jpeg', { length: false });
-    expect(chunked.status).toBe(411);
+    expect(chunked.status).toBe(200);
+    const bigChunked = await upload(t, path, jpeg(200 * 1024 + 20 * 1024), 'image/jpeg', {
+      length: false,
+    });
+    expect(bigChunked.status).toBe(413);
     expect((await upload(t, path, png(), 'image/png')).status).toBe(200);
     expect(t.r2.objects.size).toBe(1);
   });

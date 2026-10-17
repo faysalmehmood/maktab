@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
-import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdirSync, realpathSync } from 'node:fs';
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 /**
@@ -93,10 +93,28 @@ const isMissing = (err: unknown) =>
 
 export class DirBucket {
   readonly root: string;
+  private readonly realRoot: string;
 
   constructor(root: string) {
     this.root = resolve(root);
     mkdirSync(this.root, { recursive: true, mode: 0o700 });
+    this.realRoot = realpathSync(this.root);
+  }
+
+  /**
+   * The object's directory, symlinks resolved, is the root or below it. A symlinked directory
+   * planted inside the root (pointing anywhere) makes every key under it "absent" for reads and
+   * refused for writes; nothing in Maktab creates one.
+   */
+  private async parentInside(file: string): Promise<boolean> {
+    let real: string;
+    try {
+      real = await realpath(dirname(file));
+    } catch {
+      return false;
+    }
+    const rel = relative(this.realRoot, real);
+    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
   }
 
   /** Absolute path of a key, checked to stay under the root (belt and braces after keySegments). */
@@ -126,6 +144,7 @@ export class DirBucket {
     const file = this.pathOf(key);
     const bytes = await toBytes(value);
     await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+    if (!(await this.parentInside(file))) throw new InvalidKeyError(key);
     const hm = options.httpMetadata;
     const contentType =
       hm instanceof Headers ? (hm.get('content-type') ?? undefined) : hm?.contentType;
@@ -145,6 +164,7 @@ export class DirBucket {
 
   async head(key: string): Promise<DirObject | null> {
     const file = this.pathOf(key);
+    if (!(await this.parentInside(file))) return null;
     let st: Awaited<ReturnType<typeof lstat>>;
     try {
       // lstat: a symlink is never an object (nothing here makes one; refuse to follow one).
@@ -195,6 +215,7 @@ export class DirBucket {
   async delete(keys: string | string[]): Promise<void> {
     for (const key of Array.isArray(keys) ? keys : [keys]) {
       const file = this.pathOf(key);
+      if (!(await this.parentInside(file))) continue;
       await rm(file, { force: true });
       await rm(this.metaPath(file), { force: true });
     }
