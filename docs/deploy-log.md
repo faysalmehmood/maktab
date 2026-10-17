@@ -257,14 +257,45 @@ installation, **starting empty** (no data copied from the old production databas
 - Walkthrough fixes (A–K + review), anchored dataset (112 students, reseed Mondays and the 1st at
   02:00 PKT) and the README product page are live on both instances.
 
+## 2026-10-15 evening → 2026-10-17: demo cron off; manual reseed with the idempotency fix
+
+- 2026-10-15 evening (owner's decision, PR #5 `1bdd7bd`): the demo runs **no cron at all**
+  (`[env.demo.triggers] crons = []`). Every D1 limit hit raises a Cloudflare alert to the owner, so
+  the nightly undo, the Monday/1st reseed and the idle tick are all off until further notice. The
+  demo keeps whatever visitors change; a reseed is a deliberate manual act (docs/demo.md "Re-deploy
+  and re-seed"). gsap keeps its 30-minute fee cron (~1k reads a day). The 10-15 note above about
+  reseeds "Mondays and the 1st" describes the code path, which is now never scheduled.
+- Found in production 2026-10-17: the demo had 100 messages (absence + notice only), no fee
+  reminders or payment messages. The 10-15 reseed had been cut twice mid-step (CPU limit, then the
+  cron removal) and the `messages` step's "any message exists" check skipped the remaining
+  sub-steps on resume. Fixed in PR #7 `2649bac` (every sub-step idempotent on its own rows; PLAN
+  §15 row 2026-10-17).
+- 2026-10-17 07:39–08:46 UTC: PR #7 merged (`3bcff55`), `wrangler deploy --env demo` (version
+  be403947), `_demo_state.force = 1`, the reseed driven to `done` through `POST /api/demo/step`
+  (160 steps, 67 minutes; the public route answers one step per call). Result: 112 students, 1,058
+  charges, 346 receipts, 524 marks, **184 messages**, 40 parent links, 12 concessions,
+  `ledger_consistency` empty, anchor 2026-10-17, no leftover `force` row. `wrangler d1 info` for the
+  demo DB over the trailing 24 h: 591,189 rows read, 42,221 written; that window also contains the
+  earlier partial drive of the same morning, so the reseed itself stayed inside the ~345k / ~29k
+  budget. Both figures are well under the account's 5M / 100k daily limits; no alert.
+- gsap unchanged (`main` `6975cdb` build of 2026-10-15, migration 0025 applied). Its Google sign-in
+  still answers 500 `misconfigured`: `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are not set on env
+  gsap (`wrangler secret list --env gsap` shows three secrets).
+
 ## Pending (user)
 1. Google Cloud console → the OAuth client → add redirect URI
    `https://maktab-gsap.conceptlix.com/api/auth/google/callback`; then
-   `npx wrangler secret put GOOGLE_CLIENT_ID --env gsap` and `GOOGLE_CLIENT_SECRET` (same client).
+   `pbpaste | npx wrangler secret put GOOGLE_CLIENT_ID --env gsap` and `GOOGLE_CLIENT_SECRET`
+   (same client; `pbpaste |` because a value typed into the prompt is stored empty). Verify:
+   `/api/auth/google/start` redirects to Google.
 2. Tell Shahid Iqbal to sign in at maktab-gsap.conceptlix.com with shahid.ics.pu@gmail.com (he
    becomes owner and runs the setup wizard); then invite thefaysalmehmood@gmail.com if you need
    access to the pilot.
 3. WAF rate-limit rule (docs/deploy.md §7): its expressions name the host; extend the existing rule
    to `maktab-gsap.conceptlix.com` (and keep `maktab.conceptlix.com` for the demo). Turnstile
-   widget hostnames likewise.
-4. M7c pilot gate items now apply to gsap (API token → first nightly run → restore drill).
+   widget hostnames likewise. R2 lifecycle rule on `maktab-backups` (docs/backup.md §4).
+4. M7c pilot gate items now apply to gsap (API token → first nightly run → restore drill);
+   docs/pilot-checklist.md is the tick list.
+5. GitHub account follow-up (not Maktab): the 91 disabled malicious workflow files in the other
+   repositories are still present; deleting them needs a token with the `workflow` scope
+   (`gh auth refresh -h github.com -s workflow`).
