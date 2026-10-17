@@ -38,9 +38,11 @@ Status notes below come from docs/deploy-log.md. They are not ticks: a box is ti
   looks at Settings → Backup
 - [ ] **Backblaze B2 secrets `B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET`, `B2_ENDPOINT`.** Second provider;
   without them every run is "partial". Verify: next run reports OK with two copies. — Maintainer
-- [ ] **R2 lifecycle rule** on bucket `maktab-backups`: prefix `daily/`, delete after **95 days**; no
+- [x] **R2 lifecycle rule** on bucket `maktab-backups`: prefix `daily/`, delete after **95 days**; no
   rule on `monthly/` (docs/backup.md §4). Verify: R2 → maktab-backups → Settings → Object lifecycle
-  rules lists it. — Maintainer
+  rules lists it. — Maintainer. **Done 2026-10-17**: rule `daily-95d` added with
+  `wrangler r2 bucket lifecycle add`; `wrangler r2 bucket lifecycle list maktab-backups` shows it
+  (plus the default multipart-abort rule).
 - [ ] **Restore drill run and recorded.** Protected environment `backup-drill` with `AGE_SECRET_KEY`,
   then Actions → restore-drill → Run workflow (or docs/restore.md §B by hand). Verify: run green
   (tables, triggers, views match; ledger check empty); Settings → Backup → Restore drill → **Record
@@ -54,13 +56,17 @@ Status notes below come from docs/deploy-log.md. They are not ticks: a box is ti
 
 ## 2. Security
 
-- [ ] **Cloudflare WAF rate-limiting rules** (docs/deploy.md "Rate limiting") with the host
+- [x] **Cloudflare WAF rate-limiting rules** (docs/deploy.md "Rate limiting") with the host
   expression `maktab-gsap.conceptlix.com` (the demo keeps its own rules for `maktab.conceptlix.com`;
   extend the existing rules rather than replacing them; pending per deploy-log 2026-10-15):
   `/p*`, `/api/p*` (incl. `/api/p/badge`, `/api/p/logo`) and `/api/identity*` (M7b sign-in page
   identity + logo) 60 requests/min per IP; `/api/auth/*` 20/min per IP; POST `/api/*` 300/min per
   IP. Verify: the three rules are active in the zone's Security → WAF → Rate limiting rules; a quick
-  burst of 70 requests to `/api/p` from one IP gets blocked. — Maintainer
+  burst of 70 requests to `/api/p` from one IP gets blocked. — Maintainer. **Done 2026-10-17** as
+  the free plan's single merged rule (docs/deploy.md §7 "maktab public surfaces"): both hosts,
+  `/p*`, `/api/p*`, `/api/identity*`, `/api/auth*`, 10 requests / 10 s per IP, Block 10 s. Verified
+  on the demo host: 16 requests to `/api/identity` gave 10 × 200 then 6 × 429; `/api/payroll` never
+  429. Rule 3 (POST `/api/*` 300/min) waits for a Pro zone.
 - [ ] **Turnstile** (docs/deploy.md "Turnstile"): widget hostnames include `maktab-gsap.conceptlix.com`
   (the demo's hostname stays on its own widget or entry); site key in `TURNSTILE_SITE_KEY` under
   `[env.gsap.vars]` in `apps/api/wrangler.toml`; secret set with
