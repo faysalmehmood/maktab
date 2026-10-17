@@ -341,10 +341,12 @@ bdi[dir="rtl"][lang="ur"] {
 
 /*
  * Monthly attendance register (pages/attendance/Report.tsx). The page size is set on the whole
- * document while the report is mounted (an injected `@page { size: A4 landscape; margin: 0 }`, as
- * the receipt does), never as a named page on the report alone: that left the hidden app frame on
+ * document while the report is mounted: an unnamed, document-level `@page { size: A4 landscape;
+ * margin: 0 }` injected as a <style> (the receipt injects a named page the same way), never a named page on the report alone: that left the hidden app frame on
  * default pages, a blank sheet before and after (owner feedback 2026-10-17). Margin 0 drops Chrome's
- * header/footer line; the report pads itself instead. 31 day columns + totals fit at 9 px.
+ * header/footer line; the report pads itself instead (a second sheet, for a class over ~45, repeats
+ * the table's header row but starts at the paper's edge: Chrome does not clone the padding). 31 day columns + totals fit at 9 px; rows are 1.15 lines tall in both languages (code
+ * and number cells are Latin, `lang="en"`), so a 40-student class fits one sheet.
  */
 .attendance-report .day-off {
   background: color-mix(in oklab, var(--muted-foreground) 18%, transparent);
@@ -353,6 +355,11 @@ bdi[dir="rtl"][lang="ur"] {
   justify-content: space-around;
   gap: 2rem;
   margin-top: 12mm;
+}
+@media print {
+  .register-signs {
+    margin-top: 6mm;
+  }
 }
 .register-signs span {
   min-width: 60mm;
@@ -368,17 +375,35 @@ bdi[dir="rtl"][lang="ur"] {
     background: white;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
-    gap: 2mm;
+    gap: 1.5mm;
+  }
+  .attendance-report header {
+    padding-bottom: 1mm;
+    gap: 3mm;
+  }
+  .attendance-report header dl {
+    font-size: 10px;
   }
   .attendance-report table {
     font-size: 9px;
     table-layout: auto;
+  }
+  .attendance-report thead {
+    display: table-header-group;
+  }
+  .attendance-report tr {
+    break-inside: avoid;
   }
   .attendance-report th,
   .attendance-report td {
     border: 1px solid #999;
     position: static;
     background: white;
+    line-height: 1.15;
+    padding-block: 0;
+  }
+  .attendance-report [lang="en"] {
+    font-family: var(--font-sans);
   }
   .attendance-report thead tr,
   .attendance-report thead th {

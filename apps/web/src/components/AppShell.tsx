@@ -47,7 +47,7 @@ import { useIsPhone } from '@/lib/media';
 import { useSchool } from '@/lib/queries';
 import { type GrantRef, holds, isTeacherOnly, useRoles } from '@/lib/roles';
 import { setThemePref, THEMES, type ThemePref, useBrand, useThemePref } from '@/lib/theme';
-import { titleOverride } from '@/lib/title';
+import { setShellTitle } from '@/lib/title';
 import { stopTour, tourFor, useActiveTour } from '@/lib/tour';
 import { cn } from '@/lib/utils';
 import { API_CACHE } from '@/offline/api-cache';
@@ -592,8 +592,7 @@ export function AppShell() {
   // Browser tab: short name first (UI plan §6.4).
   useEffect(() => {
     const short = school?.short_name || school?.name;
-    if (titleOverride()) return;
-    document.title = short ? `${short} · ${t('app.name')}` : t('app.name');
+    setShellTitle(short ? `${short} · ${t('app.name')}` : t('app.name'));
   }, [school?.short_name, school?.name, t]);
 
   // Mounted only for a signed-in user (RequireAuth): a sync paused for re-authentication resumes,

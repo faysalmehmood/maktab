@@ -105,9 +105,8 @@ export function GroupsPage() {
   const showRole = roles.includes('teacher');
   const roleOf = (g: GroupDto) => {
     const r = g.my_role;
-    if (r?.class_teacher) return t('group.classTeacher');
-    if (r?.subjects.length) return r.subjects.join(', ');
-    return null;
+    const parts = [...(r?.class_teacher ? [t('group.classTeacher')] : []), ...(r?.subjects ?? [])];
+    return parts.length ? parts.join(', ') : null;
   };
 
   const columns: Column<GroupDto>[] = [

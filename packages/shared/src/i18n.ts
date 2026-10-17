@@ -524,7 +524,7 @@ export const en = {
     workingDaysHint: 'School days this month up to today',
     registersTaken: 'Registers taken: {{n}}',
     presentPerDay: 'Present',
-    legendNone: '– = not taken',
+    legendNone: '– = no mark',
     legendOff: 'Shaded = no school',
     signTeacher: 'Class teacher',
     signPrincipal: 'Principal',

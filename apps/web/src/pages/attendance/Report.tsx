@@ -1,4 +1,4 @@
-import { MARK_STATUSES, type MarkStatus } from '@maktab/shared';
+import { groupLabel, MARK_STATUSES, type MarkStatus } from '@maktab/shared';
 import { Download, Printer } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -72,14 +72,14 @@ export function ReportPage() {
     [r],
   );
   const schoolName = (i18n.language === 'ur' && school?.name_ur) || school?.name || '';
-  const groupLabel = r ? `${r.programme_name} ${r.grp_name}` : '';
+  const label = r ? groupLabel(r.programme_name, r.grp_name) : '';
   const subjectName = perSubject
     ? group?.subjects.find((s) => s.id === subject)?.subject_name
     : undefined;
   useDocumentTitle(
     r
       ? t('attendance.docTitle', {
-          group: groupLabel,
+          group: label,
           month: monthLabel(r.month, i18n.language),
         })
       : null,
@@ -157,7 +157,7 @@ export function ReportPage() {
             <dl className="grid grid-cols-[auto_auto] gap-x-2 text-sm">
               <dt className="text-muted-foreground">{t('attendance.group')}</dt>
               <dd>
-                <bdi>{groupLabel}</bdi>
+                <bdi>{label}</bdi>
                 {subjectName && (
                   <>
                     {' · '}
@@ -174,7 +174,9 @@ export function ReportPage() {
             </dl>
           </header>
           <div className="overflow-x-auto rounded-md border print:overflow-visible print:border-0">
-            <table className="w-full border-collapse text-xs">
+            {/* Days run 01 → 31 left to right in both languages, like a printed calendar (and the
+                student profile's month); names and labels keep their own direction. */}
+            <table dir="ltr" className="w-full border-collapse text-xs">
               <thead>
                 <tr className="bg-muted">
                   <th className="sticky start-0 bg-muted p-1 text-start">{t('attendance.roll')}</th>
@@ -184,6 +186,7 @@ export function ReportPage() {
                   {r.days.map((d) => (
                     <th
                       key={d.date}
+                      lang="en"
                       className={cn(
                         'w-6 p-0.5 text-center font-sans',
                         off.has(d.date) && 'day-off',
@@ -193,17 +196,19 @@ export function ReportPage() {
                     </th>
                   ))}
                   {MARK_STATUSES.map((s) => (
-                    <th key={s} className="p-1 text-center font-sans">
+                    <th key={s} lang="en" className="p-1 text-center font-sans">
                       {t(`attendance.letter.${s}`)}
                     </th>
                   ))}
-                  <th className="p-1 text-center font-sans">%</th>
+                  <th lang="en" className="p-1 text-center font-sans">
+                    %
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {r.rows.map((row) => (
                   <tr key={row.student_id} className="border-t">
-                    <td className="sticky start-0 bg-background p-1">
+                    <td lang="en" className="sticky start-0 bg-background p-1 font-sans">
                       <Num>{row.roll_no ?? ''}</Num>
                     </td>
                     <td className="sticky start-8 bg-background p-1 whitespace-nowrap">
@@ -214,6 +219,7 @@ export function ReportPage() {
                       return (
                         <td
                           key={date || i}
+                          lang="en"
                           className={cn(
                             'p-0.5 text-center font-sans',
                             off.has(date) && 'day-off',
@@ -229,11 +235,11 @@ export function ReportPage() {
                       );
                     })}
                     {MARK_STATUSES.map((s) => (
-                      <td key={s} className="p-1 text-center">
+                      <td key={s} lang="en" className="p-1 text-center font-sans">
                         <Num>{row.counts[s]}</Num>
                       </td>
                     ))}
-                    <td className="p-1 text-center">
+                    <td lang="en" className="p-1 text-center font-sans">
                       <Num>{row.pct ?? '–'}</Num>
                     </td>
                   </tr>
@@ -248,13 +254,14 @@ export function ReportPage() {
                     {r.days.map((d, i) => (
                       <td
                         key={d.date}
+                        lang="en"
                         className={cn('p-0.5 text-center font-sans', off.has(d.date) && 'day-off')}
                       >
                         {d.taken ? <Num>{presentOn[i] ?? 0}</Num> : ''}
                       </td>
                     ))}
                     {MARK_STATUSES.map((s) => (
-                      <td key={s} className="p-1 text-center">
+                      <td key={s} lang="en" className="p-1 text-center font-sans">
                         <Num>{r.rows.reduce((n, row) => n + row.counts[s], 0)}</Num>
                       </td>
                     ))}

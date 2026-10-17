@@ -2082,7 +2082,7 @@ export const ur: Messages & { screens: Shape<typeof screensEn> } = {
     workingDaysHint: 'اس مہینے آج تک اسکول کے دن',
     registersTaken: 'لیے گئے رجسٹر: {{n}}',
     presentPerDay: 'حاضر',
-    legendNone: '– = نہیں لی گئی',
+    legendNone: '– = کوئی نشان نہیں',
     legendOff: 'سایہ دار = چھٹی',
     signTeacher: 'کلاس ٹیچر',
     signPrincipal: 'پرنسپل',

@@ -124,7 +124,7 @@ real family. Phone = 360 px wide (Chrome device mode or a real Android); laptop 
 | onb-11-receipt-58mm | `/receipts/:id?fmt=thermal` | ur | 360 px | 58 mm paper chosen, Print, Share, Send payment-received |
 | onb-12-receipt-a5-ur | `/receipts/:id` (A5, Urdu) print preview | ur | laptop | whole receipt on one A5 page, Nastaliq text, logo |
 | onb-13-attendance-today | `/attendance` | en | 360 px | today's groups with "Not taken" badge |
-| onb-14-register | `/attendance/register/:grpId` | ur | 360 px | students with P/A/L/E marks, Save attendance |
+| onb-14-register | `/attendance/register/:grpId` | ur | 360 px | students with P/A/Lt/Lv marks, Save attendance |
 | onb-15-register-offline | register after saving offline | en | 360 px | "You are offline", "Saved on this phone…", waiting-to-sync count |
 | onb-16-send-queue | `/messages` | ur | 360 px | grouped rows, Urdu preview, Open WhatsApp, Sent & next, a "call instead" row |
 | onb-17-compose-notice | `/messages/compose` | en | laptop | audience choice, en + ur bodies, previews |

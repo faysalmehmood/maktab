@@ -1,7 +1,10 @@
 import 'fake-indexeddb/auto';
 import type { AttendanceReport, GroupDto, RegisterResponse } from '@maktab/shared';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import i18next from 'i18next';
+import { Route, Routes } from 'react-router';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AppShell } from '@/components/AppShell';
 import { initI18n, setLanguage } from '@/i18n';
 import * as ob from '@/offline/outbox';
 import { _reset } from '@/offline/sync';
@@ -101,7 +104,7 @@ describe('register row: the current mark is the word', () => {
     // Auto-width pill, at least 44 px tall: not the old fixed square.
     expect(chip().className).toContain('rounded-full');
     expect(chip().className).toContain('min-h-11');
-    expect(chip().className).toContain('min-w-12');
+    expect(chip().className).toContain('min-w-[5.5rem]');
     expect(chip().className).not.toContain('size-');
     for (const word of ['Absent', 'Late', 'Leave']) {
       fireEvent.click(row);
@@ -219,7 +222,7 @@ describe('monthly register print', () => {
     expect(shaded).toEqual(['04', '11', '14', '18', '25']);
     expect(screen.getByText('Working days: 12')).toBeTruthy();
     expect(screen.getByText('Registers taken: 2')).toBeTruthy();
-    for (const l of ['P = Present', 'A = Absent', 'Lt = Late', 'Lv = Leave'])
+    for (const l of ['P = Present', 'A = Absent', 'Lt = Late', 'Lv = Leave', '– = no mark'])
       expect(screen.getByText(l)).toBeTruthy();
     expect(screen.getByText('Class teacher', { selector: '.register-signs span' })).toBeTruthy();
     expect(screen.getByText('Principal')).toBeTruthy();
@@ -241,6 +244,27 @@ describe('monthly register print', () => {
     expect(pageStyle()).toBeNull();
   });
 
+  it('a language change while the report is open: on leaving, the tab shows the shell title in the new language', async () => {
+    api();
+    const view = renderAt(
+      `/attendance/report?grp=${ids.group}&month=2026-10`,
+      '/*',
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route path="attendance/report" element={<ReportPage />} />
+        </Route>
+      </Routes>,
+      ['teacher'],
+    );
+    await screen.findByRole('table');
+    await waitFor(() => expect(document.title).toBe('Attendance register · Class 5 A · Oct 2026'));
+    await act(() => setLanguage('ur'));
+    await waitFor(() => expect(document.title).toMatch(/^حاضری رجسٹر · /));
+    view.unmount();
+    expect(document.title).toBe(`GSA · ${i18next.t('app.name')}`);
+    expect(i18next.language).toBe('ur');
+  });
+
   it('Urdu: the title and labels in Urdu, codes stay Latin', async () => {
     await act(() => setLanguage('ur'));
     api();
@@ -250,6 +274,8 @@ describe('monthly register print', () => {
     expect(screen.getByText('گلوبل سائنس اکیڈمی')).toBeTruthy();
     expect(screen.getByText('Lt = تاخیر')).toBeTruthy();
     expect(screen.getByText('Lv = رخصت')).toBeTruthy();
+    // Days read 01 → 31 left to right in Urdu too.
+    expect(screen.getByRole('table').getAttribute('dir')).toBe('ltr');
   });
 });
 
@@ -287,7 +313,7 @@ describe('My groups: Your role', () => {
       const tr = within(table).getByText(name).closest('tr') as HTMLElement;
       return tr.querySelectorAll('td')[0]?.textContent;
     };
-    expect(roleOf('Class 5 A')).toBe('Class teacher');
+    expect(roleOf('Class 5 A')).toBe('Class teacher, Maths');
     expect(roleOf('Class 5 B')).toBe('English, Maths');
     expect(roleOf('Class 5 C')).toBe('–');
   });
@@ -307,6 +333,6 @@ describe('My groups: Your role', () => {
     await screen.findByText('Class 5 B');
     expect(document.querySelector('[data-layout="cards"]')).toBeTruthy();
     expect(screen.getAllByText('آپ کا کردار').length).toBe(3);
-    expect(screen.getByText('کلاس ٹیچر', { selector: 'bdi' })).toBeTruthy();
+    expect(screen.getByText('کلاس ٹیچر, Maths', { selector: 'bdi' })).toBeTruthy();
   });
 });

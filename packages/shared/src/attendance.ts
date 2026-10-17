@@ -29,6 +29,10 @@ export type MarkStatus = z.infer<typeof markStatusSchema>;
  * The code a mark prints as on paper and in the CSV (owner feedback 2026-10-17): P, A, Lt, Lv, so
  * Late and Leave are never confused. The stored enum stays P/A/L/E; this is display only.
  */
+/** A group's display label: "Class 5 A". One helper for the CSV, the printed sheet and its tab title. */
+export const groupLabel = (programmeName: string, name: string): string =>
+  `${programmeName} ${name}`.trim();
+
 export const MARK_CODE: Record<MarkStatus, string> = { P: 'P', A: 'A', L: 'Lt', E: 'Lv' };
 
 export const isoDateSchema = z.iso.date();

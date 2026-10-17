@@ -37,9 +37,8 @@ function client(request: ReturnType<typeof testApp>['request'], cookie: string) 
   };
 }
 
-const today = todayPk();
 const daysAgo = (n: number) => {
-  const d = new Date(`${today}T00:00:00Z`);
+  const d = new Date(`${todayPk()}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - n);
   return d.toISOString().slice(0, 10);
 };
@@ -178,6 +177,22 @@ describe('GET /api/groups: my_role', () => {
 });
 
 describe('GET /api/attendance/report: register print data and CSV', () => {
+  it('scope: a subject-only teacher (Maths in 5 A and 5 C) cannot read 5 B, as JSON or CSV', async () => {
+    const s = await setup();
+    const month = todayPk().slice(0, 7);
+    for (const fmt of ['', '&format=csv']) {
+      const r = await s.bApi(
+        'GET',
+        `/api/attendance/report?grp_id=${s.g5b.id}&month=${month}${fmt}`,
+      );
+      expect(r.status, fmt).toBe(404);
+      expect(r.text).not.toContain('Ali');
+    }
+    // Their own group still works.
+    const own = await s.bApi('GET', `/api/attendance/report?grp_id=${s.g5c.id}&month=${month}`);
+    expect(own.status).toBe(200);
+  });
+
   it('non_school_days = holidays + weekly off; working days; class teacher name', async () => {
     const s = await setup();
     expect(
@@ -202,6 +217,18 @@ describe('GET /api/attendance/report: register print data and CSV', () => {
       '2026-02-22',
     ]);
     expect(r.body.working_days).toBe(28 - 5);
+    // A holiday on the weekly day off is one non-school day, not two.
+    expect(
+      (await s.api('POST', '/api/holidays', { date: '2026-02-01', name_en: 'Sunday event' }))
+        .status,
+    ).toBe(201);
+    const again = await s.tApi<AttendanceReport>(
+      'GET',
+      `/api/attendance/report?grp_id=${s.g5a.id}&month=2026-02`,
+    );
+    expect(again.body.non_school_days.filter((d) => d === '2026-02-01')).toEqual(['2026-02-01']);
+    expect(again.body.non_school_days.length).toBe(5);
+    expect(again.body.working_days).toBe(28 - 5);
     // A month still to come has no working days yet.
     const future = await s.tApi<AttendanceReport>(
       'GET',
@@ -209,6 +236,7 @@ describe('GET /api/attendance/report: register print data and CSV', () => {
     );
     expect(future.body.working_days).toBe(0);
     // The current month counts only days up to today.
+    const today = todayPk();
     const now = await s.tApi<AttendanceReport>(
       'GET',
       `/api/attendance/report?grp_id=${s.g5a.id}&month=${today.slice(0, 7)}`,

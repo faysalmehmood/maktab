@@ -36,7 +36,7 @@ export function StatusChip({
         title={word}
         data-solid
         className={cn(
-          'inline-flex min-h-11 min-w-12 shrink-0 items-center justify-center rounded-full px-3 text-[13px] font-semibold whitespace-nowrap',
+          'inline-flex min-h-11 min-w-[5.5rem] shrink-0 items-center justify-center rounded-full px-3 text-[13px] font-semibold whitespace-nowrap',
           STATUS_SOLID[status],
           className,
         )}

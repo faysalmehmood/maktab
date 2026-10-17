@@ -83,7 +83,7 @@ counter and attendance register. The problems are hierarchy, navigation and dens
   row, "Re-open period" on every class.
 - Page titles and card titles are close in size. There is no clear type scale.
 - Dates show as `2026-10-13` and periods as `2026-10`, while date inputs show `13/10/2026`.
-- Status colours are ad hoc Tailwind palette classes. "Not taken" is alarm red. The P/A/L/E chips are
+- Status colours are ad hoc Tailwind palette classes. "Not taken" is alarm red. The P/A/L/E chips (now P/A/Lt/Lv, 2026-10-17) are
   saturated.
 - **Dark mode is not wired.** `.dark` tokens exist in `styles.css` but nothing ever sets the class.
   PLAN §11 promises light and dark.
