@@ -520,7 +520,7 @@ export function RegisterPage() {
                       <bdi className="truncate text-xs text-muted-foreground">{d.note}</bdi>
                     )}
                   </span>
-                  <StatusChip status={d.status} solid className="size-12" />
+                  <StatusChip status={d.status} solid />
                 </button>
                 <Button
                   type="button"

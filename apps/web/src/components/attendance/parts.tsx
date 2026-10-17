@@ -14,8 +14,10 @@ import { cn, isolate } from '@/lib/utils';
  */
 
 /**
- * The coloured letter; the full word is the accessible name. `solid` is the register's current mark
- * (solid fill, white letter); everywhere else it is a soft badge.
+ * A mark in colour. `solid` is the register row's current mark: a solid pill with the full word in
+ * white ("Present", "Late"; owner feedback 2026-10-17: single letters were unclear), at least 44 px
+ * tall. Everywhere else it is a soft square badge with the code (P, A, Lt, Lv) and the word as its
+ * accessible name.
  */
 export function StatusChip({
   status,
@@ -27,29 +29,43 @@ export function StatusChip({
   className?: string;
 }) {
   const { t } = useTranslation();
+  const word = t(`attendance.status.${status}`);
+  if (solid)
+    return (
+      <span
+        title={word}
+        data-solid
+        className={cn(
+          'inline-flex min-h-11 min-w-12 shrink-0 items-center justify-center rounded-full px-3 text-[13px] font-semibold whitespace-nowrap',
+          STATUS_SOLID[status],
+          className,
+        )}
+      >
+        {word}
+      </span>
+    );
   return (
     <span
-      title={t(`attendance.status.${status}`)}
-      data-solid={solid || undefined}
+      title={word}
       className={cn(
         'inline-flex size-11 shrink-0 items-center justify-center rounded-md font-sans text-lg font-bold',
-        (solid ? STATUS_SOLID : STATUS_CLASS)[status],
+        STATUS_CLASS[status],
         className,
       )}
     >
       <span aria-hidden>{t(`attendance.letter.${status}`)}</span>
-      <span className="sr-only">{t(`attendance.status.${status}`)}</span>
+      <span className="sr-only">{word}</span>
     </span>
   );
 }
 
-/** "P 28 · A 2 · L 1 · E 0" with each letter coloured. */
+/** "P 28 · A 2 · Lt 1 · Lv 0" with each code coloured. */
 export function Counts({ counts, className }: { counts: MarkCounts; className?: string }) {
   const { t } = useTranslation();
   return (
     <span className={cn('flex flex-wrap gap-1.5 text-xs', className)}>
       {(['P', 'A', 'L', 'E'] as const).map((s) => (
-        // dir=ltr: reads "P 28" in Urdu too, like the letter on the register button.
+        // dir=ltr: reads "P 28" in Urdu too, like the printed register.
         <span
           key={s}
           dir="ltr"

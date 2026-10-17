@@ -340,24 +340,65 @@ bdi[dir="rtl"][lang="ur"] {
 }
 
 /*
- * Monthly attendance register (pages/attendance/Report.tsx): A4 landscape via a named page, so
- * other printouts (receipts in M3) keep their own size. 31 day columns + totals fit at 9 px.
+ * Monthly attendance register (pages/attendance/Report.tsx). The page size is set on the whole
+ * document while the report is mounted (an injected `@page { size: A4 landscape; margin: 0 }`, as
+ * the receipt does), never as a named page on the report alone: that left the hidden app frame on
+ * default pages, a blank sheet before and after (owner feedback 2026-10-17). Margin 0 drops Chrome's
+ * header/footer line; the report pads itself instead. 31 day columns + totals fit at 9 px.
  */
-@page register {
-  size: A4 landscape;
-  margin: 8mm;
+.attendance-report .day-off {
+  background: color-mix(in oklab, var(--muted-foreground) 18%, transparent);
+}
+.register-signs {
+  justify-content: space-around;
+  gap: 2rem;
+  margin-top: 12mm;
+}
+.register-signs span {
+  min-width: 60mm;
+  border-top: 1px solid #000;
+  padding-top: 1mm;
+  text-align: center;
+  font-size: 10px;
 }
 @media print {
   .attendance-report {
-    page: register;
+    padding: 9mm;
+    color: #111;
+    background: white;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    gap: 2mm;
   }
   .attendance-report table {
     font-size: 9px;
+    table-layout: auto;
   }
   .attendance-report th,
   .attendance-report td {
     border: 1px solid #999;
     position: static;
+    background: white;
+  }
+  .attendance-report thead tr,
+  .attendance-report thead th {
+    background: #eee;
+  }
+  .attendance-report .day-off {
+    background: #d9d9d9;
+  }
+  .attendance-report .register-legend span {
+    color: #111;
+    background: none;
+    box-shadow: none;
+    border: 1px solid #999;
+  }
+  .attendance-report .register-legend .day-off {
+    background: #d9d9d9;
+  }
+  .attendance-report p,
+  .attendance-report dt {
+    color: #111;
   }
   body {
     background: white;

@@ -25,6 +25,12 @@ export const MARK_STATUSES = ['P', 'A', 'L', 'E'] as const;
 export const markStatusSchema = z.enum(MARK_STATUSES);
 export type MarkStatus = z.infer<typeof markStatusSchema>;
 
+/**
+ * The code a mark prints as on paper and in the CSV (owner feedback 2026-10-17): P, A, Lt, Lv, so
+ * Late and Leave are never confused. The stored enum stays P/A/L/E; this is display only.
+ */
+export const MARK_CODE: Record<MarkStatus, string> = { P: 'P', A: 'A', L: 'Lt', E: 'Lv' };
+
 export const isoDateSchema = z.iso.date();
 export const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM');
 
@@ -233,7 +239,10 @@ export type ReportRow = {
   student_id: string;
   roll_no: string | null;
   name: string;
-  /** One per day: P/A/L/E, or '–' when no mark (not taken, not enrolled yet, or a day off). */
+  /**
+   * One per day: the stored status P/A/L/E (the web prints it as P/A/Lt/Lv), or '–' when no mark
+   * (not taken, not enrolled yet, or a day off).
+   */
   cells: string[];
   counts: MarkCounts;
   pct: number | null;
@@ -244,7 +253,12 @@ export type AttendanceReport = {
   programme_name: string;
   month: string;
   grp_subject_id: string;
+  class_teacher_name: string | null;
   days: ReportDay[];
+  /** Dates of the month with no school: listed holidays and the school's weekly day(s) off. */
+  non_school_days: string[];
+  /** School days of the month up to today (Asia/Karachi): not a non-school day, not in the future. */
+  working_days: number;
   rows: ReportRow[];
 };
 
