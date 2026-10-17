@@ -310,3 +310,40 @@ export type FirstWeekDto = {
   register: boolean;
   message: boolean;
 };
+
+/** A group as the Teachers page names it: "<programme> <group>" ("Class 6 A"). */
+export type TeacherGroupRef = { grp_id: string; name: string };
+
+/** One subject a teacher teaches in one group (a `grp_subject` row). */
+export type TeacherSubjectRef = {
+  grp_id: string;
+  grp_name: string;
+  grp_subject_id: string;
+  subject_name: string;
+};
+
+/** GET /api/teachers: one row per teacher (teacher role or any assignment) in the session. */
+export type TeacherRowDto = {
+  staff_id: string;
+  name: string;
+  roles: StaffRole[];
+  /** 'left' only for a former staff member still assigned somewhere (to be replaced). */
+  staff_status: 'active' | 'left';
+  class_teacher_of: TeacherGroupRef[];
+  subjects: TeacherSubjectRef[];
+  /** groups: distinct groups taught (as class or subject teacher); subjects: subject rows. */
+  load: { groups: number; subjects: number };
+};
+
+export type TeachersDto = {
+  /** The session shown (the current one unless `?session_id=`); null when there is none. */
+  session_id: string | null;
+  items: TeacherRowDto[];
+  /** Over the session's open and running groups (a closed group needs no teacher). */
+  warnings: {
+    groups_without_class_teacher: TeacherGroupRef[];
+    subjects_without_teacher: TeacherSubjectRef[];
+    /** Class teacher of two or more school classes (primary groups; batches are not counted). */
+    double_class_teachers: { staff_id: string; name: string; groups: TeacherGroupRef[] }[];
+  };
+};
