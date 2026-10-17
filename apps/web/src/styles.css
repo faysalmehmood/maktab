@@ -431,6 +431,59 @@ bdi[dir="rtl"][lang="ur"] {
 }
 
 /*
+ * Teacher allocation sheet (components/teachers/AllocationPrint.tsx): A4 portrait. The page itself
+ * (`@page teacher-a4`) is injected while printing by the Print button, as receipts do; on screen
+ * the sheet is not shown (the page has the table).
+ */
+.allocation-print {
+  color: #111;
+  background: white;
+  font-family: var(--font-sans);
+  font-size: 10.5pt;
+  line-height: 1.4;
+}
+.allocation-print[lang="ur"] {
+  font-family: var(--font-urdu);
+  line-height: 1.9;
+}
+.allocation-print[lang="ur"] bdi:not(.num) {
+  font-family: var(--font-urdu);
+  direction: rtl;
+}
+.allocation-print table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4mm;
+}
+.allocation-print th,
+.allocation-print td {
+  border: 1px solid #999;
+  padding: 1.5mm 2mm;
+  text-align: start;
+  vertical-align: top;
+}
+.allocation-print th {
+  background: #f1f1f1;
+  font-weight: 600;
+}
+.allocation-print tr {
+  break-inside: avoid;
+}
+.allocation-print .allocation-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8mm;
+  margin-top: 14mm;
+  break-inside: avoid;
+}
+.allocation-print .allocation-sign {
+  min-width: 60mm;
+  border-top: 1px solid #111;
+  padding-top: 1mm;
+  text-align: center;
+}
+
+/*
  * Receipts (components/fees/ReceiptPrint.tsx), from the exp3 print experiment: Nastaliq for Urdu at
  * line-height 2, every number a Latin `.num` run, A5 portrait or 58 mm thermal via named pages (the
  * thermal height is measured at load and injected as `@page receipt-thermal`).

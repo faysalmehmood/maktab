@@ -69,6 +69,7 @@ describe('app shell', () => {
       '/',
       '/students',
       '/groups',
+      '/teachers',
       '/attendance',
       '/messages',
       '/fees',

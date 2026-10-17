@@ -11,6 +11,7 @@ export const shellEn = {
   nav: {
     home: 'Home',
     classes: 'Classes',
+    teachers: 'Teachers',
     messages: 'Messages',
     payroll: 'Payroll',
     more: 'More',
