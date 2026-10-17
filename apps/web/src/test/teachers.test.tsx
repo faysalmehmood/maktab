@@ -5,6 +5,7 @@ import { PEOPLE_ROUTES } from '@/App';
 import { navFor } from '@/components/AppShell';
 import { initI18n, setLanguage } from '@/i18n';
 import { holds } from '@/lib/roles';
+import { setShellTitle } from '@/lib/title';
 import { TeachersPage } from '@/pages/Teachers';
 import { group, mockApi, renderAt, session } from './api-mock';
 
@@ -394,7 +395,7 @@ describe('print', () => {
     api();
     page();
     await screen.findByRole('table', { name: 'Teachers' });
-    document.title = 'ANS · Maktab';
+    setShellTitle('ANS · Maktab');
     fireEvent.click(screen.getByRole('button', { name: 'Print' }));
     expect(document.title).toBe('Teacher allocation 2026-27');
     const style = document.querySelector('style[data-print-page="teacher-a4"]');

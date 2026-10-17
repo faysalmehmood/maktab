@@ -1,6 +1,6 @@
 import type { TeacherRowDto, TeachersDto } from '@maktab/shared';
 import { GraduationCap, Printer } from 'lucide-react';
-import { type ReactNode, useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
 import { type Column, DataTable } from '@/components/data-table';
@@ -26,6 +26,7 @@ import { karachiToday } from '@/lib/fees';
 import { printWhenReady } from '@/lib/print';
 import { useGroups, useSchool, useSessions } from '@/lib/queries';
 import { useTeachers } from '@/lib/teachers';
+import { useDocumentTitle } from '@/lib/title';
 import { isolate } from '@/lib/utils';
 
 type Warn = 'class' | 'subject' | 'double';
@@ -76,27 +77,25 @@ export function TeachersPage() {
     warn === 'double' && doubles.size ? items.filter((r) => doubles.has(r.staff_id)) : items;
   const open = items.find((r) => r.staff_id === params.get('teacher')) ?? null;
 
-  // Title and @page for the printout, restored when printing ends (or the page goes away).
-  const restore = useRef<(() => void) | null>(null);
-  useEffect(() => () => restore.current?.(), []);
-  const print = () => {
-    restore.current?.();
-    const before = document.title;
+  // While printing: the tab title through the shared title helper (Chrome prints it in the header
+  // and offers it as the PDF's name) and the A4 page; both go when printing ends or the page does.
+  const [printing, setPrinting] = useState(false);
+  useDocumentTitle(printing ? t('screens.teachers.printTitle', { session: sessionName }) : null);
+  useEffect(() => {
+    if (!printing) return;
     const style = document.createElement('style');
     style.dataset.printPage = 'teacher-a4';
     style.textContent = PRINT_PAGE;
     document.head.appendChild(style);
-    const done = () => {
-      document.title = before;
-      style.remove();
-      window.removeEventListener('afterprint', done);
-      restore.current = null;
-    };
-    restore.current = done;
+    const done = () => setPrinting(false);
     window.addEventListener('afterprint', done);
-    document.title = t('screens.teachers.printTitle', { session: sessionName });
     void printWhenReady();
-  };
+    return () => {
+      window.removeEventListener('afterprint', done);
+      style.remove();
+    };
+  }, [printing]);
+  const print = () => setPrinting(true);
 
   const columns: Column<TeacherRowDto>[] = [
     {
