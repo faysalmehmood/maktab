@@ -80,7 +80,7 @@ One installation runs one school, with its own data and backups.
 |---|---|
 | **Hosted for your school** | Write to [maktab@conceptlix.com](mailto:maktab@conceptlix.com). |
 | **On Cloudflare's free tier** | Your own Cloudflare account, $0 a month: follow [docs/deploy.md](docs/deploy.md). |
-| **On your own server or homelab** | The code runs on any server with a SQLite file ([ADR 0001](docs/ADR/0001-stack.md)); a ready Docker image is planned next. Ask at the address above if you need it now. |
+| **On your own server or homelab** | One Docker container with a SQLite file and local storage: [docs/self-host.md](docs/self-host.md) (quickstart: `deploy/selfhost/`). |
 
 **Try the demo:** [maktab.conceptlix.com](https://maktab.conceptlix.com), a made-up school with
 one-tap demo sign-ins as principal, accountant or teacher; data resets nightly

@@ -1,8 +1,9 @@
 # The public demo
 
 **https://maktab.conceptlix.com**: a made-up school anyone can open, with no account. The real
-pilot (Global Science Academy) runs on its own installation, **https://maktab-gsap.conceptlix.com**
-(docs/deploy.md). The two share no database, files, secrets or backups.
+pilot (Global Science Academy) runs on its own installation, **https://gsap.conceptlix.com** (self-hosted since 2026-10-17,
+docs/self-host.md; the Cloudflare env `gsap` at https://maktab-gsap.conceptlix.com is a fallback
+only; docs/deploy.md). The two share no database, files, secrets or backups.
 
 ## What it is
 
@@ -256,7 +257,10 @@ links use `PARENT_LINK_SECRET` from `apps/api/.dev.vars`. To see the demo UI loc
 - **Demo** (maktab.conceptlix.com): nothing to do. The redirect URI
   `https://maktab.conceptlix.com/api/auth/google/callback` is already on the OAuth client, and the
   demo buttons need no Google at all.
-- **GSA pilot** (maktab-gsap.conceptlix.com): two steps the owner must do by hand.
+- **GSA pilot** (gsap.conceptlix.com, self-hosted since 2026-10-17): add the redirect URI
+  `https://gsap.conceptlix.com/api/auth/google/callback` and put the client's values in the
+  server's `gsap/.env` (docs/self-host.md §4). For the Cloudflare fallback (maktab-gsap.conceptlix.com,
+  only if it is used again), two steps by hand:
   1. In Google Cloud console, open APIs & Services → Credentials → the OAuth client and add the
      authorised redirect URI `https://maktab-gsap.conceptlix.com/api/auth/google/callback`.
   2. Set that Worker's client secrets:

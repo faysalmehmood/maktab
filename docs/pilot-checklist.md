@@ -11,10 +11,14 @@ docs/PLAN.md.
 
 M7b prerequisite: met. PLAN §15 records M7b closed on 2026-10-13 (parts 1 and 2 merged and live).
 
-Pilot (Global Science Academy): https://maktab-gsap.conceptlix.com · Worker env `gsap` · D1
-`maktab-gsap` · R2 `maktab-gsap-files` · backups bucket `maktab-backups` · owner
-shahid.ics.pu@gmail.com · repo `faysalmehmood/maktab` · runbooks: docs/deploy.md, docs/backup.md,
-docs/restore.md, docs/android-checks.md. The public demo (https://maktab.conceptlix.com, env `demo`,
+Pilot (Global Science Academy): **https://gsap.conceptlix.com**, self-hosted on the owner's homelab
+(Docker, `/srv/homelab/maktab/gsap/`, Cloudflare Tunnel; docs/self-host.md) since 2026-10-17 · owner
+shahid.ics.pu@gmail.com · repo `faysalmehmood/maktab` · runbooks: docs/self-host.md, docs/deploy.md,
+docs/backup.md, docs/restore.md, docs/android-checks.md. The Cloudflare Worker env `gsap`
+(https://maktab-gsap.conceptlix.com, D1 `maktab-gsap`, R2 `maktab-gsap-files`) is a fallback only and,
+once the homelab is live, not what the GitHub backup workflows protect for the pilot. Items below
+written for the Worker (wrangler secrets, GitHub backup) apply to the fallback; for the pilot the
+same settings live in `gsap/.env` and the nightly backup is the server's own (docs/self-host.md §7). The public demo (https://maktab.conceptlix.com, env `demo`,
 fictional data, no backups) is a separate instance and is out of scope for this gate.
 
 Status notes below come from docs/deploy-log.md. They are not ticks: a box is ticked only once its
@@ -57,7 +61,8 @@ Status notes below come from docs/deploy-log.md. They are not ticks: a box is ti
 ## 2. Security
 
 - [x] **Cloudflare WAF rate-limiting rules** (docs/deploy.md "Rate limiting") with the host
-  expression `maktab-gsap.conceptlix.com` (the demo keeps its own rules for `maktab.conceptlix.com`;
+  expression `maktab-gsap.conceptlix.com` (**to do since 2026-10-17: add `gsap.conceptlix.com`**,
+  the self-hosted pilot) (the demo keeps its own rules for `maktab.conceptlix.com`;
   extend the existing rules rather than replacing them; pending per deploy-log 2026-10-15):
   `/p*`, `/api/p*` (incl. `/api/p/badge`, `/api/p/logo`) and `/api/identity*` (M7b sign-in page
   identity + logo) 60 requests/min per IP; `/api/auth/*` 20/min per IP; POST `/api/*` 300/min per
@@ -67,7 +72,8 @@ Status notes below come from docs/deploy-log.md. They are not ticks: a box is ti
   `/p*`, `/api/p*`, `/api/identity*`, `/api/auth*`, 10 requests / 10 s per IP, Block 10 s. Verified
   on the demo host: 16 requests to `/api/identity` gave 10 × 200 then 6 × 429; `/api/payroll` never
   429. Rule 3 (POST `/api/*` 300/min) waits for a Pro zone.
-- [ ] **Turnstile** (docs/deploy.md "Turnstile"): widget hostnames include `maktab-gsap.conceptlix.com`
+- [ ] **Turnstile** (docs/deploy.md "Turnstile"): widget hostnames include `gsap.conceptlix.com`
+  (self-hosted: both keys in `gsap/.env`) and `maktab-gsap.conceptlix.com`
   (the demo's hostname stays on its own widget or entry); site key in `TURNSTILE_SITE_KEY` under
   `[env.gsap.vars]` in `apps/api/wrangler.toml`; secret set with
   `npx wrangler secret put TURNSTILE_SECRET --env gsap`; Worker redeployed. Verify:
@@ -81,9 +87,10 @@ Status notes below come from docs/deploy-log.md. They are not ticks: a box is ti
   one value); `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are NOT set on gsap as of 2026-10-17
   (`wrangler secret list --env gsap` shows three secrets; sign-in answers 500), see the redirect item
   below; `TURNSTILE_SECRET` is covered by the Turnstile item. — Maintainer
-- [ ] **Google OAuth redirect URI for gsap.** `https://maktab-gsap.conceptlix.com/api/auth/google/callback`
-  added to the OAuth client, then `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` set with
-  `npx wrangler secret put <NAME> --env gsap`. Verify: `/api/auth/google/start` redirects to Google
+- [ ] **Google OAuth redirect URI for gsap.** `https://gsap.conceptlix.com/api/auth/google/callback`
+  added to the OAuth client, then `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` set in
+  `/srv/homelab/maktab/gsap/.env` (docs/self-host.md §4; the Cloudflare fallback would need
+  `https://maktab-gsap.conceptlix.com/api/auth/google/callback` and `wrangler secret put … --env gsap`). Verify: `/api/auth/google/start` redirects to Google
   instead of answering 500 `misconfigured`. Status: listed as pending in deploy-log 2026-10-15;
   record the date here once done. — Maintainer
 - [ ] **Google OAuth consent screen published** (not "Testing"), scopes openid/email/profile only.

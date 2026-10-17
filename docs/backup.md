@@ -10,6 +10,12 @@ Five layers, each independent of the others:
 | 4 | Homelab pull of the encrypted files (rclone) | a volunteer's machine | optional |
 | 5 | "Download everything" (CSV ZIP + schema.sql) | the owner's device | Settings → Backup |
 
+**Self-hosted installations** (the GSA pilot on the homelab since 2026-10-17) do not use the GitHub
+workflow: the server makes its own nightly age-encrypted SQLite backup into its data folder and
+records it for Settings → Backup; see docs/self-host.md §7 (an off-site copy is still to be added).
+The workflows below keep exporting the Cloudflare D1 of the Worker env `gsap`
+(maktab-gsap.conceptlix.com), which is a fallback only once the homelab is live.
+
 Settings → Backup (owner) shows the last nightly run, the newest files in the bucket, the alarms,
 "Download everything", the Time Travel note and the restore-drill checklist. Restoring: `docs/restore.md`.
 
@@ -37,7 +43,7 @@ private key never goes to GitHub (except the protected drill environment below),
 | `BACKUP_REPORT_TOKEN` | secret | the same random value as the Worker secret of that name (step 3) |
 | `B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET`, `B2_ENDPOINT` | secrets | optional Backblaze B2 copy (S3 endpoint, e.g. `https://s3.us-west-004.backblazeb2.com`) |
 | `GOOGLE_SA_JSON`, `SHEET_ID` | secrets | optional Google Sheet copy (section 6) |
-| `APP_URL` | variable | optional; default `https://maktab-gsap.conceptlix.com` |
+| `APP_URL` | variable | optional; default `https://maktab-gsap.conceptlix.com` (the Cloudflare fallback; the self-hosted pilot at gsap.conceptlix.com records its own runs) |
 | `BACKUP_R2_BUCKET` | variable | optional; default `maktab-backups` (both workflows) |
 | `BACKUP_ALLOW_SHRINK` | variable | optional; `true` accepts a dump less than half the previous size (section 5); remove it again afterwards |
 
@@ -157,6 +163,8 @@ Recycle bin & data): parent-page access log older than the chosen number of days
 table, within a 10-second budget) and leaves any remainder for the next day.
 
 ## 9. Homelab pull (optional)
+
+(For a self-hosted installation the backups are already on the homelab: docs/self-host.md §7.)
 
     rclone copy r2:maktab-backups/daily ~/backups/maktab/daily --max-age 3d
 
