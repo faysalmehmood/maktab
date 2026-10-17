@@ -309,9 +309,10 @@ through the existing Cloudflare Tunnel; the demo stays on Cloudflare; the Worker
 - `apps/api/src/node.ts`: the same `createApp` on `@hono/node-server`, better-sqlite3 (one connection,
   WAL, busy_timeout, foreign keys), wrangler-compatible migrations on start (`d1_migrations`), the
   `db:verify` trigger/view check (refuses to start on a difference), Workers-Static-Assets behaviour
-  for `apps/web/dist` (`_headers` parsed, SPA fallback, immutable hashed assets), `/healthz`,
-  `/__scheduled` 404, client IP from CF-Connecting-IP / X-Forwarded-For only for rate limits and logs,
-  refuses `DEMO_MODE` or a missing `SESSION_SECRET`.
+  for `apps/web/dist` (`_headers` parsed, every unmatched path answers index.html like the live
+  deploy, immutable hashed assets, content-hash ETags), `/healthz`, `/__scheduled` 404, client IP
+  from CF-Connecting-IP only when the peer is in `TRUST_PROXY_FROM`, a pre-migration backup on every
+  upgrade; refuses `DEMO_MODE`, a missing `SESSION_SECRET` or `AGE_RECIPIENT`.
 - Local file store standing in for R2 (`FILES` = `data/files`, `BACKUPS` = `data/backups`); in-process
   cron (every 30 min, `runScheduled` + `runDailyOps`) and a nightly 02:30 PKT age-encrypted SQLite
   backup recorded like `POST /api/backup/runs`.
@@ -320,12 +321,14 @@ through the existing Cloudflare Tunnel; the demo stays on Cloudflare; the Worker
   `scripts/selfhost-smoke.sh` (passed on the Mac, native arm64 build).
 - Not done yet (owner, on the homelab): clone to `/srv/homelab/maktab/src`, `install.sh gsap`, fill
   `gsap/.env`, add the tunnel public hostname `gsap.conceptlix.com -> http://maktab-gsap:8787`, the
-  Google redirect URI, `gsap.conceptlix.com` in the WAF rule; an off-site copy of `data/backups/`.
+  Google redirect URI, `gsap.conceptlix.com` in the WAF rule (deployed already as
+  `http.host in {…}`), and the host's off-site rclone copy (docs/self-host.md §7.2, required).
 
 ## Pending (user)
-1. Self-hosted pilot (docs/self-host.md): on the homelab clone the repo to `/srv/homelab/maktab/src`,
-   `sudo src/deploy/selfhost/install.sh gsap`, fill `gsap/.env` (`APP_ORIGIN=https://gsap.conceptlix.com`,
-   Google client, `AGE_RECIPIENT`), tunnel public hostname `gsap.conceptlix.com -> http://maktab-gsap:8787`,
+1. Self-hosted pilot (docs/self-host.md): on the homelab, as uid 1000, clone the repo to
+   `/srv/homelab/maktab/src`, run `src/deploy/selfhost/install.sh gsap` twice (it creates
+   `gsap/.env` first), fill `gsap/.env` (`APP_ORIGIN=https://gsap.conceptlix.com`,
+   Google client, `AGE_RECIPIENT`, `BACKUP_RCLONE_REMOTE`), the off-site rclone cron (§7.2), tunnel public hostname `gsap.conceptlix.com -> http://maktab-gsap:8787`,
    Google Cloud console redirect URI `https://gsap.conceptlix.com/api/auth/google/callback`, and add
    `gsap.conceptlix.com` to the WAF rule "maktab public surfaces". Verify: `/api/auth/google/start`
    redirects to Google. (The Worker env `gsap` at maktab-gsap.conceptlix.com is a fallback only; it

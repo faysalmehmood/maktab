@@ -61,8 +61,8 @@ Status notes below come from docs/deploy-log.md. They are not ticks: a box is ti
 ## 2. Security
 
 - [x] **Cloudflare WAF rate-limiting rules** (docs/deploy.md "Rate limiting") with the host
-  expression `maktab-gsap.conceptlix.com` (**to do since 2026-10-17: add `gsap.conceptlix.com`**,
-  the self-hosted pilot) (the demo keeps its own rules for `maktab.conceptlix.com`;
+  expression `http.host in {"maktab.conceptlix.com" "maktab-gsap.conceptlix.com" "gsap.conceptlix.com"}`
+  (the self-hosted pilot's host included, as deployed on 2026-10-17) (the demo keeps its own rules for `maktab.conceptlix.com`;
   extend the existing rules rather than replacing them; pending per deploy-log 2026-10-15):
   `/p*`, `/api/p*` (incl. `/api/p/badge`, `/api/p/logo`) and `/api/identity*` (M7b sign-in page
   identity + logo) 60 requests/min per IP; `/api/auth/*` 20/min per IP; POST `/api/*` 300/min per

@@ -12,7 +12,7 @@ Five layers, each independent of the others:
 
 **Self-hosted installations** (the GSA pilot on the homelab since 2026-10-17) do not use the GitHub
 workflow: the server makes its own nightly age-encrypted SQLite backup into its data folder and
-records it for Settings → Backup; see docs/self-host.md §7 (an off-site copy is still to be added).
+records it for Settings → Backup; see docs/self-host.md §7 (the off-site copy is the host's nightly rclone job, §7.2, required; the `backup_offsite` alarm fires without it).
 The workflows below keep exporting the Cloudflare D1 of the Worker env `gsap`
 (maktab-gsap.conceptlix.com), which is a fallback only once the homelab is live.
 

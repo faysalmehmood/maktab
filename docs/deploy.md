@@ -136,14 +136,13 @@ Match paths precisely, never with a bare `starts_with(path, "/p")` (that would a
 
 | # | Rule name | If incoming requests match (expression) | Characteristics | Rate | Action | Duration |
 |---|---|---|---|---|---|---|
-| 1 | maktab parent page | `(http.host eq "maktab-gsap.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
-| 2 | maktab sign-in | `(http.host eq "maktab-gsap.conceptlix.com" and ((http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 20 requests / 1 minute | Block (429) | 1 minute |
-| 3 | maktab API writes | `(http.host eq "maktab-gsap.conceptlix.com" and http.request.method eq "POST" and starts_with(http.request.uri.path, "/api/"))` | IP | 300 requests / 1 minute | Block (429) | 1 minute |
+| 1 | maktab parent page | `(http.host in {"maktab.conceptlix.com" "maktab-gsap.conceptlix.com" "gsap.conceptlix.com"} and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/")))` | IP | 60 requests / 1 minute | Block (429) | 1 minute |
+| 2 | maktab sign-in | `(http.host in {"maktab.conceptlix.com" "maktab-gsap.conceptlix.com" "gsap.conceptlix.com"} and ((http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 20 requests / 1 minute | Block (429) | 1 minute |
+| 3 | maktab API writes | `(http.host in {"maktab.conceptlix.com" "maktab-gsap.conceptlix.com" "gsap.conceptlix.com"} and http.request.method eq "POST" and starts_with(http.request.uri.path, "/api/"))` | IP | 300 requests / 1 minute | Block (429) | 1 minute |
 
-**Hosts:** every expression lists the pilot's host. Since 2026-10-17 that is `gsap.conceptlix.com`
-(self-hosted, via the tunnel; tunnel traffic passes the zone's WAF): the rule "maktab public
-surfaces" must gain `gsap.conceptlix.com` next to the hosts it already has, e.g.
-`(http.host in {"gsap.conceptlix.com" "maktab-gsap.conceptlix.com" "maktab.conceptlix.com"} and (…))`.
+**Hosts:** every expression covers all three Maktab hosts (the demo, the Cloudflare fallback and,
+since 2026-10-17, the self-hosted pilot `gsap.conceptlix.com`, whose tunnel traffic passes the
+zone's WAF like any other). That is the set deployed in the merged rule below.
 
 **Free plan: one rule only** (and a 10 s period, so "60 / 1 minute" becomes "10 / 10 seconds", and
 "20 / 1 minute" becomes "4 / 10 seconds" — Cloudflare counts per period). Rules 1 and 2 cannot keep
@@ -152,7 +151,7 @@ sign-in rate and record it in docs/deploy-log.md:
 
 | Rule name | Expression | Characteristics | Rate | Action | Duration |
 |---|---|---|---|---|---|
-| maktab public surfaces | `(http.host eq "maktab-gsap.conceptlix.com" and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/") or (http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 10 requests / 10 seconds | Block (429) | 10 seconds |
+| maktab public surfaces | `(http.host in {"maktab.conceptlix.com" "maktab-gsap.conceptlix.com" "gsap.conceptlix.com"} and ((http.request.uri.path eq "/p") or starts_with(http.request.uri.path, "/p/") or (http.request.uri.path eq "/api/p") or starts_with(http.request.uri.path, "/api/p/") or (http.request.uri.path eq "/api/identity") or starts_with(http.request.uri.path, "/api/identity/") or (http.request.uri.path eq "/api/auth") or starts_with(http.request.uri.path, "/api/auth/")))` | IP | 10 requests / 10 seconds | Block (429) | 10 seconds |
 
 A parent page load is about 3–4 requests (shell, `/api/p`, the logo, a gate attempt) and a sign-in
 is 2–3, so 10 per 10 s per IP leaves room for a whole office on one NAT IP; the Worker's own per-IP
