@@ -82,6 +82,7 @@ export const backupUr: Shape<typeof backupEn> = {
       gate_lockouts: 'والدین کے صفحے کی بندشیں (پچھلے 24 گھنٹے)',
       billing_attention: 'کسی گروپ کی ماہانہ فیس بن نہیں رہی',
       backup_stale: 'رات کا بیک اپ نہیں چل رہا',
+      backup_offsite: 'بیک اپ کی کوئی کاپی سرور سے باہر نہیں',
     },
     hints: {
       ledger_consistency:
@@ -93,6 +94,8 @@ export const backupUr: Shape<typeof backupEn> = {
         'فیس بنانے کا صفحہ کھولیں اور اس گروپ کے لیے "بنائیں" دبا کر خرابی دیکھیں۔',
       backup_stale:
         '{{date}} کے بعد سے بیک اپ نہیں بنا؛ GitHub Actions (nightly-backup ورک فلو) اور Cloudflare API ٹوکن جانچیں۔',
+      backup_offsite:
+        'بیک اپ صرف اسی سرور پر ہیں (سرور سے باہر آخری کاپی: {{date}})۔ آگ یا خراب ڈسک سے یہ ضائع ہو سکتے ہیں: سرور سے باہر کاپی کا انتظام کریں (docs/self-host.md)۔',
     },
     banner: '{{count}} انتباہ توجہ چاہتے ہیں',
     open: 'انتباہات کھولیں',

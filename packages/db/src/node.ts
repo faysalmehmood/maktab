@@ -43,14 +43,16 @@ export const D1_MIGRATIONS_TABLE = 'd1_migrations';
 
 /**
  * One better-sqlite3 connection for a long-running server: WAL (readers never block the writer),
- * a 5 s busy timeout (the backup or a CLI `sqlite3` holding a lock briefly), foreign keys on as on D1
- * and in the tests.
+ * a 5 s busy timeout (the backup or a CLI `sqlite3` holding a lock briefly), synchronous FULL (a
+ * commit survives a power cut), foreign keys on as on D1 and in the tests.
  */
 export function openSqlite(path: string): Database.Database {
   const sqlite = new Database(path);
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('busy_timeout = 5000');
-  sqlite.pragma('synchronous = NORMAL');
+  // FULL, not NORMAL: with WAL, NORMAL can lose the last commits on a power cut, and load-shedding
+  // is routine; a receipt that was printed must still be in the database afterwards.
+  sqlite.pragma('synchronous = FULL');
   sqlite.pragma('foreign_keys = ON');
   return sqlite;
 }
@@ -89,6 +91,25 @@ export function migrationNames(dir: string): string[] {
  * IMMEDIATE … COMMIT, ROLLBACK on any error, so a failed migration leaves nothing behind and is
  * retried on the next start. Idempotent: a second call applies nothing.
  */
+/** Names already recorded in d1_migrations (in order) and the files still to apply. */
+export function d1MigrationState(
+  sqlite: Database.Database,
+  dir = MIGRATIONS_DIR,
+): { applied: string[]; pending: string[] } {
+  const has = sqlite
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(D1_MIGRATIONS_TABLE);
+  const applied = has
+    ? (
+        sqlite.prepare(`SELECT name FROM ${D1_MIGRATIONS_TABLE} ORDER BY id`).all() as {
+          name: string;
+        }[]
+      ).map((r) => r.name)
+    : [];
+  const done = new Set(applied);
+  return { applied, pending: migrationNames(dir).filter((n) => !done.has(n)) };
+}
+
 export function applyD1Migrations(sqlite: Database.Database, dir = MIGRATIONS_DIR): string[] {
   sqlite.exec(`CREATE TABLE IF NOT EXISTS ${D1_MIGRATIONS_TABLE}(
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
