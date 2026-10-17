@@ -21,6 +21,7 @@ import { MonthInput } from '@/components/month-input';
 import {
   EmptyState,
   GoLink,
+  ListSkeleton,
   Mny,
   Page,
   PageHeader,
@@ -40,8 +41,16 @@ import {
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { getJson } from '@/lib/api';
-import { canConcession, canGenerate, headLabel, karachiToday } from '@/lib/fees';
-import { useGroups } from '@/lib/queries';
+import {
+  canConcession,
+  canGenerate,
+  defaultRegisterGroup,
+  headLabel,
+  karachiToday,
+  rememberedRegisterGroup,
+  rememberRegisterGroup,
+} from '@/lib/fees';
+import { useGroups, useMyGroups, useSchool } from '@/lib/queries';
 import { useRoles } from '@/lib/roles';
 import '@/i18n/screens';
 
@@ -49,14 +58,35 @@ type RegisterRow = FeeLineDto & { father_name: string | null; roll_no: string | 
 type RegisterDto = { rows: RegisterRow[]; totals: Record<string, number> };
 
 /**
- * PLAN §14.11 fee register: one group × one month, print-ready, CSV from the API. Nothing is
- * fetched until a class is chosen, so the page asks for one instead of showing a blank table.
+ * PLAN §14.11 fee register: one group × one month, print-ready, CSV from the API. It opens on a
+ * class: the one picked last time on this device, else a teacher's first own group, else the first
+ * group; only an installation with no groups at all is asked to choose one.
  */
 export function FeeRegisterPage() {
   const { t, i18n } = useTranslation();
   const roles = useRoles();
-  const groups = useGroups().data?.items ?? [];
-  const [grp, setGrp] = useState('');
+  const groupsQ = useGroups();
+  const groups = groupsQ.data?.items ?? [];
+  const teacher = roles.includes('teacher');
+  const mine = useMyGroups(teacher);
+  const school = useSchool();
+  const schoolId = school.data?.school?.id ?? null;
+  // The user's pick on this visit; until then the default class (decided once the reads answer).
+  const [picked, setPicked] = useState<string | null>(null);
+  const deciding = groupsQ.isPending || school.isPending || (teacher && mine.isPending);
+  const grp =
+    picked ??
+    (deciding
+      ? ''
+      : defaultRegisterGroup(
+          groups,
+          schoolId ? rememberedRegisterGroup(schoolId) : null,
+          mine.data?.items,
+        ));
+  const pick = (id: string) => {
+    setPicked(id);
+    if (schoolId && id) rememberRegisterGroup(schoolId, id);
+  };
   const [period, setPeriod] = useState(karachiToday().slice(0, 7));
   const validPeriod = /^\d{4}-\d{2}$/.test(period);
   const q = useQuery({
@@ -141,8 +171,13 @@ export function FeeRegisterPage() {
       <FeesTabs />
       <Panel bodyClassName="grid gap-3 p-4 sm:grid-cols-2 print:hidden" id="register-choose">
         <Field id="register-group" label="fee.col.group">
-          <Select id="register-group" value={grp} onChange={(e) => setGrp(e.target.value)}>
-            <option value="">{t('screens.fees.chooseClass')}</option>
+          <Select
+            id="register-group"
+            value={grp}
+            disabled={deciding}
+            onChange={(e) => pick(e.target.value)}
+          >
+            {!grp && <option value="">{t('screens.fees.chooseClass')}</option>}
             {groups.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.programme_name} {g.name}
@@ -161,7 +196,11 @@ export function FeeRegisterPage() {
         </p>
       )}
       <ErrorNote error={q.error} />
-      {!grp ? (
+      {deciding ? (
+        <Panel>
+          <ListSkeleton rows={4} />
+        </Panel>
+      ) : !grp ? (
         <Panel>
           <EmptyState
             icon={TableProperties}

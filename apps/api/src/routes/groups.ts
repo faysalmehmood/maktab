@@ -139,8 +139,14 @@ export function groupRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     const db = c.get('db');
     const scope = await groupScope(c);
     const q = c.req.query();
+    // `mine=1`: only groups the caller is class or subject teacher of (a teacher who also holds an
+    // office role sees every group otherwise). Always inside the read scope above.
+    const own = q.mine === '1' ? await scopeToGroups(db, userId(c), 'own_groups') : null;
+    const mine = own?.kind === 'groups' ? own.ids : undefined;
+    if (mine && !mine.length) return c.json({ items: [] });
     const where = and(
       groupFilter(grp.id, scope),
+      mine ? inArray(grp.id, mine) : undefined,
       // Archived groups (recycle bin, M6) are out of every list unless asked for.
       q.archived === '1' ? undefined : isNull(grp.archivedAt),
       q.session_id ? eq(grp.sessionId, q.session_id) : undefined,
