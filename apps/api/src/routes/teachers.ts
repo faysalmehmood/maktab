@@ -8,6 +8,7 @@ import type {
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import type { AppEnv } from '../env';
+import { notFoundError } from '../lib/http';
 import { defineRoute, type RouteTable, requires } from '../perm/routes';
 import { loadGroups } from './groups';
 import { staffRows } from './staff';
@@ -26,7 +27,13 @@ export function teacherRoutes(app: Hono<AppEnv>, table: RouteTable): void {
     const db = c.get('db');
     const asked = c.req.query('session_id');
     let sessionId: string | null = asked || null;
-    if (!sessionId) {
+    if (sessionId) {
+      const [known] = await db
+        .select({ id: session.id })
+        .from(session)
+        .where(eq(session.id, sessionId));
+      if (!known) throw notFoundError('Session');
+    } else {
       const [cur] = await db
         .select({ id: session.id })
         .from(session)
@@ -69,6 +76,8 @@ export function teacherRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         const sub: TeacherSubjectRef = {
           grp_id: g.id,
           grp_name: ref(g).name,
+          programme_name: g.programme_name,
+          group_name: g.name,
           grp_subject_id: s.id,
           subject_name: s.subject_name,
         };
@@ -83,9 +92,13 @@ export function teacherRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       const classes = classOf.get(p.staff_id) ?? [];
       const subjects = subjectsOf.get(p.staff_id) ?? [];
       const assigned = classes.length > 0 || subjects.length > 0;
-      // Active teachers (with or without work yet), and anyone still holding an assignment,
-      // including someone who has left: their groups still need a new teacher.
-      if (!assigned && !(p.staff_status === 'active' && p.roles.includes('teacher'))) continue;
+      // Every active staff profile that may teach: teachers, owners, and profiles with no login
+      // yet (so the owner can give them their first class here), but not someone who is only
+      // office staff (accountant and/or admin). Plus anyone still holding an assignment,
+      // including someone who has left: their classes still need a new teacher.
+      const officeOnly =
+        p.roles.length > 0 && p.roles.every((r) => r === 'accountant' || r === 'admin');
+      if (!assigned && (p.staff_status !== 'active' || officeOnly)) continue;
       items.push({
         staff_id: p.staff_id,
         name: p.name,
@@ -95,7 +108,7 @@ export function teacherRoutes(app: Hono<AppEnv>, table: RouteTable): void {
         subjects,
         load: {
           groups: new Set([...classes, ...subjects].map((x) => x.grp_id)).size,
-          subjects: subjects.length,
+          subjects: new Set(subjects.map((s) => s.subject_name)).size,
         },
       });
       // Two school classes (primary groups) is the slip to flag; an academy teacher leading

@@ -318,6 +318,9 @@ export type TeacherGroupRef = { grp_id: string; name: string };
 export type TeacherSubjectRef = {
   grp_id: string;
   grp_name: string;
+  /** The two parts of `grp_name`, for shortening lists ("Class 4 A, 4 B"). */
+  programme_name: string;
+  group_name: string;
   grp_subject_id: string;
   subject_name: string;
 };
@@ -331,7 +334,7 @@ export type TeacherRowDto = {
   staff_status: 'active' | 'left';
   class_teacher_of: TeacherGroupRef[];
   subjects: TeacherSubjectRef[];
-  /** groups: distinct groups taught (as class or subject teacher); subjects: subject rows. */
+  /** groups: distinct groups taught (as class or subject teacher); subjects: distinct subject names. */
   load: { groups: number; subjects: number };
 };
 

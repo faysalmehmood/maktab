@@ -66,6 +66,8 @@ async function fixture() {
   const idle = await staff('Idle Teacher', ['teacher']);
   const acct = await staff('Accounts Clerk', ['accountant']);
   const gone = await staff('Former Teacher', null, 'left');
+  // A teacher with a staff profile but no login yet: listed, so the owner can give a first class.
+  const fresh = await staff('New Teacher', null);
 
   const group = async (n: number, name: string, extra: Record<string, unknown> = {}) =>
     ok<GroupDto>('POST', '/api/groups', {
@@ -101,7 +103,25 @@ async function fixture() {
     session_id: old.id,
     class_teacher_id: idle.id,
   });
-  return { ...t, owner, call, cur, old, amina, bilal, idle, acct, gone, g5, g6, g7, g8, g9, gOld };
+  return {
+    ...t,
+    owner,
+    call,
+    cur,
+    old,
+    amina,
+    bilal,
+    idle,
+    acct,
+    gone,
+    fresh,
+    g5,
+    g6,
+    g7,
+    g8,
+    g9,
+    gOld,
+  };
 }
 
 describe('GET /api/teachers', () => {
@@ -111,14 +131,20 @@ describe('GET /api/teachers', () => {
     expect(r.status, r.text).toBe(200);
     expect(r.body.session_id).toBe(f.cur.id);
     const names = r.body.items.map((i) => i.name);
-    // Teachers by name; the accountant (no teacher role, no work) is not a teacher.
-    expect(names).toEqual(['Amina', 'Bilal', 'Former Teacher', 'Idle Teacher']);
+    // By name; the accountant (office only, no work) is not listed, the no-login profile is.
+    expect(names).toEqual(['Amina', 'Bilal', 'Former Teacher', 'Idle Teacher', 'New Teacher']);
+    expect(r.body.items.find((i) => i.staff_id === f.fresh.id)).toMatchObject({
+      roles: [],
+      staff_status: 'active',
+      load: { groups: 0, subjects: 0 },
+    });
     const amina = r.body.items.find((i) => i.staff_id === f.amina.id);
     expect(amina).toMatchObject({
       roles: ['teacher'],
       staff_status: 'active',
       class_teacher_of: [{ grp_id: f.g5.id, name: 'Class 5 A' }],
-      load: { groups: 3, subjects: 2 },
+      // Maths in two classes: 3 classes, 1 distinct subject.
+      load: { groups: 3, subjects: 1 },
     });
     expect(amina?.subjects.map((s) => `${s.grp_name} ${s.subject_name}`).sort()).toEqual([
       'Class 6 A Maths',
@@ -128,6 +154,8 @@ describe('GET /api/teachers', () => {
     expect(amina?.subjects).toContainEqual({
       grp_id: f.g6.id,
       grp_name: 'Class 6 A',
+      programme_name: 'Class 6',
+      group_name: 'A',
       grp_subject_id: six?.id,
       subject_name: 'Maths',
     });
@@ -164,6 +192,8 @@ describe('GET /api/teachers', () => {
       {
         grp_id: f.g6.id,
         grp_name: 'Class 6 A',
+        programme_name: 'Class 6',
+        group_name: 'A',
         grp_subject_id: english?.id,
         subject_name: 'English',
       },
@@ -190,8 +220,24 @@ describe('GET /api/teachers', () => {
       ['Amina', []],
       ['Bilal', []],
       ['Idle Teacher', [f.gOld.id]],
+      ['New Teacher', []],
     ]);
     expect(r.body.warnings.groups_without_class_teacher).toEqual([]);
+    // An unknown session is a 404, not an empty page.
+    const bad = await f.call<{ error: { code: string } }>('GET', '/api/teachers?session_id=nope');
+    expect(bad.status).toBe(404);
+    expect(bad.body.error.code).toBe('not_found');
+  });
+
+  it('a no-login teacher can be given a first class through the group endpoint', async () => {
+    const f = await fixture();
+    expect(
+      (await f.call('PATCH', `/api/groups/${f.g8.id}`, { class_teacher_id: f.fresh.id })).status,
+    ).toBe(200);
+    const r = (await f.call<TeachersDto>('GET', '/api/teachers')).body;
+    expect(r.items.find((i) => i.staff_id === f.fresh.id)?.class_teacher_of).toEqual([
+      { grp_id: f.g8.id, name: 'Class 8 A' },
+    ]);
   });
 
   it('follows writes made through the group endpoints', async () => {
