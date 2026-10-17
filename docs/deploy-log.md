@@ -282,6 +282,24 @@ installation, **starting empty** (no data copied from the old production databas
   still answers 500 `misconfigured`: `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are not set on env
   gsap (`wrangler secret list --env gsap` shows three secrets).
 
+## 2026-10-17 (later): carried-gaps pass deployed; WAF rule and R2 lifecycle set
+
+- PR #9 (`5a9ad33`): student header "Message family" + avatar as "Change photo"; fee register opens
+  on a class (PLAN §15 row 2026-10-17, carried-gaps pass). Blind review + fix pass; 1,212 tests.
+  `wrangler deploy --env demo` version 880d8581, `--env gsap` version 4d072ab2 (both from `main`
+  `5a9ad33`; no migration). Demo sign-ins 200, `/api/identity` 200 on both hosts. (An earlier
+  deploy the same evening, versions 369febb8 / 0a9f15cc, was built from `main` `1bbc809` because
+  the PR merge had been refused while a second CI run was still in progress; superseded.)
+- **WAF rate-limit rule** (docs/deploy.md §7, free-plan single rule) deployed by the owner from the
+  form Fable filled in: "maktab public surfaces", hosts `maktab.conceptlix.com` and
+  `maktab-gsap.conceptlix.com`, paths `/p`, `/p/*`, `/api/p`, `/api/p/*`, `/api/identity*`,
+  `/api/auth*`, 10 requests / 10 s per IP, Block 10 s. Verified on the demo host: 16 requests to
+  `/api/identity` → 10 × 200, 6 × 429; 16 to `/api/payroll` → never 429.
+- **R2 lifecycle** on `maktab-backups`: rule `daily-95d` (prefix `daily/`, expire after 95 days) added
+  with `wrangler r2 bucket lifecycle add`; `monthly/` has no rule (docs/backup.md §4).
+- Turnstile is still off on both hosts (the owner creates the widget; the secret must not pass
+  through chat or an agent).
+
 ## Pending (user)
 1. Google Cloud console → the OAuth client → add redirect URI
    `https://maktab-gsap.conceptlix.com/api/auth/google/callback`; then
@@ -291,9 +309,9 @@ installation, **starting empty** (no data copied from the old production databas
 2. Tell Shahid Iqbal to sign in at maktab-gsap.conceptlix.com with shahid.ics.pu@gmail.com (he
    becomes owner and runs the setup wizard); then invite thefaysalmehmood@gmail.com if you need
    access to the pilot.
-3. WAF rate-limit rule (docs/deploy.md §7): its expressions name the host; extend the existing rule
-   to `maktab-gsap.conceptlix.com` (and keep `maktab.conceptlix.com` for the demo). Turnstile
-   widget hostnames likewise. R2 lifecycle rule on `maktab-backups` (docs/backup.md §4).
+3. Turnstile widget (docs/deploy.md §8), optional: hostnames both Maktab hosts; site key into
+   wrangler.toml, secret via `pbpaste | npx wrangler secret put TURNSTILE_SECRET --env gsap`. (The
+   WAF rule and the R2 lifecycle rule are done, see above.)
 4. M7c pilot gate items now apply to gsap (API token → first nightly run → restore drill);
    docs/pilot-checklist.md is the tick list.
 5. GitHub account follow-up (not Maktab): the 91 disabled malicious workflow files in the other
