@@ -324,15 +324,41 @@ through the existing Cloudflare Tunnel; the demo stays on Cloudflare; the Worker
   Google redirect URI, `gsap.conceptlix.com` in the WAF rule (deployed already as
   `http.host in {…}`), and the host's off-site rclone copy (docs/self-host.md §7.2, required).
 
+## 2026-10-17 (night): self-hosted pilot LIVE at https://gsap.conceptlix.com
+
+- PR #14 (`72fde73`, 1,305 tests) merged after a security-focused blind review and a 19-item fix
+  pass (synchronous FULL, pre-migrate backup + `:previous` image tag, `AGE_RECIPIENT` validated at
+  start, `backup_offsite` alarm, `TRUST_PROXY_FROM` CIDRs, chunked uploads with a streaming cap,
+  Workers-identical SPA fallback, pinned base image). The Workers were redeployed from the same
+  `main` (demo 30ba5dc4, gsap fallback 0e9ec9f9). The CI workflow that smoke-tests the image
+  (`.github/workflows/selfhost-image.yml`) is NOT in `main`: it sits on the local branch
+  `selfhost-ci` (commit 6481567) because the owner's token lacks the `workflow` scope.
+- Homelab (Ubuntu 24.04, Docker 29, Compose v5): `/srv/homelab/maktab/src` cloned at `72fde73`;
+  `deploy/selfhost/install.sh gsap` run twice as uid 1000 (first run wrote `gsap/.env` with fresh
+  `SESSION_SECRET` / `PARENT_LINK_SECRET` and `TRUST_PROXY_FROM=172.18.0.0/16`; `AGE_RECIPIENT`
+  set to the public key from docs/backup.md §1; second run built `maktab-gsap:local` and started).
+  Container `maktab-gsap`: healthy, user 1000, read-only rootfs, all capabilities dropped, 1 GB /
+  256 pids, no host port; log: "26 migration(s) applied now; 97 triggers (expected 97), 8 views
+  (expected 8)". Data at `/srv/homelab/maktab/gsap/data/` (0700, 0600 files).
+- Cloudflare: tunnel `homelab` route `gsap.conceptlix.com -> http://maktab-gsap:8787` (CNAME created
+  by the dashboard); WAF rule "maktab public surfaces" now matches
+  `http.host in {"maktab.conceptlix.com" "maktab-gsap.conceptlix.com" "gsap.conceptlix.com"}`.
+- Checks through the tunnel: `/healthz` 200 `{"status":"ok","db":"ok"}` (no version for non-loopback
+  callers), `/api/identity` 200, `/` and `/students` 200 HTML with the SPA CSP, `x-frame-options`,
+  `nosniff`, `referrer-policy`, `/__scheduled` 404, `/api/auth/google/start` 500 `misconfigured`
+  (Google client not in `.env` yet); 14 requests to `/api/identity` → 8 × 200, 6 × 429.
+- Still open (owner): Google redirect URI + client id/secret in `gsap/.env` then `install.sh gsap`
+  again; `rclone` + an R2 API token for the off-site copy (docs/self-host.md §7.2; the
+  `backup_offsite` alarm fires after 7 days without one); Turnstile optional.
+
 ## Pending (user)
-1. Self-hosted pilot (docs/self-host.md): on the homelab, as uid 1000, clone the repo to
-   `/srv/homelab/maktab/src`, run `src/deploy/selfhost/install.sh gsap` twice (it creates
-   `gsap/.env` first), fill `gsap/.env` (`APP_ORIGIN=https://gsap.conceptlix.com`,
-   Google client, `AGE_RECIPIENT`, `BACKUP_RCLONE_REMOTE`), the off-site rclone cron (§7.2), tunnel public hostname `gsap.conceptlix.com -> http://maktab-gsap:8787`,
-   Google Cloud console redirect URI `https://gsap.conceptlix.com/api/auth/google/callback`, and add
-   `gsap.conceptlix.com` to the WAF rule "maktab public surfaces". Verify: `/api/auth/google/start`
-   redirects to Google. (The Worker env `gsap` at maktab-gsap.conceptlix.com is a fallback only; it
-   needs its own Google secrets only if it is ever used again.)
+1. Self-hosted pilot, last steps (docs/self-host.md): Google Cloud console → the OAuth client →
+   add redirect URI `https://gsap.conceptlix.com/api/auth/google/callback`; on the homelab put
+   `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` into `/srv/homelab/maktab/gsap/.env` and run
+   `/srv/homelab/maktab/src/deploy/selfhost/install.sh gsap`. Verify: `/api/auth/google/start`
+   redirects to Google. Then the off-site copy: `rclone` on the host, an R2 API token, the cron
+   job in §7.2, `BACKUP_RCLONE_REMOTE` in `.env`. (The Worker env `gsap` at
+   maktab-gsap.conceptlix.com is a fallback only.)
 2. Tell Shahid Iqbal to sign in at gsap.conceptlix.com with shahid.ics.pu@gmail.com (he
    becomes owner and runs the setup wizard); then invite thefaysalmehmood@gmail.com if you need
    access to the pilot.
