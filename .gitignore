@@ -11,3 +11,4 @@ dev-dist/
 .DS_Store
 coverage/
 *.tsbuildinfo
+dist-node/

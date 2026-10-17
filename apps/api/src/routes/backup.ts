@@ -1,10 +1,11 @@
-import { evaluateAlarms } from '@maktab/db';
+import { type AppDb, evaluateAlarms } from '@maktab/db';
 import {
   type AlarmDto,
   type AlarmEventDto,
   BACKUP_REPORT_MAX_BYTES,
   type BackupObjectDto,
   type BackupRunDto,
+  type BackupRunInput,
   type BackupRunKind,
   type BackupRunStatus,
   type BackupStatusDto,
@@ -96,6 +97,31 @@ async function loadJob(c: Context<AppEnv>, id: string): Promise<{ tables: string
   if (Date.parse(job.created_at) < Date.now() - JOB_TTL_MS)
     throw new ApiError(409, 'export_expired', 'This export has expired; start a new one');
   return { tables: parseJson<string[]>(job.tables, []) };
+}
+
+/**
+ * Records one backup run (Settings → Backup "Last nightly backup", the backup_stale alarm) with its
+ * system audit row, as one atomic write. `POST /api/backup/runs` (the GitHub workflows) and the
+ * self-hosted nightly backup (apps/api/src/node/backup.ts) both call this.
+ */
+export async function recordBackupRun(db: AppDb, input: BackupRunInput): Promise<string> {
+  const id = newId();
+  // Whole, never cut: the body limit (8 KB) already bounds it.
+  const details = input.details ? JSON.stringify(input.details) : null;
+  await tx(db, [
+    sql`INSERT INTO backup_run (id, kind, status, started_at, finished_at, object_key, bytes, sha256,
+          targets, details, run_url, note)
+        VALUES (${id}, ${input.kind}, ${input.status}, ${input.started_at ?? null},
+          ${input.finished_at ?? new Date().toISOString()}, ${input.object_key ?? null},
+          ${input.bytes ?? null}, ${input.sha256 ?? null},
+          ${input.targets ? JSON.stringify(input.targets) : null}, ${details},
+          ${input.run_url ?? null}, ${input.note ?? null})`,
+    // System row (no user): the workflow, not a person, reported it.
+    sql`INSERT INTO audit (id, user_id, entity, entity_id, action, diff)
+        VALUES (${newId()}, NULL, 'backup_run', ${id}, 'report',
+          ${JSON.stringify({ before: null, after: { kind: input.kind, status: input.status, bytes: input.bytes ?? null } })})`,
+  ]);
+  return id;
 }
 
 export function backupRoutes(app: Hono<AppEnv>, table: RouteTable): void {
@@ -228,22 +254,7 @@ export function backupRoutes(app: Hono<AppEnv>, table: RouteTable): void {
       if (!given || !(await sameSecret(given, expected)))
         throw new ApiError(401, 'unauthenticated', 'Bad or missing backup report token');
       const input = await boundedJsonBody(c, backupRunInputSchema, BACKUP_REPORT_MAX_BYTES);
-      const id = newId();
-      // Whole, never cut: the body limit (8 KB) already bounds it.
-      const details = input.details ? JSON.stringify(input.details) : null;
-      await tx(c.get('db'), [
-        sql`INSERT INTO backup_run (id, kind, status, started_at, finished_at, object_key, bytes, sha256,
-              targets, details, run_url, note)
-            VALUES (${id}, ${input.kind}, ${input.status}, ${input.started_at ?? null},
-              ${input.finished_at ?? new Date().toISOString()}, ${input.object_key ?? null},
-              ${input.bytes ?? null}, ${input.sha256 ?? null},
-              ${input.targets ? JSON.stringify(input.targets) : null}, ${details},
-              ${input.run_url ?? null}, ${input.note ?? null})`,
-        // System row (no user): the workflow, not a person, reported it.
-        sql`INSERT INTO audit (id, user_id, entity, entity_id, action, diff)
-            VALUES (${newId()}, NULL, 'backup_run', ${id}, 'report',
-              ${JSON.stringify({ before: null, after: { kind: input.kind, status: input.status, bytes: input.bytes ?? null } })})`,
-      ]);
+      const id = await recordBackupRun(c.get('db'), input);
       return c.json({ id }, 201);
     },
   );
