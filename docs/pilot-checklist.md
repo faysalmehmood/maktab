@@ -71,7 +71,9 @@ Status notes below come from docs/deploy-log.md. They are not ticks: a box is ti
   `GOOGLE_CLIENT_SECRET`, `BACKUP_REPORT_TOKEN`, `TURNSTILE_SECRET`. Verify:
   `npx wrangler secret list --env gsap`. Status (deploy-log): `SESSION_SECRET`, `PARENT_LINK_SECRET`
   and `BACKUP_REPORT_TOKEN` set on gsap 2026-10-13 (`BACKUP_REPORT_TOKEN` regenerated 2026-10-14
-  together with the GitHub secret, one value); the Google client secrets wait on the redirect item
+  and rotated again 2026-10-15 after the GitHub account incident, together with the GitHub secret,
+  one value); `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are NOT set on gsap as of 2026-10-17
+  (`wrangler secret list --env gsap` shows three secrets; sign-in answers 500), see the redirect item
   below; `TURNSTILE_SECRET` is covered by the Turnstile item. — Maintainer
 - [ ] **Google OAuth redirect URI for gsap.** `https://maktab-gsap.conceptlix.com/api/auth/google/callback`
   added to the OAuth client, then `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` set with
