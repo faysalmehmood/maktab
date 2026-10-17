@@ -430,7 +430,7 @@ Stop and ask the user only for: GitHub publish, production deploy to `school.con
 - Fines: the cron (and `POST /api/fees/fines/apply` without `period`) fines every overdue tuition root of any period, filed under the root's period.
 - Sponsorships: one row per (sponsor, student, head|all) at a time, enforced by the DB; the planner bills a sponsor's latest-starting live row.
 - Methods `cheque` and `other` exist (labels in en/ur needed); payslip `void` (M4 UI).
-- Run `npm run db:verify -- --remote --env production` after every `migrations apply` (docs/deploy.md).
+- Run `npm run db:verify -- --remote --env gsap` after every `migrations apply` (docs/deploy.md).
 
 **M6 must remember (from M5)**
 - Backups and "download everything" include `message_template` (staff-edited texts), `parent_link` (hashes only) and `message` (texts with a `{link}` stub, never a live link); restoring needs the same `PARENT_LINK_SECRET` (docs/restore.md), else run "Revoke all parent links" (`POST /api/parent-links/rotate-all`, owner) after the restore.

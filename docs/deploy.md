@@ -169,7 +169,7 @@ Off until both values exist; with either missing everything behaves as before. O
 1. Dashboard → **Turnstile** → Add widget. Name `maktab`; Hostnames `maktab-gsap.conceptlix.com`
    (add `localhost` only on a separate test widget); Widget mode **Managed**; pre-clearance off.
    Create. Copy the **Site key** (public) and the **Secret key**.
-2. Site key: in `apps/api/wrangler.toml` under `[env.production.vars]` set
+2. Site key: in `apps/api/wrangler.toml` under `[env.gsap.vars]` set
    `TURNSTILE_SITE_KEY = "<site key>"` (public, fine in git) and commit.
 3. Secret (never in git or chat): `cd apps/api && npx wrangler secret put TURNSTILE_SECRET --env gsap`
    and paste it at the prompt.
@@ -200,7 +200,7 @@ var) and deploy. Testing keys for a local check (`apps/api/.dev.vars`): site key
   minutes (`curl --resolve` or `dig @1.1.1.1` works sooner).
 - R2 must be enabled in the dashboard (card on file) before `wrangler r2 bucket create`; until then
   the production `FILES` binding stays commented out in `apps/api/wrangler.toml` and photo upload
-  answers 501. `db:verify` prints a harmless "add r2_buckets to env.production" warning meanwhile.
+  answers 501. `db:verify` prints a harmless "add r2_buckets to env.gsap" warning meanwhile.
 - `GET /api/auth/google/start` returns 500 `misconfigured` until GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
   are set; that is expected.
 - `wrangler tail` needs several seconds to attach; wait ~15 s before generating traffic.
