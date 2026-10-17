@@ -2,7 +2,7 @@ import type { TeacherRowDto, TeachersDto } from '@maktab/shared';
 import { GraduationCap, Printer } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { type Column, DataTable } from '@/components/data-table';
 import { ErrorNote, Num } from '@/components/form';
 import {
@@ -16,9 +16,9 @@ import {
   StatStrip,
   StatusBadge,
 } from '@/components/page';
-import { AllocationPrint } from '@/components/teachers/AllocationPrint';
+import { AllocationPrint, SubjectLines } from '@/components/teachers/AllocationPrint';
 import { AllocationSheet } from '@/components/teachers/AllocationSheet';
-import { classTeacherText, loadText, subjectLabel, subjectsText } from '@/components/teachers/text';
+import { classTeacherText, loadText, subjectLabel, subjectLines } from '@/components/teachers/text';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import '@/i18n/screens';
@@ -30,6 +30,7 @@ import { useDocumentTitle } from '@/lib/title';
 import { isolate } from '@/lib/utils';
 
 type Warn = 'class' | 'subject' | 'double';
+const SHEET_STATE = { sheet: true };
 const WARNS: readonly Warn[] = ['class', 'subject', 'double'];
 
 /** The A4 page of the printout, injected only while printing (as the receipts inject theirs). */
@@ -53,7 +54,9 @@ export function TeachersPage() {
   const sessionId = session?.id ?? null;
   const ready = !sessions.isPending;
   const teachers = useTeachers(sessionId, ready);
-  const groups = useGroups({ session_id: sessionId });
+  const groups = useGroups({ session_id: sessionId, enabled: ready });
+  const navigate = useNavigate();
+  const location = useLocation();
   const school = useSchool().data?.school;
   const data = teachers.data;
   const items = data?.items ?? [];
@@ -79,7 +82,11 @@ export function TeachersPage() {
 
   // While printing: the tab title through the shared title helper (Chrome prints it in the header
   // and offers it as the PDF's name) and the A4 page; both go when printing ends or the page does.
-  const [printing, setPrinting] = useState(false);
+  // Each press is a new run, so a browser that never sends `afterprint` cannot wedge the button;
+  // focus coming back (or the tab becoming visible) also ends the run.
+  const [printRun, setPrintRun] = useState(0);
+  const [printedRun, setPrintedRun] = useState(0);
+  const printing = printRun > printedRun;
   useDocumentTitle(printing ? t('screens.teachers.printTitle', { session: sessionName }) : null);
   useEffect(() => {
     if (!printing) return;
@@ -87,15 +94,20 @@ export function TeachersPage() {
     style.dataset.printPage = 'teacher-a4';
     style.textContent = PRINT_PAGE;
     document.head.appendChild(style);
-    const done = () => setPrinting(false);
+    const done = () => setPrintedRun(printRun);
+    const visible = () => document.visibilityState === 'visible' && done();
     window.addEventListener('afterprint', done);
+    window.addEventListener('focus', done);
+    document.addEventListener('visibilitychange', visible);
     void printWhenReady();
     return () => {
       window.removeEventListener('afterprint', done);
+      window.removeEventListener('focus', done);
+      document.removeEventListener('visibilitychange', visible);
       style.remove();
     };
-  }, [printing]);
-  const print = () => setPrinting(true);
+  }, [printing, printRun]);
+  const print = () => setPrintRun((n) => n + 1);
 
   const columns: Column<TeacherRowDto>[] = [
     {
@@ -108,9 +120,6 @@ export function TeachersPage() {
           {r.staff_status === 'left' && (
             <StatusBadge tone="warn">{t('screens.teachers.left')}</StatusBadge>
           )}
-          {doubles.has(r.staff_id) && (
-            <StatusBadge tone="warn">{t('screens.teachers.doubleClass')}</StatusBadge>
-          )}
         </span>
       ),
     },
@@ -119,7 +128,11 @@ export function TeachersPage() {
       header: t('screens.teachers.classTeacherOf'),
       cell: (r) => classTeacherText(t, r),
     },
-    { id: 'subjects', header: t('screens.teachers.subjects'), cell: (r) => subjectsText(t, r) },
+    {
+      id: 'subjects',
+      header: t('screens.teachers.subjects'),
+      cell: (r) => <SubjectLines lines={subjectLines(t, r, 6)} />,
+    },
     {
       id: 'load',
       header: t('screens.teachers.load'),
@@ -214,6 +227,7 @@ export function TeachersPage() {
             rows={rows}
             rowKey={(r) => r.staff_id}
             rowHref={(r) => href('teacher', r.staff_id)}
+            rowState={SHEET_STATE}
             loading={!ready || teachers.isPending}
             error={teachers.error ? <ErrorNote error={teachers.error} /> : undefined}
             empty={
@@ -249,7 +263,13 @@ export function TeachersPage() {
           groups={groups.data?.items ?? []}
           groupsError={groups.error}
           sessionName={sessionName}
-          onClose={() => setParams(withParam('teacher', null), { replace: true })}
+          onClose={() =>
+            // Opened from this page: one Back closes it (no extra /teachers entry); opened from
+            // a link or a reload: replace the entry instead.
+            (location.state as { sheet?: boolean } | null)?.sheet
+              ? navigate(-1)
+              : setParams(withParam('teacher', null), { replace: true })
+          }
         />
       )}
     </>
@@ -272,6 +292,11 @@ function WarnPanel({
   const { t } = useTranslation();
   return (
     <Panel id="teachers-attention" title={title} action={showAll}>
+      {kind === 'double' && (
+        <p className="border-b px-4 py-2 text-sm text-muted-foreground">
+          {t('screens.teachers.batchesNote')}
+        </p>
+      )}
       <RowList>
         {kind === 'class' &&
           warnings.groups_without_class_teacher.map((g) => (

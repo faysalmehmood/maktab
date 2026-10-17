@@ -33,6 +33,7 @@ export function DataTable<R>({
   rows,
   rowKey,
   rowHref,
+  rowState,
   rowActions,
   loading = false,
   error,
@@ -46,6 +47,8 @@ export function DataTable<R>({
   rows: readonly R[] | undefined;
   rowKey: (row: R) => string;
   rowHref?: (row: R) => string;
+  /** History state for the row links (e.g. "opened from this list", so Back closes a sheet). */
+  rowState?: unknown;
   /** Trailing per-row controls (e.g. a RowMenu); never inside the row link. */
   rowActions?: (row: R) => ReactNode;
   loading?: boolean;
@@ -105,6 +108,7 @@ export function DataTable<R>({
               {href ? (
                 <Link
                   to={href}
+                  state={rowState}
                   className="flex min-h-12 min-w-0 flex-1 gap-3 px-4 py-3 hover:bg-accent focus-visible:bg-accent"
                 >
                   {body}
@@ -168,6 +172,7 @@ export function DataTable<R>({
                         // One link per row; its ::after covers the row so the whole row clicks.
                         <Link
                           to={href}
+                          state={rowState}
                           className="outline-none after:absolute after:inset-0 after:content-[''] focus-visible:underline"
                         >
                           {v}

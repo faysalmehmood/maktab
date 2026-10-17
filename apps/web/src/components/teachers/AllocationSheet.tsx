@@ -17,9 +17,9 @@ import {
 } from '@/components/ui/sheet';
 import { toast } from '@/components/ui/sonner';
 import { useIsPhone } from '@/lib/media';
-import { type AssignChange, useAssign } from '@/lib/teachers';
+import { type AssignChange, ChangedError, useAssign } from '@/lib/teachers';
 import { cn, isolate } from '@/lib/utils';
-import { loadText, subjectLabel } from './text';
+import { bySubject, loadText, subjectLabel } from './text';
 
 const groupName = (g: Pick<GroupDto, 'programme_name' | 'name'>) => `${g.programme_name} ${g.name}`;
 
@@ -31,6 +31,9 @@ type Pending = {
   confirm: string;
   remove: boolean;
 };
+
+/** What the confirm texts name: the group, and the subject for a subject change. */
+type Labels = { group: string; subject?: string };
 
 /**
  * The teacher's "allocation card" (Teachers page): class-teacher groups and subjects, each
@@ -57,62 +60,97 @@ export function AllocationSheet({
   const phone = useIsPhone();
   const [adding, setAdding] = useState<'class' | 'subject' | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
-  const assign = useAssign((change) => {
-    toast.success(t(change.staffId ? 'screens.teachers.saved' : 'screens.teachers.removed'));
-    setPending(null);
-    setAdding(null);
-  });
   const me = teacher.staff_id;
   const name = isolate(teacher.name);
   const open = groups.filter((g) => g.status !== 'closed');
+  // The names of the change in flight, to ask again if it turns out to be out of date.
+  const [labels, setLabels] = useState<Labels>({ group: '' });
 
-  const run = (p: Pending | null, change: AssignChange) => {
+  /** "Replace <current>?" for setting this teacher where someone else is now. */
+  const replacing = (change: AssignChange, current: string, l: Labels): Pending => ({
+    change,
+    remove: false,
+    title: t('screens.teachers.replaceTitle', { current: isolate(current) }),
+    body:
+      change.kind === 'class'
+        ? t('screens.teachers.replaceClassBody', {
+            group: isolate(l.group),
+            current: isolate(current),
+            name,
+          })
+        : t('screens.teachers.replaceSubjectBody', {
+            subject: isolate(l.subject ?? ''),
+            group: isolate(l.group),
+            current: isolate(current),
+            name,
+          }),
+    confirm: t('screens.teachers.replace'),
+  });
+
+  const assign = useAssign(
+    (change) => {
+      toast.success(t(change.staffId ? 'screens.teachers.saved' : 'screens.teachers.removed'));
+      setPending(null);
+      setAdding(null);
+    },
+    // Someone changed it since this screen loaded: the lists are refreshed; ask again with who
+    // is there now (or stop, when there is nothing left to do).
+    ({ change, current }) => {
+      if (change.staffId === null || current.id === me) {
+        setPending(null);
+        setAdding(null);
+        toast.info(t('screens.teachers.changed'));
+        return;
+      }
+      const fresh: AssignChange =
+        change.kind === 'class'
+          ? { ...change, expectClassTeacherId: current.id }
+          : { ...change, expectTeacherId: current.id };
+      setPending(
+        current.id
+          ? replacing(fresh, current.name ?? '', labels)
+          : {
+              change: fresh,
+              remove: false,
+              title: t('screens.teachers.changed'),
+              body: '',
+              confirm: t('common.save'),
+            },
+      );
+    },
+  );
+  const shownError = assign.error instanceof ChangedError ? null : assign.error;
+
+  const run = (p: Pending | null, change: AssignChange, l: Labels) => {
     assign.reset();
+    setLabels(l);
     if (p) setPending(p);
     else assign.mutate(change);
   };
 
   const setClass = (g: GroupDto) => {
-    const change: AssignChange = { kind: 'class', grpId: g.id, staffId: me };
+    const change: AssignChange = {
+      kind: 'class',
+      grpId: g.id,
+      staffId: me,
+      expectClassTeacherId: g.class_teacher_id,
+    };
+    const l = { group: groupName(g) };
     const current = g.class_teacher_id && g.class_teacher_id !== me ? g.class_teacher_name : null;
-    run(
-      current
-        ? {
-            change,
-            remove: false,
-            title: t('screens.teachers.replaceTitle', { current: isolate(current) }),
-            body: t('screens.teachers.replaceClassBody', {
-              group: isolate(groupName(g)),
-              current: isolate(current),
-              name,
-            }),
-            confirm: t('screens.teachers.replace'),
-          }
-        : null,
-      change,
-    );
+    run(current ? replacing(change, current, l) : null, change, l);
   };
 
   const addSubject = (g: GroupDto, s: GroupDto['subjects'][number]) => {
-    const change: AssignChange = { kind: 'subject', grpId: g.id, grpSubjectId: s.id, staffId: me };
+    const change: AssignChange = {
+      kind: 'subject',
+      grpId: g.id,
+      grpSubjectId: s.id,
+      staffId: me,
+      expectTeacherId: s.teacher_id,
+    };
+    const l = { group: groupName(g), subject: s.subject_name };
     const current = s.teacher_id && s.teacher_id !== me ? s.teacher_name : null;
-    run(
-      current
-        ? {
-            change,
-            remove: false,
-            title: t('screens.teachers.replaceTitle', { current: isolate(current) }),
-            body: t('screens.teachers.replaceSubjectBody', {
-              subject: isolate(s.subject_name),
-              group: isolate(groupName(g)),
-              current: isolate(current),
-              name,
-            }),
-            confirm: t('screens.teachers.replace'),
-          }
-        : null,
-      change,
-    );
+    run(current ? replacing(change, current, l) : null, change, l);
   };
 
   return (
@@ -181,10 +219,16 @@ export function AllocationSheet({
                           label: t('common.remove'),
                           icon: Trash2,
                           destructive: true,
-                          onSelect: () =>
+                          onSelect: () => {
+                            const change: AssignChange = {
+                              kind: 'class',
+                              grpId: g.grp_id,
+                              staffId: null,
+                              expectClassTeacherId: me,
+                            };
                             run(
                               {
-                                change: { kind: 'class', grpId: g.grp_id, staffId: null },
+                                change,
                                 remove: true,
                                 title: t('screens.teachers.removeClassTitle', {
                                   name,
@@ -195,8 +239,10 @@ export function AllocationSheet({
                                 }),
                                 confirm: t('common.remove'),
                               },
-                              { kind: 'class', grpId: g.grp_id, staffId: null },
-                            ),
+                              change,
+                              { group: g.name },
+                            );
+                          },
                         },
                       ]}
                     />
@@ -236,57 +282,66 @@ export function AllocationSheet({
           {teacher.subjects.length === 0 ? (
             <EmptyState icon={BookOpen} title={t('screens.teachers.noSubjects')} className="py-6" />
           ) : (
-            <RowList>
-              {teacher.subjects.map((s) => {
-                const label = subjectLabel(t, s);
-                const change: AssignChange = {
-                  kind: 'subject',
-                  grpId: s.grp_id,
-                  grpSubjectId: s.grp_subject_id,
-                  staffId: null,
-                };
-                return (
-                  <ListRow
-                    key={s.grp_subject_id}
-                    title={label}
-                    trailing={
-                      <RowMenu
-                        label={t('screens.teachers.itemMenu', { item: label })}
-                        actions={[
-                          {
-                            id: `remove-subject-${s.grp_subject_id}`,
-                            label: t('common.remove'),
-                            icon: Trash2,
-                            destructive: true,
-                            onSelect: () =>
-                              run(
-                                {
-                                  change,
-                                  remove: true,
-                                  title: t('screens.teachers.removeSubjectTitle', {
-                                    name,
-                                    subject: isolate(s.subject_name),
-                                    group: isolate(s.grp_name),
-                                  }),
-                                  body: t('screens.teachers.removeSubjectBody'),
-                                  confirm: t('common.remove'),
-                                },
-                                change,
-                              ),
-                          },
-                        ]}
+            bySubject(teacher.subjects).map(({ subject, refs }) => (
+              <div key={subject}>
+                <h4 className="bg-muted/40 px-4 py-1.5 text-meta font-semibold text-muted-foreground">
+                  <bdi>{subject}</bdi> (<bdi className="num">{refs.length}</bdi>)
+                </h4>
+                <RowList>
+                  {refs.map((s) => {
+                    const label = subjectLabel(t, s);
+                    const change: AssignChange = {
+                      kind: 'subject',
+                      grpId: s.grp_id,
+                      grpSubjectId: s.grp_subject_id,
+                      staffId: null,
+                      expectTeacherId: me,
+                    };
+                    return (
+                      <ListRow
+                        key={s.grp_subject_id}
+                        title={<bdi>{s.grp_name}</bdi>}
+                        trailing={
+                          <RowMenu
+                            label={t('screens.teachers.itemMenu', { item: label })}
+                            actions={[
+                              {
+                                id: `remove-subject-${s.grp_subject_id}`,
+                                label: t('common.remove'),
+                                icon: Trash2,
+                                destructive: true,
+                                onSelect: () =>
+                                  run(
+                                    {
+                                      change,
+                                      remove: true,
+                                      title: t('screens.teachers.removeSubjectTitle', {
+                                        name,
+                                        subject: isolate(s.subject_name),
+                                        group: isolate(s.grp_name),
+                                      }),
+                                      body: t('screens.teachers.removeSubjectBody'),
+                                      confirm: t('common.remove'),
+                                    },
+                                    change,
+                                    { group: s.grp_name, subject: s.subject_name },
+                                  ),
+                              },
+                            ]}
+                          />
+                        }
                       />
-                    }
-                  />
-                );
-              })}
-            </RowList>
+                    );
+                  })}
+                </RowList>
+              </div>
+            ))
           )}
         </Section>
 
-        {!pending && assign.error && (
+        {!pending && shownError && (
           <div className="p-4">
-            <ErrorNote error={assign.error} />
+            <ErrorNote error={shownError} />
           </div>
         )}
 
@@ -304,7 +359,7 @@ export function AllocationSheet({
             }}
             onConfirm={() => assign.mutate(pending.change)}
           >
-            <ErrorNote error={assign.error} />
+            <ErrorNote error={shownError} />
           </ConfirmDialog>
         )}
       </SheetContent>

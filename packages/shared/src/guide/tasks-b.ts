@@ -582,8 +582,8 @@ export const TASKS_B: readonly GuideTask[] = [
       },
       {
         text: {
-          en: 'The figures on top count [[screens.teachers.noClassTeacher]] and [[screens.teachers.noSubjectTeacher]]. Tap a figure to see which.',
-          ur: 'اوپر کے اعداد [[screens.teachers.noClassTeacher]] اور [[screens.teachers.noSubjectTeacher]] گنتے ہیں۔ کون سے ہیں، یہ دیکھنے کے لیے عدد دبائیں۔',
+          en: 'The figures on top count [[screens.teachers.noClassTeacher]], [[screens.teachers.noSubjectTeacher]] and [[screens.teachers.doubleClass]] (academy batches are not counted). Tap a figure to see which.',
+          ur: 'اوپر کے اعداد [[screens.teachers.noClassTeacher]]، [[screens.teachers.noSubjectTeacher]] اور [[screens.teachers.doubleClass]] گنتے ہیں (اکیڈمی کے بیچ شمار نہیں ہوتے)۔ کون سے ہیں، یہ دیکھنے کے لیے عدد دبائیں۔',
         },
       },
       {
@@ -605,8 +605,8 @@ export const TASKS_B: readonly GuideTask[] = [
         ur: 'جس جماعت کا کلاس ٹیچر پہلے سے ہو، اس پر نیا استاد تبھی آتا ہے جب آپ [[screens.teachers.replace]] دبائیں: دبانے سے پہلے نام پڑھ لیں۔',
       },
       {
-        en: 'A teacher appears here only with a staff profile. Invite them first in [[settings.sections.staff]].',
-        ur: 'استاد یہاں تبھی نظر آتا ہے جب اس کا عملے میں پروفائل ہو۔ پہلے [[settings.sections.staff]] میں انہیں مدعو کریں۔',
+        en: 'Everyone with a staff profile is listed here, even before they can sign in, except office staff (accountant or admin only). Someone missing? Add them in [[settings.sections.staff]] first.',
+        ur: 'عملے میں جس کا بھی پروفائل ہے وہ یہاں نظر آتا ہے، سائن اِن سے پہلے بھی، سوائے دفتر کے عملے کے (صرف اکاؤنٹنٹ یا منتظم)۔ کوئی نظر نہیں آ رہا؟ پہلے [[settings.sections.staff]] میں شامل کریں۔',
       },
     ],
     links: [

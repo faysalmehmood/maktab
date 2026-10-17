@@ -44,11 +44,12 @@ export const useStaff = (enabled = true) =>
     enabled,
   });
 
-export function useGroups(params: { session_id?: string | null } = {}) {
+export function useGroups(params: { session_id?: string | null; enabled?: boolean } = {}) {
   const qs = params.session_id ? `?session_id=${encodeURIComponent(params.session_id)}` : '';
   return useQuery({
     queryKey: ['groups', params.session_id ?? null],
     queryFn: () => getJson<Items<GroupDto>>(`/api/groups${qs}`),
+    enabled: params.enabled ?? true,
   });
 }
 

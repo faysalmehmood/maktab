@@ -608,14 +608,14 @@ In the app: `/guide/roles` · for owner, admin.
 *Every teacher with their class and subjects, and the classes still missing a teacher.*
 
 1. Open **Teachers**. Each row shows **Class teacher of**, **Subjects** and **Load**.
-2. The figures on top count **Groups without a class teacher** and **Subjects without a teacher**. Tap a figure to see which.
+2. The figures on top count **Classes without a class teacher**, **Subjects without a teacher** and **Class teacher of two or more classes** (academy batches are not counted). Tap a figure to see which.
 3. Tap a teacher to change their work: **Set as class teacher of…** or **Add subject…**. To take something away, use the row menu and **Remove**.
 4. **Print** gives one A4 sheet for the notice board, with a line for the principal to sign.
 
 **Common mistakes**
 
 - A class that already has a class teacher gets a new one only after you agree to **Replace**: read the name before you do.
-- A teacher appears here only with a staff profile. Invite them first in **Staff**.
+- Everyone with a staff profile is listed here, even before they can sign in, except office staff (accountant or admin only). Someone missing? Add them in **Staff** first.
 
 In the app: `/guide/who-teaches` · for owner, admin.
 
@@ -624,14 +624,14 @@ In the app: `/guide/who-teaches` · for owner, admin.
 *ہر استاد اپنی جماعت اور مضامین کے ساتھ، اور وہ جماعتیں جن کا استاد ابھی مقرر نہیں۔*
 
 1. **اساتذہ** کھولیں۔ ہر قطار میں **کلاس ٹیچر**، **مضامین** اور **کام کا بوجھ** نظر آتا ہے۔
-2. اوپر کے اعداد **بغیر کلاس ٹیچر کے گروپ** اور **بغیر استاد کے مضامین** گنتے ہیں۔ کون سے ہیں، یہ دیکھنے کے لیے عدد دبائیں۔
+2. اوپر کے اعداد **بغیر کلاس ٹیچر کی جماعتیں**، **بغیر استاد کے مضامین** اور **دو یا زیادہ جماعتوں کے کلاس ٹیچر** گنتے ہیں (اکیڈمی کے بیچ شمار نہیں ہوتے)۔ کون سے ہیں، یہ دیکھنے کے لیے عدد دبائیں۔
 3. کام بدلنے کے لیے استاد کا نام دبائیں: **کلاس ٹیچر مقرر کریں…** یا **مضمون شامل کریں…**۔ کچھ ہٹانا ہو تو قطار کا مینو کھول کر **ہٹائیں** دبائیں۔
 4. **پرنٹ** سے نوٹس بورڈ کے لیے ایک A4 صفحہ نکلتا ہے، جس پر پرنسپل کے دستخط کی جگہ ہوتی ہے۔
 
 **عام غلطیاں**
 
 - جس جماعت کا کلاس ٹیچر پہلے سے ہو، اس پر نیا استاد تبھی آتا ہے جب آپ **تبدیل کریں** دبائیں: دبانے سے پہلے نام پڑھ لیں۔
-- استاد یہاں تبھی نظر آتا ہے جب اس کا عملے میں پروفائل ہو۔ پہلے **عملہ** میں انہیں مدعو کریں۔
+- عملے میں جس کا بھی پروفائل ہے وہ یہاں نظر آتا ہے، سائن اِن سے پہلے بھی، سوائے دفتر کے عملے کے (صرف اکاؤنٹنٹ یا منتظم)۔ کوئی نظر نہیں آ رہا؟ پہلے **عملہ** میں شامل کریں۔
 
 </div>
 

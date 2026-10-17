@@ -1,31 +1,38 @@
-import type { GroupDto, TeacherRowDto, TeachersDto } from '@maktab/shared';
+import type { GroupDto, TeacherRowDto, TeacherSubjectRef, TeachersDto } from '@maktab/shared';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PEOPLE_ROUTES } from '@/App';
 import { navFor } from '@/components/AppShell';
 import { initI18n, setLanguage } from '@/i18n';
 import { holds } from '@/lib/roles';
+import { applyAssignment, ChangedError } from '@/lib/teachers';
 import { setShellTitle } from '@/lib/title';
 import { TeachersPage } from '@/pages/Teachers';
 import { group, mockApi, renderAt, session } from './api-mock';
 
 /*
  * Teachers page (2026-10-17): the teacher side of class and subject assignments. Table + phone
- * cards, the warnings strip, the allocation sheet writing through the group endpoints, the A4
- * printout's title, and the nav entry only for owner/admin.
+ * cards, the warnings strip, the allocation sheet writing through the group endpoints (with a
+ * fresh read and a "changed meanwhile" check), the A4 printout's title, and the nav entry only for
+ * owner/admin.
  */
 
 const A = '01JTEACHERAAAAAAAAAAAAAAA1';
 const B = '01JTEACHERAAAAAAAAAAAAAAB1';
+const N = '01JTEACHERAAAAAAAAAAAAAAN1';
 const G5 = '01JGRPAAAAAAAAAAAAAAAAAA05';
 const G6 = '01JGRPAAAAAAAAAAAAAAAAAA06';
 const G7 = '01JGRPAAAAAAAAAAAAAAAAAA07';
 const G8 = '01JGRPAAAAAAAAAAAAAAAAAA08';
 const MATHS = '01JSUBAAAAAAAAAAAAAAAAAAM1';
 const ENGLISH = '01JSUBAAAAAAAAAAAAAAAAAAE1';
+const URDU = '01JSUBAAAAAAAAAAAAAAAAAAU1';
 const GS6M = '01JGSAAAAAAAAAAAAAAAAAA6M1';
 const GS6E = '01JGSAAAAAAAAAAAAAAAAAA6E1';
+const GS6U = '01JGSAAAAAAAAAAAAAAAAAA6U1';
 const GS7M = '01JGSAAAAAAAAAAAAAAAAAA7M1';
+const GS7E = '01JGSAAAAAAAAAAAAAAAAAA7E1';
+const S2 = '01JAAAAAAAAAAAAAAAAAAAAAS2';
 
 const grp = (id: string, n: number, over: Partial<GroupDto> = {}): GroupDto =>
   ({
@@ -36,31 +43,46 @@ const grp = (id: string, n: number, over: Partial<GroupDto> = {}): GroupDto =>
     ...over,
   }) as GroupDto;
 
+const sub = (
+  id: string,
+  subject_id: string,
+  subject_name: string,
+  teacher?: [string, string],
+): GroupDto['subjects'][number] => ({
+  id,
+  subject_id,
+  subject_name,
+  teacher_id: teacher?.[0] ?? null,
+  teacher_name: teacher?.[1] ?? null,
+});
+
 const groups: GroupDto[] = [
   grp(G5, 5, { class_teacher_id: A, class_teacher_name: 'Amina' }),
   grp(G6, 6, {
     class_teacher_id: B,
     class_teacher_name: 'Bilal',
-    subjects: [
-      { id: GS6M, subject_id: MATHS, subject_name: 'Maths', teacher_id: A, teacher_name: 'Amina' },
-      {
-        id: GS6E,
-        subject_id: ENGLISH,
-        subject_name: 'English',
-        teacher_id: null,
-        teacher_name: null,
-      },
-    ],
+    subjects: [sub(GS6M, MATHS, 'Maths', [A, 'Amina']), sub(GS6E, ENGLISH, 'English')],
   }),
   grp(G7, 7, {
     class_teacher_id: B,
     class_teacher_name: 'Bilal',
     subjects: [
-      { id: GS7M, subject_id: MATHS, subject_name: 'Maths', teacher_id: A, teacher_name: 'Amina' },
+      sub(GS7M, MATHS, 'Maths', [A, 'Amina']),
+      sub(GS7E, ENGLISH, 'English', [B, 'Bilal']),
     ],
   }),
   grp(G8, 8),
 ];
+const detail = (g: GroupDto, over: Partial<GroupDto> = {}) => ({ ...g, ...over, roster: [] });
+
+const ref = (g: string, n: number, gs: string, subject: string): TeacherSubjectRef => ({
+  grp_id: g,
+  grp_name: `Class ${n} A`,
+  programme_name: `Class ${n}`,
+  group_name: 'A',
+  grp_subject_id: gs,
+  subject_name: subject,
+});
 
 const amina: TeacherRowDto = {
   staff_id: A,
@@ -68,11 +90,8 @@ const amina: TeacherRowDto = {
   roles: ['teacher'],
   staff_status: 'active',
   class_teacher_of: [{ grp_id: G5, name: 'Class 5 A' }],
-  subjects: [
-    { grp_id: G6, grp_name: 'Class 6 A', grp_subject_id: GS6M, subject_name: 'Maths' },
-    { grp_id: G7, grp_name: 'Class 7 A', grp_subject_id: GS7M, subject_name: 'Maths' },
-  ],
-  load: { groups: 3, subjects: 2 },
+  subjects: [ref(G6, 6, GS6M, 'Maths'), ref(G7, 7, GS7M, 'Maths')],
+  load: { groups: 3, subjects: 1 },
 };
 const bilal: TeacherRowDto = {
   staff_id: B,
@@ -83,8 +102,8 @@ const bilal: TeacherRowDto = {
     { grp_id: G6, name: 'Class 6 A' },
     { grp_id: G7, name: 'Class 7 A' },
   ],
-  subjects: [],
-  load: { groups: 2, subjects: 0 },
+  subjects: [ref(G7, 7, GS7E, 'English')],
+  load: { groups: 2, subjects: 1 },
 };
 const teachers = (items: TeacherRowDto[] = [amina, bilal]): TeachersDto => ({
   session_id: session.id,
@@ -92,9 +111,7 @@ const teachers = (items: TeacherRowDto[] = [amina, bilal]): TeachersDto => ({
   warnings: items.length
     ? {
         groups_without_class_teacher: [{ grp_id: G8, name: 'Class 8 A' }],
-        subjects_without_teacher: [
-          { grp_id: G6, grp_name: 'Class 6 A', grp_subject_id: GS6E, subject_name: 'English' },
-        ],
+        subjects_without_teacher: [ref(G6, 6, GS6E, 'English')],
         double_class_teachers: [{ staff_id: B, name: 'Bilal', groups: bilal.class_teacher_of }],
       }
     : { groups_without_class_teacher: [], subjects_without_teacher: [], double_class_teachers: [] },
@@ -120,25 +137,32 @@ const school = {
   },
 };
 
-function api(items?: TeacherRowDto[]) {
+const [g5, g6, g7, g8] = groups as [GroupDto, GroupDto, GroupDto, GroupDto];
+
+function api(items?: TeacherRowDto[], over: Record<string, unknown> = {}) {
   return mockApi({
     'GET /api/sessions': { items: [session] },
     'GET /api/school': school,
     'GET /api/teachers': teachers(items),
     'GET /api/groups': { items: groups },
-    [`GET /api/groups/${G6}`]: { ...groups[1], roster: [] },
-    [`PATCH /api/groups/${G8}`]: groups[3],
-    [`PATCH /api/groups/${G6}`]: groups[1],
-    [`PATCH /api/groups/${G5}`]: groups[0],
-    [`PUT /api/groups/${G6}/subjects`]: groups[1],
+    [`GET /api/groups/${G5}`]: detail(g5),
+    [`GET /api/groups/${G6}`]: detail(g6),
+    [`GET /api/groups/${G7}`]: detail(g7),
+    [`GET /api/groups/${G8}`]: detail(g8),
+    [`PATCH /api/groups/${G8}`]: g8,
+    [`PATCH /api/groups/${G6}`]: g6,
+    [`PATCH /api/groups/${G5}`]: g5,
+    [`PUT /api/groups/${G6}/subjects`]: g6,
+    [`PUT /api/groups/${G7}/subjects`]: g7,
+    ...over,
   });
 }
 
 const flat = (s: string | null | undefined) => (s ?? '').replace(/[⁨⁩]/g, '');
-const teacherCalls = (calls: { method: string; path: string }[]) =>
-  calls.filter((c) => c.method === 'GET' && c.path.startsWith('/api/teachers')).length;
 /** An accessible-name matcher that ignores the isolates around data names. */
 const nm = (want: string) => (name: string) => flat(name) === want;
+const teacherCalls = (calls: { method: string; path: string }[]) =>
+  calls.filter((c) => c.method === 'GET' && c.path.startsWith('/api/teachers')).length;
 const openMenu = async (name: string | RegExp | ((n: string) => boolean)) => {
   fireEvent.keyDown(await screen.findByRole('button', { name }), { key: 'Enter' });
   return screen.findByRole('menu');
@@ -173,7 +197,7 @@ afterEach(() => {
 const page = (path = '/teachers') => renderAt(path, '/teachers', <TeachersPage />);
 
 describe('Teachers page', () => {
-  it('lists each teacher with class teacher of, subjects and load', async () => {
+  it('lists each teacher with class teacher of, subjects by subject, and load', async () => {
     api();
     page();
     const table = await screen.findByRole('table', { name: 'Teachers' });
@@ -181,17 +205,47 @@ describe('Teachers page', () => {
     const cells = within(row)
       .getAllByRole('cell')
       .map((c) => flat(c.textContent));
-    expect(cells).toEqual([
-      'Class 5 A',
-      'Class 6 A Maths, Class 7 A Maths',
-      '3 groups · 2 subjects',
-    ]);
+    expect(cells).toEqual(['Class 5 A', 'Maths (2): Class 6 A, 7 A', '3 classes · 1 subject']);
     const b = within(table).getByRole('row', { name: /Bilal/ });
     expect(flat(b.textContent)).toContain('Class 6 A, Class 7 A');
-    expect(flat(b.textContent)).toContain('2 groups · 0 subjects');
+    expect(flat(b.textContent)).toContain('2 classes · 1 subject');
+    // No per-row badge for a double class teacher (the strip and its filter say it).
+    expect(b.textContent).not.toContain('Class teacher of two or more classes');
     // The row opens the allocation card.
     expect(within(row).getByRole('link', { name: 'Amina' }).getAttribute('href')).toBe(
       `/teachers?teacher=${A}`,
+    );
+  });
+
+  it('one line per subject; at most 6 classes on screen, then +N; full list in print', async () => {
+    const many: TeacherRowDto = {
+      ...amina,
+      class_teacher_of: [],
+      subjects: [
+        ...[4, 5, 6, 7].flatMap((n) => [
+          { ...ref(`g${n}a`, n, `s${n}a`, 'Social Studies') },
+          {
+            ...ref(`g${n}b`, n, `s${n}b`, 'Social Studies'),
+            grp_name: `Class ${n} B`,
+            group_name: 'B',
+          },
+        ]),
+        ref('g9', 9, 's9', 'Pakistan Studies'),
+      ],
+      load: { groups: 9, subjects: 2 },
+    };
+    api([many]);
+    page();
+    const table = await screen.findByRole('table', { name: 'Teachers' });
+    const cell = within(table).getAllByRole('cell')[1] as HTMLElement;
+    const lines = [...cell.querySelectorAll('span.block')].map((s) => flat(s.textContent));
+    expect(lines).toEqual([
+      'Social Studies (8): Class 4 A, 4 B, 5 A, 5 B, 6 A, 6 B +2',
+      'Pakistan Studies (1): Class 9 A',
+    ]);
+    const print = document.getElementById('teacher-allocation-print') as HTMLElement;
+    expect(flat(print.textContent)).toContain(
+      'Social Studies (8): Class 4 A, 4 B, 5 A, 5 B, 6 A, 6 B, 7 A, 7 B',
     );
   });
 
@@ -205,28 +259,42 @@ describe('Teachers page', () => {
     });
     expect(flat(strip.textContent)).toContain('1');
     fireEvent.click(within(strip).getByRole('link'));
-    const panel = await screen.findByRole('region', { name: 'Groups without a class teacher' });
+    const panel = await screen.findByRole('region', { name: 'Classes without a class teacher' });
     expect(
       within(panel)
         .getByRole('link', { name: /Class 8 A/ })
         .getAttribute('href'),
     ).toBe(`/groups/${G8}`);
-    // Subjects without a teacher: the group's page.
     fireEvent.click(
       within(document.getElementById('teachers-warn-subject') as HTMLElement).getByRole('link'),
     );
     const sp = await screen.findByRole('region', { name: 'Subjects without a teacher' });
     expect(within(sp).getByRole('link', { name: /English/ })).toBeTruthy();
-    // Class teacher of two groups: the table narrows to those teachers.
+    // Class teacher of two or more classes: the table narrows to those teachers.
     fireEvent.click(
       within(document.getElementById('teachers-warn-double') as HTMLElement).getByRole('link'),
     );
-    await screen.findByRole('region', { name: 'Class teacher of two or more groups' });
+    const dp = await screen.findByRole('region', { name: 'Class teacher of two or more classes' });
+    expect(dp.textContent).toContain('Academy batches are not counted.');
     const table = screen.getByRole('table', { name: 'Teachers' });
     await waitFor(() => expect(within(table).queryByRole('row', { name: /Amina/ })).toBeNull());
     expect(within(table).getByRole('row', { name: /Bilal/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('link', { name: 'Show all teachers' }));
     await waitFor(() => expect(within(table).getByRole('row', { name: /Amina/ })).toBeTruthy());
+  });
+
+  it('the session selector shows another session', async () => {
+    const other = { ...session, id: S2, name: '2025-26', is_current: false };
+    const { calls } = api(undefined, { 'GET /api/sessions': { items: [session, other] } });
+    page();
+    await screen.findByRole('table', { name: 'Teachers' });
+    // The first fetches wait for the sessions, so no unscoped groups request goes out.
+    expect(calls.some((c) => c.path === '/api/groups')).toBe(false);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Session' }), { target: { value: S2 } });
+    await waitFor(() =>
+      expect(calls.some((c) => c.path === `/api/teachers?session_id=${S2}`)).toBe(true),
+    );
+    expect(calls.some((c) => c.path === `/api/groups?session_id=${S2}`)).toBe(true);
   });
 
   it('shows cards on a phone', async () => {
@@ -235,7 +303,7 @@ describe('Teachers page', () => {
     page();
     const cards = await screen.findByRole('list', { name: 'Teachers' });
     expect(cards.getAttribute('data-layout')).toBe('cards');
-    expect(flat(cards.textContent)).toContain('3 groups · 2 subjects');
+    expect(flat(cards.textContent)).toContain('3 classes · 1 subject');
   });
 
   it('empty school: teaches where to invite teachers', async () => {
@@ -256,8 +324,8 @@ describe('Teachers page', () => {
     page();
     expect(await screen.findByRole('heading', { name: 'اساتذہ' })).toBeTruthy();
     const table = await screen.findByRole('table', { name: 'اساتذہ' });
-    expect(flat(table.textContent)).toContain('3 گروپ · 2 مضامین');
-    expect(flat(table.textContent)).toContain('Class 6 A Maths، Class 7 A Maths');
+    expect(flat(table.textContent)).toContain('3 جماعتیں · 1 مضمون');
+    expect(flat(table.textContent)).toContain('Maths (2): Class 6 A، 7 A');
   });
 });
 
@@ -312,14 +380,50 @@ describe('allocation sheet', () => {
     );
   });
 
-  it('adds a subject through PUT /api/groups/:id/subjects with the fresh full list', async () => {
+  it('asks before replacing a subject teacher', async () => {
     const { calls } = api();
     page(`/teachers?teacher=${A}`);
     const sheet = await screen.findByRole('dialog', { name: 'Amina' });
     fireEvent.click(within(sheet).getByRole('button', { name: 'Add subject…' }));
+    fireEvent.change(within(sheet).getByLabelText('Class or batch'), { target: { value: G7 } });
+    const s = within(sheet).getByLabelText('Subject') as HTMLSelectElement;
+    expect([...s.options].map((o) => flat(o.textContent))).toEqual([
+      'Choose…',
+      'English (now Bilal)',
+    ]);
+    fireEvent.change(s, { target: { value: GS7E } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    const confirm = await screen.findByRole('dialog', { name: nm('Replace Bilal?') });
+    expect(flat(confirm.textContent)).toContain(
+      'English in Class 7 A is taught by Bilal. Amina will take their place.',
+    );
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Replace' }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        method: 'PUT',
+        path: `/api/groups/${G7}/subjects`,
+        body: {
+          subjects: [
+            { subject_id: MATHS, teacher_id: A },
+            { subject_id: ENGLISH, teacher_id: A },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('adds a subject with the fresh full list (a subject added meanwhile is kept)', async () => {
+    // The class side added Urdu (taught by Bilal) after the list was loaded.
+    const fresh = detail(g6, {
+      subjects: [...g6.subjects, sub(GS6U, URDU, 'Urdu', [B, 'Bilal'])],
+    });
+    const { calls } = api(undefined, { [`GET /api/groups/${G6}`]: fresh });
+    page(`/teachers?teacher=${A}`);
+    const sheet = await screen.findByRole('dialog', { name: 'Amina' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Add subject…' }));
     const g = within(sheet).getByLabelText('Class or batch') as HTMLSelectElement;
-    // 7 A has only Maths, which she teaches: not offered.
-    expect([...g.options].map((o) => o.textContent)).toEqual(['Choose…', 'Class 6 A']);
+    expect([...g.options].map((o) => o.textContent)).toEqual(['Choose…', 'Class 6 A', 'Class 7 A']);
     fireEvent.change(g, { target: { value: G6 } });
     const s = within(sheet).getByLabelText('Subject') as HTMLSelectElement;
     expect([...s.options].map((o) => flat(o.textContent))).toEqual(['Choose…', 'English']);
@@ -333,19 +437,70 @@ describe('allocation sheet', () => {
           subjects: [
             { subject_id: MATHS, teacher_id: A },
             { subject_id: ENGLISH, teacher_id: A },
+            { subject_id: URDU, teacher_id: B },
           ],
         },
       }),
     );
-    // Read fresh from the group just before the write.
-    const i = calls.findIndex((c) => c.method === 'PUT');
-    expect(calls.slice(0, i).some((c) => c.path === `/api/groups/${G6}`)).toBe(true);
+  });
+
+  it('changed meanwhile: re-asks with the fresh name, writes nothing until then', async () => {
+    // The list says 8 A has no class teacher; the fresh read says Bilal took it meanwhile.
+    const { calls } = api(undefined, {
+      [`GET /api/groups/${G8}`]: detail(g8, { class_teacher_id: B, class_teacher_name: 'Bilal' }),
+    });
+    page(`/teachers?teacher=${A}`);
+    const sheet = await screen.findByRole('dialog', { name: 'Amina' });
+    const before = teacherCalls(calls);
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Set as class teacher of…' }));
+    fireEvent.change(within(sheet).getByLabelText('Class or batch'), { target: { value: G8 } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    const confirm = await screen.findByRole('dialog', { name: nm('Replace Bilal?') });
+    expect(flat(confirm.textContent)).toContain('Class 8 A already has Bilal as class teacher.');
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+    // The lists were refreshed.
+    expect(teacherCalls(calls)).toBeGreaterThan(before);
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Replace' }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        method: 'PATCH',
+        path: `/api/groups/${G8}`,
+        body: { class_teacher_id: A },
+      }),
+    );
+  });
+
+  it('applyAssignment: not_found when the subject left the group; changed with who is there', async () => {
+    api(undefined, { [`GET /api/groups/${G6}`]: detail(g6, { subjects: [] }) });
+    await expect(
+      applyAssignment({
+        kind: 'subject',
+        grpId: G6,
+        grpSubjectId: GS6E,
+        staffId: A,
+        expectTeacherId: null,
+      }),
+    ).rejects.toThrow('not_found');
+    api();
+    const err = await applyAssignment({
+      kind: 'subject',
+      grpId: G7,
+      grpSubjectId: GS7E,
+      staffId: A,
+      expectTeacherId: null,
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ChangedError);
+    expect((err as ChangedError).current).toEqual({ id: B, name: 'Bilal' });
   });
 
   it('removes a subject from its row menu after confirming', async () => {
     const { calls } = api();
     page(`/teachers?teacher=${A}`);
-    await screen.findByRole('dialog', { name: 'Amina' });
+    const sheet = await screen.findByRole('dialog', { name: 'Amina' });
+    // Rows grouped under a subject heading.
+    expect(flat(within(sheet).getByRole('heading', { name: /Maths/ }).textContent)).toBe(
+      'Maths (2)',
+    );
     const before = teacherCalls(calls);
     const menu = await openMenu(nm('More actions: Class 6 A Maths'));
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Remove' }));
@@ -386,6 +541,53 @@ describe('allocation sheet', () => {
       }),
     );
   });
+
+  it('a teacher who left: can be cleared, not given new work', async () => {
+    api([{ ...amina, staff_status: 'left' }]);
+    page(`/teachers?teacher=${A}`);
+    const sheet = await screen.findByRole('dialog', { name: 'Amina' });
+    expect(within(sheet).getByText('Left the school')).toBeTruthy();
+    expect(within(sheet).queryByRole('button', { name: 'Set as class teacher of…' })).toBeNull();
+    expect(within(sheet).queryByRole('button', { name: 'Add subject…' })).toBeNull();
+    expect(screen.getByRole('button', { name: nm('More actions: Class 5 A') })).toBeTruthy();
+  });
+
+  it('a profile with no login yet is listed and can be given a first class', async () => {
+    const fresh: TeacherRowDto = {
+      staff_id: N,
+      name: 'Nadia',
+      roles: [],
+      staff_status: 'active',
+      class_teacher_of: [],
+      subjects: [],
+      load: { groups: 0, subjects: 0 },
+    };
+    const { calls } = api([amina, fresh]);
+    page();
+    const table = await screen.findByRole('table', { name: 'Teachers' });
+    fireEvent.click(within(table).getByRole('link', { name: 'Nadia' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Nadia' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Set as class teacher of…' }));
+    fireEvent.change(within(sheet).getByLabelText('Class or batch'), { target: { value: G8 } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        method: 'PATCH',
+        path: `/api/groups/${G8}`,
+        body: { class_teacher_id: N },
+      }),
+    );
+  });
+
+  it('opened from a row, Close goes back to the list', async () => {
+    api();
+    page();
+    const table = await screen.findByRole('table', { name: 'Teachers' });
+    fireEvent.click(within(table).getByRole('link', { name: 'Amina' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Amina' });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Amina' })).toBeNull());
+  });
 });
 
 describe('print', () => {
@@ -412,6 +614,27 @@ describe('print', () => {
     });
     expect(document.title).toBe('ANS · Maktab');
     expect(document.querySelector('style[data-print-page="teacher-a4"]')).toBeNull();
+  });
+
+  it('without afterprint, focus coming back ends the run; Print works again', async () => {
+    const print = vi.fn();
+    vi.stubGlobal('print', print);
+    api();
+    page();
+    await screen.findByRole('table', { name: 'Teachers' });
+    setShellTitle('ANS · Maktab');
+    fireEvent.click(screen.getByRole('button', { name: 'Print' }));
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(document.title).toBe('ANS · Maktab');
+    fireEvent.click(screen.getByRole('button', { name: 'Print' }));
+    expect(document.title).toBe('Teacher allocation 2026-27');
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(2));
+    act(() => {
+      window.dispatchEvent(new Event('afterprint'));
+    });
   });
 });
 

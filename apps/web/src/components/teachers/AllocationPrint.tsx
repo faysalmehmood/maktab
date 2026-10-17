@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { PrintBadge } from '@/components/brand/SchoolBadge';
 import { shortDate } from '@/lib/dates';
 import { cn, isolate } from '@/lib/utils';
-import { classTeacherText, loadText, subjectsText } from './text';
+import { classTeacherText, loadText, NONE, subjectLines } from './text';
 
 /**
  * "Teacher allocation <session>" on A4 portrait: the school header as receipts and payslips print
@@ -69,7 +69,9 @@ export function AllocationPrint({
                 <bdi>{r.name}</bdi>
               </td>
               <td>{classTeacherText(t, r)}</td>
-              <td>{subjectsText(t, r)}</td>
+              <td>
+                <SubjectLines lines={subjectLines(t, r)} />
+              </td>
               <td>{loadText(t, r)}</td>
             </tr>
           ))}
@@ -80,5 +82,19 @@ export function AllocationPrint({
         <span className="allocation-sign">{t('screens.teachers.principalSign')}</span>
       </footer>
     </article>
+  );
+}
+
+/** One block line per subject ("—" when none); shared with the screen's table. */
+export function SubjectLines({ lines }: { lines: readonly string[] }) {
+  if (!lines.length) return <>{NONE}</>;
+  return (
+    <>
+      {lines.map((l) => (
+        <span key={l} className="block">
+          {l}
+        </span>
+      ))}
+    </>
   );
 }
