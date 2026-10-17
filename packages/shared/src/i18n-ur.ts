@@ -1522,6 +1522,8 @@ export const screensUr: Shape<typeof screensEn> = {
     noGuardians: 'ابھی کوئی سرپرست شامل نہیں۔',
     noMessages: 'اس خاندان کے لیے ابھی کوئی پیغام نہیں۔',
     openQueue: 'پیغامات کھولیں',
+    messageFamily: 'خاندان کو پیغام بھیجیں',
+    changePhoto: 'تصویر تبدیل کریں',
   },
   fees: {
     payment: 'ادائیگی',

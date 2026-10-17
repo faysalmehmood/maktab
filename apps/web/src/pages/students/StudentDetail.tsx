@@ -16,6 +16,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeftRight,
+  Camera,
   ChevronLeft,
   CircleStop,
   MessageSquareText,
@@ -24,7 +25,8 @@ import {
   UserX,
   Wallet,
 } from 'lucide-react';
-import { type FormEvent, type ReactNode, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router';
 import { todayPk } from '@/components/attendance/common';
@@ -77,7 +79,7 @@ import { getJson, sendJson, uploadFile } from '@/lib/api';
 import { canReadAttendance, useStudentAttendance } from '@/lib/attendance';
 import { canCollect, canReadMoney } from '@/lib/fees';
 import { type FieldErrors, issuesToErrors, todayIso } from '@/lib/form';
-import { canReadMessages } from '@/lib/messages';
+import { canCompose, canReadMessages } from '@/lib/messages';
 import { useCurrentSession, useCustomFields, useGroups } from '@/lib/queries';
 import { canWriteStudents, useRoles } from '@/lib/roles';
 
@@ -482,6 +484,11 @@ export function StudentDetail() {
   const [photoVersion, setPhotoVersion] = useState(0);
   const [photoFailed, setPhotoFailed] = useState(false);
   const [photo, setPhoto] = useState<Blob | null>(null);
+  // A photo picked from the header avatar: bring its Upload button (Overview tab) into view.
+  useEffect(() => {
+    if (photo)
+      document.getElementById('student-photo-upload')?.scrollIntoView?.({ block: 'nearest' });
+  }, [photo]);
   const uploadPhoto = useMutation({
     mutationFn: (blob: Blob) => uploadFile(`/api/students/${id}/photo`, blob, 'photo.jpg'),
     onSuccess: async () => {
@@ -520,28 +527,58 @@ export function StudentDetail() {
     ...(seesMessages ? [{ value: 'messages' as const, label: t('screens.profile.messages') }] : []),
   ];
   const shown = tabs.some((x) => x.value === tab) ? tab : 'overview';
-  const menu: RowAction[] = write
-    ? [
-        {
-          id: 'student-edit',
-          label: t('student.edit'),
-          icon: Pencil,
-          onSelect: () => navigate(`/students/${s.id}/edit`),
-        },
-        // Re-admission is the header button for a student who left (not repeated here).
-        ...(s.status === 'active'
-          ? [
-              {
-                id: 'student-status',
-                label: t('student.changeStatus'),
-                icon: UserX,
-                destructive: true,
-                onSelect: () => setStatusOpen(true),
-              },
-            ]
-          : []),
-      ]
-    : [];
+  const menu: RowAction[] = [
+    // Only here (not a header button): a notice to this child's family, through Compose.
+    ...(canCompose(roles) && s.family_id
+      ? [
+          {
+            id: 'student-message',
+            label: t('screens.profile.messageFamily'),
+            icon: MessageSquareText,
+            onSelect: () => navigate(`/messages/compose?family=${s.family_id}`),
+          },
+        ]
+      : []),
+    ...(write
+      ? [
+          {
+            id: 'student-edit',
+            label: t('student.edit'),
+            icon: Pencil,
+            onSelect: () => navigate(`/students/${s.id}/edit`),
+          },
+          // Re-admission is the header button for a student who left (not repeated here).
+          ...(s.status === 'active'
+            ? [
+                {
+                  id: 'student-status',
+                  label: t('student.changeStatus'),
+                  icon: UserX,
+                  destructive: true,
+                  onSelect: () => setStatusOpen(true),
+                },
+              ]
+            : []),
+        ]
+      : []),
+  ];
+  // The header avatar opens the Overview tab's photo picker (same input, same upload).
+  const changePhoto = () => {
+    flushSync(() => setTab('overview'));
+    document.getElementById('student-photo')?.click();
+  };
+  const avatar = photoSrc ? (
+    <img
+      id="student-photo-img"
+      src={photoSrc}
+      alt={write ? '' : t('student.photo')}
+      className="size-16 shrink-0 rounded-xl object-cover"
+      onError={() => setPhotoFailed(true)}
+    />
+  ) : (
+    // No photo (or it did not load): the child's initials, never an empty box.
+    <Avatar id="student-avatar" name={s.name} size="xl" className="size-16 text-xl" square />
+  );
   // While a figure loads it is a placeholder bar, never "—" or "0 siblings" read as a fact.
   const loadingValue = (
     <>
@@ -562,23 +599,25 @@ export function StudentDetail() {
         </Link>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <div className="flex min-w-0 flex-1 basis-64 items-center gap-4">
-            {photoSrc ? (
-              <img
-                id="student-photo-img"
-                src={photoSrc}
-                alt={t('student.photo')}
-                className="size-16 shrink-0 rounded-xl object-cover"
-                onError={() => setPhotoFailed(true)}
-              />
+            {write ? (
+              <button
+                type="button"
+                id="student-change-photo"
+                aria-label={t('screens.profile.changePhoto')}
+                title={t('screens.profile.changePhoto')}
+                onClick={changePhoto}
+                className="group relative shrink-0 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
+                {avatar}
+                <span
+                  aria-hidden
+                  className="absolute -end-1 -bottom-1 flex size-6 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm group-hover:text-foreground"
+                >
+                  <Camera className="size-3.5" />
+                </span>
+              </button>
             ) : (
-              // No photo (or it did not load): the child's initials, never an empty box.
-              <Avatar
-                id="student-avatar"
-                name={s.name}
-                size="xl"
-                className="size-16 text-xl"
-                square
-              />
+              avatar
             )}
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <h1 className="text-title">
@@ -702,6 +741,7 @@ export function StudentDetail() {
                     <PhotoPicker onChange={setPhoto} />
                     {photo && (
                       <Button
+                        id="student-photo-upload"
                         size="sm"
                         disabled={uploadPhoto.isPending}
                         onClick={() => uploadPhoto.mutate(photo)}

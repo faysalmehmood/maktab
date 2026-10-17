@@ -2,6 +2,7 @@ import {
   type ComposeAudience,
   type ComposeResultDto,
   DEFAULT_TEMPLATES,
+  type FamilyDetailDto,
   type FamilySearchHit,
   newId,
   PLACEHOLDERS,
@@ -10,9 +11,9 @@ import {
 } from '@maktab/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { ErrorNote } from '@/components/form';
 import { TemplateEditor } from '@/components/messages/TemplateEditor';
 import { Page, PageHeader } from '@/components/page';
@@ -120,6 +121,26 @@ export function ComposePage() {
   const [kind, setKind] = useState<Kind>('all');
   const [grpId, setGrpId] = useState('');
   const [picked, setPicked] = useState<Picked[]>([]);
+  // `?family=<id>` (the student profile's "Message family"): that family starts picked. An id this
+  // user cannot see (or that does not exist) is ignored.
+  const [params] = useSearchParams();
+  const presetId = params.get('family') ?? '';
+  const preset = useQuery({
+    queryKey: ['family', presetId],
+    queryFn: () => getJson<FamilyDetailDto>(`/api/families/${encodeURIComponent(presetId)}`),
+    enabled: !!presetId,
+    retry: false,
+  });
+  const [presetDone, setPresetDone] = useState(false);
+  useEffect(() => {
+    const f = preset.data;
+    if (presetDone || !f) return;
+    setPresetDone(true);
+    setKind('families');
+    setPicked((p) => (p.some((x) => x.id === f.id) ? p : [...p, { id: f.id, name: f.name }]));
+  }, [preset.data, presetDone]);
+  // Never send to "All families" while the family from the link is still being looked up.
+  const presetPending = !!presetId && preset.isPending;
   const [bodyEn, setBodyEn] = useState('');
   const [bodyUr, setBodyUr] = useState('');
   const [noticeId, setNoticeId] = useState(newId);
@@ -297,7 +318,7 @@ export function ComposePage() {
       <Button
         id="compose-send"
         className="self-start"
-        disabled={running || unknown.length > 0}
+        disabled={running || presetPending || unknown.length > 0}
         onClick={() => void submit()}
       >
         {running ? t('msg.compose.sending') : t('msg.compose.send')}
